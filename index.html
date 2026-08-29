@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ServerMaster</title>
+
+    <!-- Redirect without scripting. Fires even if JavaScript is off. -->
+    <meta http-equiv="refresh" content="0; url=https://adm1nsys.github.io/ServerMaster/web/">
+    <link rel="canonical" href="https://adm1nsys.github.io/ServerMaster/web/">
+    <meta name="robots" content="noindex">
+    <link rel="icon" type="image/png" href="https://adm1nsys.github.io/ServerMaster/web/img/icon.png">
+
+    <style>
+        :root {
+            --bg:     #121214;
+            --text:   #f5f5f7;
+            --muted:  #aeaeb2;
+            --dim:    #8e8e93;
+            --accent: #0a84ff;
+            --line:   rgba(255, 255, 255, 0.1);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(circle at 15% 0%, #2a2a35 0%, transparent 40%),
+                radial-gradient(circle at 85% 100%, #1a1a24 0%, var(--bg) 100%);
+            background-attachment: fixed;
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 30px 20px;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .logo { width: 128px; height: 128px; margin: 0 auto 24px; animation: glow 4s infinite alternate ease-in-out; }
+        .logo img { width: 100%; height: 100%; display: block; }
+
+        @keyframes glow {
+            0%   { filter: drop-shadow(0 0 16px rgba(10, 132, 255, 0.55)) drop-shadow(0 0 38px rgba(94, 92, 230, 0.28)); }
+            100% { filter: drop-shadow(0 0 16px rgba(94, 92, 230, 0.55)) drop-shadow(0 0 38px rgba(10, 132, 255, 0.28)); }
+        }
+
+        h1 { font-size: 30px; font-weight: 650; margin: 0 0 10px; letter-spacing: 0.4px; }
+
+        p { color: var(--muted); margin: 0 0 26px; font-size: 16.5px; max-width: 440px; }
+
+        .btn {
+            display: inline-block;
+            padding: 11px 24px;
+            border-radius: 8px;
+            background: var(--accent);
+            color: #fff;
+            font-size: 14.5px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: background 0.2s ease;
+        }
+
+        .btn:hover { background: #0070e0; }
+
+        .url {
+            margin-top: 20px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 12.5px;
+            color: var(--dim);
+            word-break: break-all;
+            max-width: 460px;
+        }
+
+        .url a { color: var(--dim); }
+    </style>
+</head>
+<body>
+
+    <main>
+        <div class="logo">
+            <img src="https://adm1nsys.github.io/ServerMaster/web/img/icon.png" alt="ServerMaster app icon">
+        </div>
+
+        <h1>Taking you to ServerMaster</h1>
+
+        <p>If nothing happens in a moment, the link below goes straight there.</p>
+
+        <a class="btn" href="https://adm1nsys.github.io/ServerMaster/web/">Open ServerMaster</a>
+
+        <div class="url">
+            <a href="https://adm1nsys.github.io/ServerMaster/web/">https://adm1nsys.github.io/ServerMaster/web/</a>
+        </div>
+    </main>
+
+    <script>
+        // replace() rather than assignment: the redirect should not add a history
+        // entry, otherwise Back would land here and bounce forward again.
+        location.replace("https://adm1nsys.github.io/ServerMaster/web/");
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 — ServerMaster</title>
+    <meta name="robots" content="noindex">
+    <!-- Absolute URLs throughout: a 404 can be served at any path depth,
+         and relative references would resolve against the missing page. -->
+    <link rel="icon" type="image/png" href="https://adm1nsys.github.io/ServerMaster/web/img/icon.png">
+
+    <style>
+        :root {
+            --bg:        #121214;
+            --text:      #f5f5f7;
+            --muted:     #aeaeb2;
+            --dim:       #8e8e93;
+            --accent:    #0a84ff;
+            --line:      rgba(255, 255, 255, 0.1);
+            --line-soft: rgba(255, 255, 255, 0.05);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(circle at 15% 0%, #2a2a35 0%, transparent 40%),
+                radial-gradient(circle at 85% 100%, #1a1a24 0%, var(--bg) 100%);
+            background-attachment: fixed;
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        header {
+            display: flex;
+            justify-content: flex-start;
+            padding: 20px 40px;
+            gap: 30px;
+        }
+
+        header a {
+            color: #ffffff;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 16px;
+        }
+
+        header a:hover { text-decoration: underline; }
+
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px 20px 60px;
+        }
+
+        .logo { width: 132px; height: 132px; margin: 0 auto 26px; animation: glow 4s infinite alternate ease-in-out; }
+        .logo img { width: 100%; height: 100%; display: block; }
+
+        @keyframes glow {
+            0%   { filter: drop-shadow(0 0 16px rgba(10, 132, 255, 0.55)) drop-shadow(0 0 38px rgba(94, 92, 230, 0.28)); }
+            100% { filter: drop-shadow(0 0 16px rgba(94, 92, 230, 0.55)) drop-shadow(0 0 38px rgba(10, 132, 255, 0.28)); }
+        }
+
+        .code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 72px;
+            font-weight: 600;
+            letter-spacing: 4px;
+            margin: 0 0 6px;
+            background: linear-gradient(180deg, #f5f5f7 0%, #8e8e93 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        h1 { font-size: 26px; font-weight: 650; margin: 0 0 12px; }
+
+        p {
+            color: var(--muted);
+            margin: 0 auto 30px;
+            font-size: 16.5px;
+            max-width: 470px;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 11px 24px;
+            border-radius: 8px;
+            background: var(--accent);
+            color: #fff;
+            font-size: 14.5px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: background 0.2s ease;
+        }
+
+        .btn:hover { background: #0070e0; }
+
+        .aside {
+            margin-top: 44px;
+            padding: 16px 22px;
+            border: 1px solid var(--line-soft);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.02);
+            color: var(--dim);
+            font-size: 14px;
+            max-width: 520px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 26px;
+            color: var(--dim);
+            border-top: 1px solid var(--line-soft);
+        }
+
+        footer a { color: var(--accent); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+
+        @media (max-width: 720px) {
+            header { padding: 16px 20px; gap: 20px; }
+            .code { font-size: 56px; }
+            h1 { font-size: 22px; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <a href="https://adm1nsys.github.io/ServerMaster/web/">ServerMaster</a>
+        <a href="https://github.com/adm1nsys/ServerMaster" target="_blank" rel="noopener">GitHub</a>
+    </header>
+
+    <main>
+        <div class="logo">
+            <img src="https://adm1nsys.github.io/ServerMaster/web/img/icon.png" alt="ServerMaster app icon">
+        </div>
+
+        <p class="code">404</p>
+
+        <h1>This page isn’t here</h1>
+
+        <p>The address may be mistyped, or the page has moved. Everything about ServerMaster lives on the main page.</p>
+
+        <a class="btn" href="https://adm1nsys.github.io/ServerMaster/web/">Go to ServerMaster</a>
+
+        <div class="aside">
+            Fitting, given the subject: ServerMaster generates pages like this one for
+            your own local sites — 404, 403, 500 and the rest — so a folder on your Mac
+            behaves like a real server.
+        </div>
+    </main>
+
+    <footer>
+        <p>Source code available on <a href="https://github.com/adm1nsys/ServerMaster" target="_blank" rel="noopener">GitHub</a>.</p>
+    </footer>
+
+</body>
+</html>
