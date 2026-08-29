@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ServerMaster CLI">
+  <defs>
+    <linearGradient id="cliBody" x1="0" y1="0" x2="0.65" y2="1">
+      <stop offset="0"    stop-color="#3c3c44"/>
+      <stop offset="0.45" stop-color="#1b1b20"/>
+      <stop offset="1"    stop-color="#08080a"/>
+    </linearGradient>
+    <linearGradient id="cliSheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0"   stop-color="#ffffff" stop-opacity="0.20"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="cliInk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d6d6dc"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="52" y="52" width="408" height="408" rx="96" fill="url(#cliBody)"/>
+  <rect x="52" y="52" width="408" height="408" rx="96" fill="url(#cliSheen)"/>
+  <rect x="52.5" y="52.5" width="407" height="407" rx="95.5"
+        fill="none" stroke="#ffffff" stroke-opacity="0.10" stroke-width="1"/>
+
+  <polyline points="168,192 238,256 168,320" fill="none" stroke="url(#cliInk)"
+            stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="258" y="307" width="100" height="30" rx="15" fill="url(#cliInk)"/>
+</svg>

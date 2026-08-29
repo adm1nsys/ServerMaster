@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ServerMaster — local web servers for macOS</title>
+    <meta name="description" content="ServerMaster runs local web servers on your Mac — Nginx, PHP-FPM, Node.js, Caddy and MariaDB — from one window, with real logs and no terminal archaeology.">
+    <link rel="icon" type="image/png" href="img/icon.png">
+    <style>
+        :root {
+            --bg:        #121214;
+            --text:      #f5f5f7;
+            --muted:     #aeaeb2;
+            --dim:       #8e8e93;
+            --accent:    #0a84ff;
+            --accent-2:  #5e5ce6;
+            --line:      rgba(255, 255, 255, 0.1);
+            --line-soft: rgba(255, 255, 255, 0.05);
+            --panel:     rgba(30, 30, 32, 0.6);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(circle at 15% 0%, #2a2a35 0%, transparent 40%),
+                radial-gradient(circle at 85% 100%, #1a1a24 0%, var(--bg) 100%);
+            background-attachment: fixed;
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        header {
+            display: flex;
+            justify-content: flex-start;
+            padding: 20px 40px;
+            gap: 30px;
+            background-color: transparent;
+        }
+
+        header a {
+            color: #ffffff;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 16px;
+        }
+
+        header a:hover { text-decoration: underline; }
+
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px 20px;
+            text-align: center;
+            width: 100%;
+        }
+
+        section {
+            width: 100%;
+            max-width: 900px;
+            margin-bottom: 70px;
+        }
+
+        /* ── Hero ───────────────────────────────────────────── */
+
+        .logo {
+            width: 168px;
+            height: 168px;
+            margin: 0 auto 22px;
+            animation: iridescentGlow 4s infinite alternate ease-in-out;
+        }
+
+        .logo img {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* drop-shadow follows the icon's own shape, box-shadow would draw a square */
+        @keyframes iridescentGlow {
+            0%   { filter: drop-shadow(0 0 18px rgba(10, 132, 255, 0.55)) drop-shadow(0 0 42px rgba(94, 92, 230, 0.30)); }
+            100% { filter: drop-shadow(0 0 18px rgba(94, 92, 230, 0.55)) drop-shadow(0 0 42px rgba(10, 132, 255, 0.30)); }
+        }
+
+        h1 {
+            font-size: 46px;
+            margin: 0 0 12px 0;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .tagline {
+            font-size: 20px;
+            color: var(--muted);
+            max-width: 620px;
+            margin: 0 auto 34px;
+        }
+
+        h2 {
+            font-size: 28px;
+            font-weight: 650;
+            margin: 0 0 10px 0;
+        }
+
+        .section-lead {
+            color: var(--muted);
+            max-width: 640px;
+            margin: 0 auto 28px;
+        }
+
+        /* ── Downloads ──────────────────────────────────────── */
+
+        .download-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 0 auto 26px;
+            flex-wrap: wrap;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px 25px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            width: fit-content;
+        }
+
+        .dl-label { font-weight: 600; font-size: 16px; margin-right: 6px; }
+
+        button, .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: background 0.2s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn.active, button.active { background-color: var(--accent); color: #fff; }
+        .btn.active:hover, button.active:hover { background-color: #0070e0; }
+
+        button:disabled, .btn.off {
+            background-color: #3a3a3c;
+            color: #636366;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .finder-list {
+            width: 100%;
+            background: var(--panel);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            text-align: left;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .finder-header, .finder-row {
+            display: grid;
+            grid-template-columns: 34px 2fr 0.7fr 1.7fr 1.2fr 110px;
+            align-items: center;
+            padding: 11px 20px;
+            gap: 14px;
+        }
+
+        .finder-header {
+            background: rgba(255, 255, 255, 0.03);
+            border-bottom: 1px solid var(--line);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .finder-row {
+            border-bottom: 1px solid var(--line-soft);
+            font-size: 14px;
+            color: #d1d1d6;
+            transition: background 0.1s ease;
+        }
+
+        .finder-row:last-child { border-bottom: none; }
+        .finder-row:hover { background: rgba(255, 255, 255, 0.06); }
+
+        .f-icon img { width: 26px; height: 26px; display: block; }
+        .f-name { font-weight: 500; color: var(--text); }
+        .f-dim  { color: var(--dim); }
+        .f-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--dim); }
+        .f-action .btn, .f-action button { padding: 6px 12px; font-size: 12px; width: 100%; text-align: center; }
+
+        /* ── Build number legend ────────────────────────────── */
+
+        .legend {
+            margin-top: 18px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--line-soft);
+            border-radius: 12px;
+            padding: 22px 26px;
+            text-align: left;
+        }
+
+        .legend h3 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+        .legend > p { margin: 0 0 16px; color: var(--dim); font-size: 14px; }
+
+        .legend-code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 20px;
+            letter-spacing: 0.5px;
+            margin-bottom: 14px;
+        }
+
+        .legend-code .sep { color: #55555c; }
+        .seg-host   { color: #ff9f0a; }
+        .seg-system { color: #30d158; }
+        .seg-beta   { color: #64d2ff; }
+        .seg-target { color: #bf5af2; }
+
+        .legend dl {
+            display: grid;
+            grid-template-columns: max-content 1fr;
+            gap: 7px 18px;
+            margin: 0;
+            font-size: 14px;
+        }
+
+        .legend dt { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
+        .legend dd { margin: 0; color: var(--muted); }
+
+        /* ── Prose ──────────────────────────────────────────── */
+
+        .prose {
+            max-width: 720px;
+            margin: 0 auto;
+            text-align: left;
+            color: var(--muted);
+            font-size: 16.5px;
+        }
+
+        .prose p { margin: 0 0 18px; }
+        .prose strong { color: var(--text); font-weight: 600; }
+        .prose h3 { color: var(--text); font-size: 19px; margin: 30px 0 10px; }
+
+        .prose ul { margin: 0 0 18px; padding-left: 22px; }
+        .prose li { margin-bottom: 8px; }
+
+        code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.88em;
+            background: rgba(255, 255, 255, 0.07);
+            padding: 2px 6px;
+            border-radius: 5px;
+            color: #e8e8ed;
+        }
+
+        /* ── Feature shots ──────────────────────────────────── */
+
+        .shot { margin-bottom: 56px; }
+
+        .shot h3 {
+            font-size: 21px;
+            margin: 0 0 6px;
+            color: var(--text);
+        }
+
+        .shot p {
+            color: var(--muted);
+            max-width: 660px;
+            margin: 0 auto 20px;
+            font-size: 15.5px;
+        }
+
+        .shot img {
+            width: 100%;
+            height: auto;
+            display: block;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45);
+        }
+
+        /* ── Requirements ───────────────────────────────────── */
+
+        .notice {
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 18px 22px;
+            background: rgba(255, 159, 10, 0.06);
+            border-color: rgba(255, 159, 10, 0.28);
+            color: var(--muted);
+            text-align: left;
+            font-size: 15px;
+            max-width: 720px;
+            margin: 0 auto;
+        }
+
+        .notice strong { color: var(--text); }
+
+        footer {
+            text-align: center;
+            padding: 30px;
+            color: var(--dim);
+            border-top: 1px solid var(--line-soft);
+        }
+
+        footer a { color: var(--accent); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+
+        @media (max-width: 720px) {
+            header { padding: 16px 20px; gap: 20px; }
+            h1 { font-size: 34px; }
+            .tagline { font-size: 17px; }
+            .finder-header { display: none; }
+            .finder-row {
+                grid-template-columns: 34px 1fr;
+                grid-template-areas:
+                    "icon name"
+                    "icon meta"
+                    "act  act";
+                row-gap: 4px;
+            }
+            .finder-row .f-icon { grid-area: icon; }
+            .finder-row .f-name { grid-area: name; }
+            .finder-row .f-action { grid-area: act; margin-top: 8px; }
+            .legend dl { grid-template-columns: 1fr; gap: 2px 0; }
+            .legend dd { margin-bottom: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <a href="https://github.com/adm1nsys/ServerMaster" target="_blank" rel="noopener">Release Notes</a>
+        <a href="https://github.com/adm1nsys/" target="_blank" rel="noopener">GitHub</a>
+    </header>
+
+    <main>
+
+        <section>
+            <div class="logo">
+                <img src="img/icon.png" alt="ServerMaster app icon">
+            </div>
+
+            <h1>ServerMaster</h1>
+
+            <p class="tagline">
+                Local web servers on your Mac — Nginx, PHP, Node.js, Caddy and MariaDB —
+                started from one window, with logs you can actually read.
+            </p>
+
+            <div class="download-section">
+                <span class="dl-label">Downloads:</span>
+                <a class="btn active" href="https://github.com/adm1nsys/ServerMaster/tree/main/mac/1.0" target="_blank" rel="noopener">Apple Silicon</a>
+                <span class="btn off">Intel</span>
+                <span class="btn off">CLI</span>
+            </div>
+
+            <div class="finder-list">
+                <div class="finder-header">
+                    <div></div>
+                    <div>Name</div>
+                    <div>Version</div>
+                    <div>Build</div>
+                    <div>Released</div>
+                    <div>Action</div>
+                </div>
+
+                <div class="finder-row">
+                    <div class="f-icon"><img src="img/icon.png" alt=""></div>
+                    <div class="f-name">ServerMaster (Apple Silicon)</div>
+                    <div>1.0</div>
+                    <div class="f-mono">arm.27.0.b6.arm</div>
+                    <div class="f-dim">Aug 29, 2026</div>
+                    <div class="f-action"><a class="btn active" href="https://github.com/adm1nsys/ServerMaster/tree/main/mac/1.0" target="_blank" rel="noopener">Download</a></div>
+                </div>
+
+                <div class="finder-row">
+                    <div class="f-icon"><img src="img/icon.png" alt=""></div>
+                    <div class="f-name">ServerMaster (Universal)</div>
+                    <div class="f-dim">—</div>
+                    <div class="f-mono">….uni</div>
+                    <div class="f-dim">Planned</div>
+                    <div class="f-action"><span class="btn off">Soon</span></div>
+                </div>
+
+                <div class="finder-row">
+                    <div class="f-icon"><img src="img/icon-cli.svg" alt=""></div>
+                    <div class="f-name">ServerMaster CLI</div>
+                    <div class="f-dim">—</div>
+                    <div class="f-mono">—</div>
+                    <div class="f-dim">Planned</div>
+                    <div class="f-action"><span class="btn off">Soon</span></div>
+                </div>
+            </div>
+
+            <div class="legend">
+                <h3>Reading the build number</h3>
+                <p>It is not a counter. It records where the build came from.</p>
+
+                <div class="legend-code">
+                    <span class="seg-host">arm</span><span class="sep">.</span><span class="seg-system">27.0</span><span class="sep">.</span><span class="seg-beta">b6</span><span class="sep">.</span><span class="seg-target">arm</span>
+                </div>
+
+                <dl>
+                    <dt class="seg-host">arm</dt>
+                    <dd>Built on Apple Silicon.</dd>
+
+                    <dt class="seg-system">27.0</dt>
+                    <dd>The macOS version it was built against — SDK and Xcode match it.</dd>
+
+                    <dt class="seg-beta">b6</dt>
+                    <dd>Developer beta 6 of that system. Absent once the system ships.</dd>
+
+                    <dt class="seg-target">arm</dt>
+                    <dd>What the binary runs on: <code>arm</code> Apple Silicon only, <code>uni</code> universal.</dd>
+                </dl>
+            </div>
+        </section>
+
+        <section>
+            <h2>What it is</h2>
+
+            <div class="prose">
+                <p>
+                    ServerMaster is an open-source macOS app for running web servers on your own
+                    machine. You point it at a folder, pick what should serve it, and press Start.
+                    Everything a local server drags along — the config file, the PHP process, the
+                    database, the certificate, the logs — is handled in the same window.
+                </p>
+
+                <p>
+                    It was built for the moment a stack refuses to cooperate and the error is a bare
+                    exit code. Every server writes its own log, PHP errors are never swallowed, and a
+                    failed start is explained in a sentence instead of a number.
+                </p>
+
+                <h3>Who it is for</h3>
+                <ul>
+                    <li><strong>A student</strong> told to get Joomla, WordPress or Drupal running by Friday, with no interest in becoming a sysadmin first.</li>
+                    <li><strong>A front-end developer</strong> who needs one folder on one port to debug some JavaScript, and does not want to think about ports at all.</li>
+                    <li><strong>Anyone leaving XAMPP or MAMP</strong> who wants the same convenience without a bundled stack taking over the system.</li>
+                </ul>
+
+                <h3>What it can do</h3>
+                <ul>
+                    <li><strong>Eight engines.</strong> http-server and plain Node.js scripts, Python's <code>http.server</code>, PHP's built-in server, Nginx, Nginx&nbsp;+&nbsp;PHP-FPM, Caddy, or any command you type yourself.</li>
+                    <li><strong>Several servers at once.</strong> Every profile has its own tab, port and engine, started and stopped independently — not one Apache for everything.</li>
+                    <li><strong>A PHP version per profile.</strong> An old project on 8.3 and a new one on 8.5 run side by side; the version belongs to the profile, not to the whole machine.</li>
+                    <li><strong>A database that keeps to itself.</strong> MariaDB runs in its own folder on its own port, so a MySQL you already have is left untouched. Browse tables, edit cells and add rows without writing SQL.</li>
+                    <li><strong>HTTPS.</strong> Generate a self-signed certificate, or use mkcert so the browser trusts it without a warning.</li>
+                    <li><strong>Ports 80 and 443.</strong> Those need root; the password is asked once by a macOS window, and stopping the server later needs no password at all.</li>
+                    <li><strong>A real terminal.</strong> A true pseudo-terminal, so <code>vim</code>, <code>top</code>, Ctrl-C and window resizing behave exactly as they do in Terminal.app — in as many tabs as you like.</li>
+                    <li><strong>Error pages you control.</strong> Custom pages for 404, 403, 500 and the rest, so a local folder behaves like a real site.</li>
+                    <li><strong>Basic hardening.</strong> Deny access to dotfiles like <code>.env</code> and <code>.git</code>, set security headers, switch on HSTS. Where an engine cannot honestly do this, the app says so instead of pretending.</li>
+                    <li><strong>Dependencies, checked and installed.</strong> It tells you what is missing for the configuration you chose and installs it through Homebrew.</li>
+                    <li><strong>Ports, visible.</strong> See what is listening, which process holds it, and stop it from the same screen.</li>
+                    <li><strong>Configs, edited safely.</strong> Open the generated <code>nginx.conf</code>, <code>Caddyfile</code>, <code>php.ini</code> or pool config, edit it, and have the syntax checked before it is written — a broken config never reaches disk.</li>
+                </ul>
+            </div>
+        </section>
+
+        <section>
+            <h2>A look inside</h2>
+            <p class="section-lead">Screenshots from a working install.</p>
+
+            <div class="shot">
+                <h3>Control</h3>
+                <p>Every profile in one list. Start, stop, see the address, the running time and the exact command that was executed.</p>
+                <img src="img/control_page.png" alt="The Control section, with two profiles and one server running" loading="lazy">
+            </div>
+
+            <div class="shot">
+                <h3>Profiles</h3>
+                <p>Where a server is described: root folder, engine, port, PHP version, certificate, error pages and protection options.</p>
+                <img src="img/profiles_page.png" alt="The profile editor" loading="lazy">
+            </div>
+
+            <div class="shot">
+                <h3>Console</h3>
+                <p>A tab per running server with its own log, so output from two servers never lands in the same stream.</p>
+                <img src="img/console_page.png" alt="The console showing a running server's log" loading="lazy">
+            </div>
+
+            <div class="shot">
+                <h3>Terminal</h3>
+                <p>A genuine pseudo-terminal, not a command box. Interactive programs, job control and colours all work.</p>
+                <img src="img/terminal.png" alt="A terminal tab running an interactive program" loading="lazy">
+            </div>
+
+            <div class="shot">
+                <h3>Database</h3>
+                <p>A managed MariaDB instance with ready-made connection details to paste into a CMS installer, plus a table browser.</p>
+                <img src="img/db_page.png" alt="The database section" loading="lazy">
+            </div>
+
+            <div class="shot">
+                <h3>Dependencies</h3>
+                <p>What each engine needs, what is present, what is missing — and a button to install it.</p>
+                <img src="img/dependencies_page.png" alt="The dependencies section" loading="lazy">
+            </div>
+
+            <div class="shot">
+                <h3>Ports</h3>
+                <p>Everything listening on the machine, the process behind it, and a way to free the port.</p>
+                <img src="img/ports_page.png" alt="The ports section" loading="lazy">
+            </div>
+
+            <div class="shot">
+                <h3>About</h3>
+                <p>A short tour built into the app, for anyone opening it for the first time.</p>
+                <img src="img/about_page.png" alt="The About section inside the app" loading="lazy">
+            </div>
+        </section>
+
+        <section>
+            <h2>Before you download</h2>
+            <div class="notice">
+                <p style="margin-top:0">
+                    <strong>macOS 27, Apple Silicon.</strong> The current build is Apple Silicon only.
+                    A universal build for Intel is planned, not shipped.
+                </p>
+                <p>
+                    <strong>Homebrew.</strong> The engines and the database are the real ones, not
+                    copies bundled into the app. ServerMaster checks what is missing and can install
+                    it for you.
+                </p>
+                <p style="margin-bottom:0">
+                    <strong>This build is not notarized yet.</strong> It is signed with a development
+                    certificate, so Gatekeeper will refuse it on first launch. Open it once with
+                    right-click&nbsp;→&nbsp;Open, or remove the quarantine flag with
+                    <code>xattr -d com.apple.quarantine ServerMaster.app</code>. A notarized build is
+                    on the way.
+                </p>
+            </div>
+        </section>
+
+    </main>
+
+    <footer>
+        <p>Source code available on <a href="https://github.com/adm1nsys/ServerMaster" target="_blank" rel="noopener">GitHub</a>.</p>
+    </footer>
+
+</body>
+</html>
