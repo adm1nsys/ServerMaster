@@ -323,30 +323,83 @@
         footer a:hover { text-decoration: underline; }
 
         @media (max-width: 720px) {
-            header { padding: 16px 20px; gap: 20px; }
+            header { padding: 16px 18px; gap: 20px; }
+            main { padding: 26px 16px 16px; }
+            section { margin-bottom: 52px; }
             h1 { font-size: 34px; }
-            .tagline { font-size: 17px; }
+            h2 { font-size: 24px; }
+            .logo { width: 128px; height: 128px; }
+            .tagline { font-size: 17px; margin-bottom: 26px; }
+
+            /* Downloads: a full-width card, primary button on its own line */
+            .download-section {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+                width: 100%;
+                padding: 14px;
+                border-radius: 14px;
+            }
+            .dl-label {
+                grid-column: 1 / -1;
+                margin: 0;
+                text-align: left;
+                font-size: 13px;
+                letter-spacing: 0.4px;
+                text-transform: uppercase;
+                color: var(--dim);
+            }
+            .download-section .btn {
+                padding: 13px 10px;
+                font-size: 15px;
+                text-align: center;
+            }
+            .download-section a.btn { grid-column: 1 / -1; }
+
+            /* Version table: one card per row instead of six columns */
             .finder-header { display: none; }
             .finder-row {
-                grid-template-columns: 34px 1fr;
+                grid-template-columns: 30px minmax(0, 1fr) auto;
                 grid-template-areas:
-                    "icon name"
-                    "icon meta"
-                    "act  act";
-                row-gap: 4px;
+                    "icon name name"
+                    "icon ver  date"
+                    "bld  bld  bld"
+                    "act  act  act";
+                align-items: start;
+                column-gap: 12px;
+                row-gap: 3px;
+                padding: 14px 16px;
             }
-            .finder-row .f-icon { grid-area: icon; }
-            .finder-row .f-name { grid-area: name; }
-            .finder-row .f-action { grid-area: act; margin-top: 8px; }
+            .finder-row .f-icon   { grid-area: icon; padding-top: 3px; }
+            .finder-row .f-icon img { width: 30px; height: 30px; }
+            .finder-row .f-name   { grid-area: name; font-size: 15px; line-height: 1.35; }
+            .finder-row .f-ver    { grid-area: ver;  font-size: 13px; color: var(--dim); }
+            .finder-row .f-ver::before  { content: "Version "; }
+            .finder-row .f-date   { grid-area: date; font-size: 13px; text-align: right; }
+            .finder-row .f-mono   { grid-area: bld;  margin-top: 2px; }
+            .finder-row .f-mono::before { content: "Build "; }
+            .finder-row .f-action { grid-area: act;  margin-top: 12px; }
+            .finder-row .f-action .btn { padding: 11px 12px; font-size: 14px; }
+
+            .legend { padding: 18px; }
+            .legend-code { font-size: 17px; overflow-wrap: anywhere; }
             .legend dl { grid-template-columns: 1fr; gap: 2px 0; }
             .legend dd { margin-bottom: 10px; }
+
+            .prose { font-size: 16px; }
+            .shot { margin-bottom: 40px; }
+            .notice { padding: 16px 18px; }
+        }
+
+        @media (max-width: 340px) {
+            .download-section { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
 
     <header>
-        <a href="https://github.com/adm1nsys/ServerMaster" target="_blank" rel="noopener">Release Notes</a>
+        <a href="https://github.com/adm1nsys/ServerMaster/releases" target="_blank" rel="noopener">Release Notes</a>
         <a href="https://github.com/adm1nsys/" target="_blank" rel="noopener">GitHub</a>
     </header>
 
@@ -384,27 +437,27 @@
                 <div class="finder-row">
                     <div class="f-icon"><img src="img/icon.png" alt=""></div>
                     <div class="f-name">ServerMaster (Apple Silicon)</div>
-                    <div>1.0</div>
+                    <div class="f-ver">1.0</div>
                     <div class="f-mono">arm.27.0.b6.arm</div>
-                    <div class="f-dim">Aug 29, 2026</div>
+                    <div class="f-dim f-date">Aug 29, 2026</div>
                     <div class="f-action"><a class="btn active" href="https://github.com/adm1nsys/ServerMaster/raw/main/mac/1.0/ServerMaster%20app.zip">Download</a></div>
                 </div>
 
                 <div class="finder-row">
                     <div class="f-icon"><img src="img/icon.png" alt=""></div>
                     <div class="f-name">ServerMaster (Universal)</div>
-                    <div class="f-dim">—</div>
+                    <div class="f-dim f-ver">—</div>
                     <div class="f-mono">….uni</div>
-                    <div class="f-dim">Planned</div>
+                    <div class="f-dim f-date">Planned</div>
                     <div class="f-action"><span class="btn off">Soon</span></div>
                 </div>
 
                 <div class="finder-row">
                     <div class="f-icon"><img src="img/icon-cli.svg" alt=""></div>
                     <div class="f-name">ServerMaster CLI</div>
-                    <div class="f-dim">—</div>
+                    <div class="f-dim f-ver">—</div>
                     <div class="f-mono">—</div>
-                    <div class="f-dim">Planned</div>
+                    <div class="f-dim f-date">Planned</div>
                     <div class="f-action"><span class="btn off">Soon</span></div>
                 </div>
             </div>
