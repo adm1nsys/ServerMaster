@@ -39,21 +39,46 @@
         }
 
         header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 50;
             display: flex;
             justify-content: flex-start;
-            padding: 20px 40px;
-            gap: 30px;
+            align-items: center;
+            padding: 14px 40px;
+            gap: 10px;
             background-color: transparent;
+            transition: background-color 0.25s ease;
         }
+
+        /* Once the page moves, the bar picks up a faint tint so the links stay
+           readable over whatever scrolls behind them. */
+        header.scrolled { background-color: rgba(18, 18, 20, 0.5); }
 
         header a {
             color: #ffffff;
             text-decoration: none;
             font-weight: 500;
-            font-size: 16px;
+            font-size: 15px;
+            padding: 7px 14px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            transition: background-color 0.25s ease, border-color 0.25s ease;
         }
 
-        header a:hover { text-decoration: underline; }
+        header.scrolled a {
+            background-color: rgba(0, 0, 0, 0.34);
+            backdrop-filter: blur(14px) saturate(140%);
+            -webkit-backdrop-filter: blur(14px) saturate(140%);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        header a:hover { background-color: rgba(255, 255, 255, 0.16); }
+
+        /* The bar floats above the page, so the first screen needs room for it. */
+        main { padding-top: 74px; }
 
         main {
             flex: 1;
@@ -243,6 +268,40 @@
         .legend dt { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
         .legend dd { margin: 0; color: var(--muted); }
 
+        .compat { overflow-x: auto; }
+
+        .compat table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 14px;
+        }
+
+        .compat th, .compat td {
+            padding: 9px 14px;
+            text-align: left;
+            border-bottom: 1px solid var(--line-soft);
+            white-space: nowrap;
+        }
+
+        .compat th {
+            color: var(--dim);
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .compat tbody tr:last-child td { border-bottom: none; }
+        .compat td:first-child { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        .compat .note { color: var(--dim); font-size: 12.5px; }
+
+        .legend .footnote {
+            margin: 14px 0 0;
+            color: var(--dim);
+            font-size: 13px;
+            line-height: 1.55;
+        }
+
         /* ── Prose ──────────────────────────────────────────── */
 
         .prose {
@@ -399,6 +458,7 @@
 <body>
 
     <header>
+        <a href="wiki.html">Guides</a>
         <a href="https://github.com/adm1nsys/ServerMaster/releases" target="_blank" rel="noopener">Release Notes</a>
         <a href="https://github.com/adm1nsys/" target="_blank" rel="noopener">GitHub</a>
     </header>
@@ -419,7 +479,7 @@
 
             <div class="download-section">
                 <span class="dl-label">Downloads:</span>
-                <a class="btn active" href="https://github.com/adm1nsys/ServerMaster/raw/main/mac/1.0/ServerMaster%20app.zip">Apple Silicon</a>
+                <a class="btn active" href="https://github.com/adm1nsys/ServerMaster/raw/main/mac/1.1/ServerMaster%20app.zip">Apple Silicon</a>
                 <span class="btn off">Intel</span>
                 <span class="btn off">CLI</span>
             </div>
@@ -437,15 +497,24 @@
                 <div class="finder-row">
                     <div class="f-icon"><img src="img/icon.png" alt=""></div>
                     <div class="f-name">ServerMaster (Apple Silicon)</div>
-                    <div class="f-ver">1.0</div>
+                    <div class="f-ver">1.1</div>
                     <div class="f-mono">arm.27.0.b6.arm</div>
-                    <div class="f-dim f-date">Aug 29, 2026</div>
-                    <div class="f-action"><a class="btn active" href="https://github.com/adm1nsys/ServerMaster/raw/main/mac/1.0/ServerMaster%20app.zip">Download</a></div>
+                    <div class="f-dim f-date">Aug 30, 2026</div>
+                    <div class="f-action"><a class="btn active" href="https://github.com/adm1nsys/ServerMaster/raw/main/mac/1.1/ServerMaster%20app.zip">Download</a></div>
                 </div>
 
                 <div class="finder-row">
                     <div class="f-icon"><img src="img/icon.png" alt=""></div>
-                    <div class="f-name">ServerMaster (Universal)</div>
+                    <div class="f-name">ServerMaster (Apple Silicon)</div>
+                    <div class="f-ver">1.0</div>
+                    <div class="f-mono">arm.27.0.b6.arm</div>
+                    <div class="f-dim f-date">Aug 29, 2026</div>
+                    <div class="f-action"><a class="btn" href="https://github.com/adm1nsys/ServerMaster/raw/main/mac/1.0/ServerMaster%20app.zip">Download</a></div>
+                </div>
+
+                <div class="finder-row">
+                    <div class="f-icon"><img src="img/icon.png" alt=""></div>
+                    <div class="f-name">ServerMaster (Intel)</div>
                     <div class="f-dim f-ver">—</div>
                     <div class="f-mono">….uni</div>
                     <div class="f-dim f-date">Planned</div>
@@ -484,6 +553,38 @@
                     <dd>What the binary runs on: <code>arm</code> Apple Silicon only, <code>uni</code> universal.</dd>
                 </dl>
             </div>
+
+            <div class="legend">
+                <h3>Which macOS each version needs</h3>
+                <p>Check this before downloading — an older macOS will not open a newer build.</p>
+
+                <div class="compat">
+                    <table>
+                        <thead>
+                            <tr><th>Version</th><th>Minimum macOS</th><th>Runs on</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>1.0</td>
+                                <td>27.0&nbsp;beta&nbsp;6 or newer <span class="note">(the developer beta only)</span></td>
+                                <td>Apple&nbsp;Silicon</td>
+                            </tr>
+                            <tr>
+                                <td>1.1</td>
+                                <td>14&nbsp;Sonoma or newer</td>
+                                <td>Apple&nbsp;Silicon</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p class="footnote">
+                    1.1 lowered its deployment target to Sonoma and every API is checked against it
+                    at compile time — but the app has only ever been <em>run</em> on Apple Silicon
+                    with the latest macOS. An Intel build is next. If you try it on an older system,
+                    tell us how it went.
+                </p>
+            </div>
         </section>
 
         <section>
@@ -512,7 +613,8 @@
 
                 <h3>What it can do</h3>
                 <ul>
-                    <li><strong>Eight engines.</strong> http-server and plain Node.js scripts, Python's <code>http.server</code>, PHP's built-in server, Nginx, Nginx&nbsp;+&nbsp;PHP-FPM, Caddy, or any command you type yourself.</li>
+                    <li><strong>Ten engines.</strong> http-server and plain Node.js scripts, Python's <code>http.server</code>, PHP's built-in server, Nginx, Nginx&nbsp;+&nbsp;PHP-FPM, Apache, Apache&nbsp;+&nbsp;PHP-FPM, Caddy, or any command you type yourself.</li>
+                    <li><strong>Apache with <code>.htaccess</code>, nothing to install.</strong> A project that ships its own <code>.htaccess</code> — Joomla, WordPress, anything from XAMPP — works as it did there. macOS already carries Apache, so there is no download and no setup. Verified against a real Joomla install with rewriting switched on.</li>
                     <li><strong>Several servers at once.</strong> Every profile has its own tab, port and engine, started and stopped independently — not one Apache for everything.</li>
                     <li><strong>A PHP version per profile.</strong> An old project on 8.3 and a new one on 8.5 run side by side; the version belongs to the profile, not to the whole machine.</li>
                     <li><strong>A database that keeps to itself.</strong> MariaDB runs in its own folder on its own port, so a MySQL you already have is left untouched. Browse tables, edit cells and add rows without writing SQL.</li>
@@ -585,8 +687,8 @@
             <h2>Before you download</h2>
             <div class="notice">
                 <p style="margin-top:0">
-                    <strong>macOS 27, Apple Silicon.</strong> The current build is Apple Silicon only.
-                    A universal build for Intel is planned, not shipped.
+                    <strong>Check the version table above.</strong> Each release has its own
+                    minimum macOS, and 1.0 needs a developer beta that most people are not running.
                 </p>
                 <p>
                     <strong>Homebrew.</strong> The engines and the database are the real ones, not
@@ -608,6 +710,49 @@
     <footer>
         <p>Source code available on <a href="https://github.com/adm1nsys/ServerMaster" target="_blank" rel="noopener">GitHub</a>.</p>
     </footer>
+
+
+    <script>
+        // A sentinel plus IntersectionObserver rather than a scroll listener:
+        // the observer fires wherever the scrolling actually happens, including
+        // embedded viewers where window scroll events never arrive. The scroll
+        // listener stays as a fallback for anything without the observer.
+        (function () {
+            var header = document.querySelector('header');
+            if (!header) { return; }
+
+            var sentinel = document.createElement('div');
+            sentinel.setAttribute('aria-hidden', 'true');
+            sentinel.style.cssText = 'position:absolute;top:0;left:0;width:1px;height:14px;pointer-events:none;';
+            document.body.insertBefore(sentinel, document.body.firstChild);
+
+            function set(on) { header.classList.toggle('scrolled', on); }
+
+            if ('IntersectionObserver' in window) {
+                new IntersectionObserver(function (entries) {
+                    set(!entries[0].isIntersecting);
+                }).observe(sentinel);
+            }
+
+            function offset() {
+                return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+            }
+            function fromScroll() { set(offset() > 12); }
+            window.addEventListener('scroll', fromScroll, { passive: true });
+            document.addEventListener('scroll', fromScroll, { passive: true, capture: true });
+            fromScroll();
+
+            // Last resort: some embedded viewers deliver neither scroll events nor
+            // observer callbacks. Reading one number per frame and comparing costs
+            // nothing, and it keeps the header correct everywhere.
+            var last = -1;
+            (function tick() {
+                var y = offset();
+                if (y !== last) { last = y; set(y > 12); }
+                requestAnimationFrame(tick);
+            })();
+        })();
+    </script>
 
 </body>
 </html>

@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guides — ServerMaster</title>
+    <meta name="description" content="How to run a static site, a PHP project, Joomla, WordPress, Drupal or Laravel with ServerMaster — and what to do when something breaks.">
+    <link rel="icon" type="image/png" href="img/icon.png">
+    <style>
+        :root {
+            --bg:        #121214;
+            --text:      #f5f5f7;
+            --muted:     #aeaeb2;
+            --dim:       #8e8e93;
+            --accent:    #0a84ff;
+            --warn:      #ff9f0a;
+            --ok:        #30d158;
+            --line:      rgba(255, 255, 255, 0.1);
+            --line-soft: rgba(255, 255, 255, 0.05);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(circle at 15% 0%, #2a2a35 0%, transparent 40%),
+                radial-gradient(circle at 85% 100%, #1a1a24 0%, var(--bg) 100%);
+            background-attachment: fixed;
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            line-height: 1.65;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        header {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            padding: 14px 40px;
+            gap: 10px;
+            background-color: transparent;
+            transition: background-color 0.25s ease;
+        }
+
+        header.scrolled { background-color: rgba(18, 18, 20, 0.5); }
+
+        header a {
+            color: #ffffff;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 15px;
+            padding: 7px 14px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            transition: background-color 0.25s ease, border-color 0.25s ease;
+        }
+
+        header.scrolled a {
+            background-color: rgba(0, 0, 0, 0.34);
+            backdrop-filter: blur(14px) saturate(140%);
+            -webkit-backdrop-filter: blur(14px) saturate(140%);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        header a:hover { background-color: rgba(255, 255, 255, 0.16); }
+
+        .shell {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 96px 24px 60px;
+            display: grid;
+            grid-template-columns: 220px 1fr;
+            gap: 40px;
+            align-items: start;
+        }
+
+        nav.toc {
+            position: sticky;
+            top: 96px;
+            font-size: 14px;
+        }
+
+        nav.toc h4 {
+            margin: 0 0 8px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: var(--dim);
+        }
+
+        nav.toc a {
+            display: block;
+            color: var(--muted);
+            text-decoration: none;
+            padding: 4px 0;
+        }
+
+        nav.toc a:hover { color: var(--text); }
+        nav.toc .gap { height: 14px; }
+
+        h1 { font-size: 34px; margin: 0 0 8px; font-weight: 700; }
+        .lede { color: var(--muted); font-size: 17px; margin: 0 0 40px; max-width: 44rem; }
+
+        article h2 {
+            font-size: 24px;
+            margin: 48px 0 6px;
+            padding-top: 20px;
+            border-top: 1px solid var(--line-soft);
+            scroll-margin-top: 90px;
+        }
+
+        article h2:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+        article h3 { font-size: 17px; margin: 26px 0 6px; }
+
+        article p, article li { color: var(--muted); }
+        article p { margin: 0 0 14px; max-width: 44rem; }
+        article strong { color: var(--text); font-weight: 600; }
+
+        ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 0 0 18px; max-width: 44rem; }
+
+        ol.steps > li {
+            counter-increment: step;
+            position: relative;
+            padding-left: 38px;
+            margin-bottom: 14px;
+        }
+
+        ol.steps > li::before {
+            content: counter(step);
+            position: absolute;
+            left: 0; top: 1px;
+            width: 24px; height: 24px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--line);
+            color: var(--text);
+            font-size: 12.5px;
+            font-weight: 600;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        ul.plain { max-width: 44rem; padding-left: 20px; margin: 0 0 16px; }
+        ul.plain li { margin-bottom: 7px; }
+
+        code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.88em;
+            background: rgba(255, 255, 255, 0.07);
+            padding: 2px 6px;
+            border-radius: 5px;
+            color: #e8e8ed;
+        }
+
+        pre {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--line-soft);
+            border-radius: 10px;
+            padding: 14px 16px;
+            overflow-x: auto;
+            max-width: 44rem;
+            margin: 0 0 16px;
+        }
+
+        pre code { background: none; padding: 0; font-size: 13px; line-height: 1.6; }
+
+        .done {
+            border-left: 3px solid var(--ok);
+            background: rgba(48, 209, 88, 0.07);
+            border-radius: 0 10px 10px 0;
+            padding: 12px 16px;
+            margin: 0 0 16px;
+            max-width: 44rem;
+            font-size: 15px;
+        }
+
+        .done strong { color: var(--ok); }
+
+        .tip {
+            border-left: 3px solid var(--accent);
+            background: rgba(10, 132, 255, 0.07);
+            border-radius: 0 10px 10px 0;
+            padding: 12px 16px;
+            margin: 0 0 16px;
+            max-width: 44rem;
+            font-size: 15px;
+        }
+
+        .fault {
+            border: 1px solid var(--line-soft);
+            border-radius: 12px;
+            padding: 16px 18px;
+            margin: 0 0 14px;
+            max-width: 44rem;
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .fault h3 {
+            margin: 0 0 6px;
+            font-size: 15.5px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            color: var(--warn);
+        }
+
+        .fault p:last-child { margin-bottom: 0; }
+
+        footer {
+            text-align: center;
+            padding: 30px;
+            color: var(--dim);
+            border-top: 1px solid var(--line-soft);
+        }
+
+        footer a { color: var(--accent); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+
+        @media (max-width: 860px) {
+            .shell { grid-template-columns: 1fr; gap: 24px; padding-top: 84px; }
+            nav.toc { position: static; }
+            header { padding: 14px 20px; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <a href="index.html">ServerMaster</a>
+        <a href="wiki.html">Guides</a>
+        <a href="https://github.com/adm1nsys/ServerMaster" target="_blank" rel="noopener">GitHub</a>
+    </header>
+
+    <div class="shell">
+
+        <nav class="toc">
+            <h4>Start</h4>
+            <a href="#install">Install and first launch</a>
+            <a href="#static">A static site</a>
+            <a href="#php">A PHP project</a>
+            <div class="gap"></div>
+
+            <h4>Real projects</h4>
+            <a href="#joomla">Joomla</a>
+            <a href="#wordpress">WordPress</a>
+            <a href="#drupal">Drupal</a>
+            <a href="#laravel">Laravel</a>
+            <div class="gap"></div>
+
+            <h4>Going further</h4>
+            <a href="#database">The database</a>
+            <a href="#phpversion">PHP version per project</a>
+            <a href="#https">HTTPS</a>
+            <a href="#ports">Ports 80 and 443</a>
+            <a href="#htaccess">When you need .htaccess</a>
+            <div class="gap"></div>
+
+            <h4>When it breaks</h4>
+            <a href="#errors">Errors and what they mean</a>
+        </nav>
+
+        <article>
+            <h1>Guides</h1>
+            <p class="lede">
+                Every guide here ends at a working result — a page in your browser, or the admin
+                screen of whatever you installed. If you got that far, you are done; the rest is
+                your project, not the server.
+            </p>
+
+            <h2 id="install">Install and first launch</h2>
+
+            <ol class="steps">
+                <li>Download the build for your macOS from the <a href="index.html">main page</a> and drag <code>ServerMaster.app</code> into Applications.</li>
+                <li><strong>First launch needs a right-click.</strong> The app is not notarized yet, so a double-click will be refused. Right-click the app → <em>Open</em> → <em>Open</em> again. You do this once, ever.</li>
+                <li>On the <strong>Dependencies</strong> screen, press <em>Install</em> next to anything the engine you want is missing. This uses Homebrew and takes a few minutes the first time.</li>
+            </ol>
+
+            <div class="tip">
+                Nothing is bundled and hidden. ServerMaster runs the real Nginx, PHP and MariaDB,
+                each in its own folder on its own port. A MySQL or Apache you already have is left
+                alone, and uninstalling is dragging the app to the Trash.
+            </div>
+
+            <h2 id="static">A static site</h2>
+
+            <p>HTML, CSS and JavaScript in a folder. The fastest thing this app does.</p>
+
+            <ol class="steps">
+                <li><strong>Profiles</strong> → <em>+</em> to create a profile.</li>
+                <li>Set <strong>Root</strong> to your folder — the one containing <code>index.html</code>.</li>
+                <li>Leave the engine at <strong>http-server</strong> and the port at <strong>8080</strong>.</li>
+                <li><strong>Control</strong> → <em>Start</em>, then click the address.</li>
+            </ol>
+
+            <div class="done">
+                <strong>Done</strong> when your page opens at <code>http://127.0.0.1:8080</code>.
+            </div>
+
+            <p>
+                If your site is a single-page app that handles its own routes, switch on
+                <strong>SPA fallback</strong> in the profile so a deep link does not 404.
+            </p>
+
+            <h2 id="php">A PHP project</h2>
+
+            <p>Any folder with <code>.php</code> files in it, no database needed.</p>
+
+            <ol class="steps">
+                <li>New profile, <strong>Root</strong> at the folder with <code>index.php</code>.</li>
+                <li>Engine: <strong>PHP built-in server</strong> for something simple, or <strong>PHP site (Nginx&nbsp;+&nbsp;PHP-FPM)</strong> for anything real.</li>
+                <li>Start, and open the address.</li>
+            </ol>
+
+            <div class="done">
+                <strong>Done</strong> when the page shows the output of your script instead of its
+                source code.
+            </div>
+
+            <div class="tip">
+                Seeing PHP source in the browser means the engine is not executing PHP — you picked
+                a static engine. Switch to a PHP one. ServerMaster warns about this before you start.
+            </div>
+
+            <h2 id="joomla">Joomla</h2>
+
+            <p>The full path: database, install, admin panel.</p>
+
+            <ol class="steps">
+                <li>Download Joomla and unpack it into a folder of its own.</li>
+                <li><strong>Database</strong> → <em>Start</em>. Then create a database — give it a name, a user and a password, and press <em>Create</em>.</li>
+                <li>New profile. <strong>Root</strong> at the Joomla folder. Engine: <strong>PHP site (Apache&nbsp;+&nbsp;PHP-FPM)</strong> — Joomla ships its own <code>.htaccess</code> and Apache honours it.</li>
+                <li>Start, open the address. Joomla's installer appears.</li>
+                <li>When it asks for the database, copy the details from the <strong>Database</strong> screen: host <code>127.0.0.1:3307</code>, and the name, user and password you just made.</li>
+                <li>Finish the installer and delete the <code>installation</code> folder when it asks.</li>
+            </ol>
+
+            <div class="done">
+                <strong>Done</strong> when you can sign in at <code>/administrator</code>.
+            </div>
+
+            <p>
+                For clean URLs: rename <code>htaccess.txt</code> to <code>.htaccess</code> in the
+                Joomla folder, then turn on SEF URLs with URL rewriting in Joomla's global
+                configuration. On the Apache engine this works with no further setup.
+            </p>
+
+            <h2 id="wordpress">WordPress</h2>
+
+            <ol class="steps">
+                <li>Unpack WordPress into its own folder.</li>
+                <li><strong>Database</strong> → <em>Start</em> → create a database.</li>
+                <li>New profile, root at the WordPress folder, engine <strong>PHP site (Nginx&nbsp;+&nbsp;PHP-FPM)</strong> — or the Apache one if you plan to use permalink rules from a plugin.</li>
+                <li>Start, open the address, follow the installer with the database details from the Database screen.</li>
+            </ol>
+
+            <div class="done">
+                <strong>Done</strong> when <code>/wp-admin</code> lets you in.
+            </div>
+
+            <h2 id="drupal">Drupal</h2>
+
+            <p>
+                Same shape as the others, with one trap: in a Composer-built Drupal the site root is
+                the <code>web</code> subfolder, not the project folder. Point <strong>Root</strong>
+                at <code>…/web</code>. ServerMaster spots this and warns you before starting.
+            </p>
+
+            <div class="done">
+                <strong>Done</strong> when the installer finishes and <code>/user/login</code> works.
+            </div>
+
+            <h2 id="laravel">Laravel</h2>
+
+            <p>
+                Same trap, different name: point <strong>Root</strong> at the
+                <code>public</code> folder. Use a PHP engine, and create a database first if the
+                project needs one — then fill in <code>.env</code> with the details from the Database
+                screen.
+            </p>
+
+            <div class="done">
+                <strong>Done</strong> when the Laravel welcome page appears.
+            </div>
+
+            <h2 id="database">The database</h2>
+
+            <p>
+                <strong>Database</strong> → <em>Start</em> brings up a MariaDB that belongs to
+                ServerMaster alone: its own data folder, its own port <code>3307</code>. It does not
+                touch a MySQL you already have.
+            </p>
+
+            <p>
+                Press <strong>Start and open</strong> under <em>Web admin panel</em> and a full
+                database interface opens in your browser, already signed in. Choose between Adminer
+                and phpMyAdmin in Settings — Adminer comes with the app, phpMyAdmin installs through
+                Homebrew.
+            </p>
+
+            <div class="done">
+                <strong>Done</strong> when the panel lists your databases in the browser.
+            </div>
+
+            <div class="tip">
+                The panel listens on <code>127.0.0.1</code> only. It is unrestricted access to every
+                database on that instance, so it is deliberately not reachable from your network.
+            </div>
+
+            <h2 id="phpversion">PHP version per project</h2>
+
+            <p>
+                An old project needing PHP 8.3 and a new one on 8.5 can run at the same time. The
+                version belongs to the profile, not to your machine.
+            </p>
+
+            <ol class="steps">
+                <li>Install the version you need: <code>brew install php@8.3</code>.</li>
+                <li>In the profile, pick it under <strong>PHP version</strong>.</li>
+                <li>Start. The site runs on that version, whatever the rest of the system uses.</li>
+            </ol>
+
+            <h2 id="https">HTTPS</h2>
+
+            <p>
+                Switch on <strong>HTTPS</strong> in the profile and press <strong>Certificates…</strong>
+                to generate one. The site then opens over <code>https://</code>.
+            </p>
+
+            <p>
+                A self-signed certificate makes the browser warn you — the encryption is real, but
+                nothing vouches for the certificate. Two ways out, both asking for your password
+                once: press <em>Trust in the system</em> in the certificates window, or install
+                mkcert (<code>brew install mkcert</code>) and let ServerMaster use its local
+                authority, which browsers accept silently.
+            </p>
+
+            <h2 id="ports">Ports 80 and 443</h2>
+
+            <p>
+                Ports below 1024 belong to root — being an admin is not enough. Switch on
+                <strong>Administrator rights</strong> in the profile and macOS will ask for your
+                password once, in its own window. ServerMaster never sees it, and stopping the
+                server later needs no password at all.
+            </p>
+
+            <div class="tip">
+                You usually do not need this. <code>8080</code> instead of <code>80</code>, and
+                <code>8443</code> instead of <code>443</code>, behave identically for local work.
+            </div>
+
+            <h2 id="htaccess">When you need .htaccess</h2>
+
+            <p>
+                Only Apache reads <code>.htaccess</code>. If your project ships one — with rewrite
+                rules, redirects, access control or headers — pick <strong>Apache</strong> or
+                <strong>PHP site (Apache&nbsp;+&nbsp;PHP-FPM)</strong> and it will be honoured as it
+                was under XAMPP or MAMP. Nothing to install: macOS already carries Apache.
+            </p>
+
+            <p>
+                Nginx does not read those files. Common CMS clean URLs still work there, because
+                ServerMaster writes the equivalent rule into the generated config — but anything
+                custom in your <code>.htaccess</code> will be ignored.
+            </p>
+
+            <h2 id="errors">Errors and what they mean</h2>
+
+            <div class="fault">
+                <h3>Port 8080 is taken</h3>
+                <p>Something else is already listening. Open <strong>Ports</strong>, find what holds it, and stop it from there — or just change the port in the profile.</p>
+            </div>
+
+            <div class="fault">
+                <h3>listen EACCES: permission denied</h3>
+                <p>You picked a port below 1024. Either switch on <strong>Administrator rights</strong> in the profile, or move to <code>8080</code> / <code>8443</code>.</p>
+            </div>
+
+            <div class="fault">
+                <h3>The page is blank</h3>
+                <p>Usually a PHP error. Open <strong>Console</strong> and look at that profile's log — PHP errors are written there rather than swallowed. In the profile's file list, <code>php-error.log</code> is the one to read.</p>
+            </div>
+
+            <div class="fault">
+                <h3>The browser shows PHP source instead of the page</h3>
+                <p>The engine does not execute PHP. Switch to a PHP engine. This is worth fixing at once: the source of <code>configuration.php</code> or <code>wp-config.php</code> contains your database password.</p>
+            </div>
+
+            <div class="fault">
+                <h3>Your connection is not private</h3>
+                <p>The self-signed certificate is not trusted. See <a href="#https">HTTPS</a> — either trust it in the system or switch to mkcert.</p>
+            </div>
+
+            <div class="fault">
+                <h3>404 on every page except the front one</h3>
+                <p>Clean URLs are on but nothing is rewriting them. On Apache, make sure the project's <code>.htaccess</code> exists — Joomla ships it as <code>htaccess.txt</code> and it has to be renamed. On Nginx, custom rules from an <code>.htaccess</code> are not read at all; see <a href="#htaccess">when you need .htaccess</a>.</p>
+            </div>
+
+            <div class="fault">
+                <h3>The CMS installer cannot connect to the database</h3>
+                <p>Check three things: the database is started on the <strong>Database</strong> screen, the host is <code>127.0.0.1:3307</code> and not <code>localhost</code>, and the user and password are the ones you created there.</p>
+            </div>
+
+            <div class="fault">
+                <h3>Adminer: No such file or directory</h3>
+                <p>The Server field is at <code>localhost</code>, which makes it look for a socket that is not there. Use <code>127.0.0.1:3307</code>. Opening the panel with the button fills this in for you.</p>
+            </div>
+
+            <div class="fault">
+                <h3>The CMS cannot write files or install extensions</h3>
+                <p>File permissions. The profile editor has a permissions check that finds the folders your CMS needs to write to and fixes them.</p>
+            </div>
+
+            <div class="fault">
+                <h3>“ServerMaster” cannot be opened</h3>
+                <p>Gatekeeper on first launch, because the build is not notarized yet. Right-click the app → <em>Open</em> → <em>Open</em>. Once is enough.</p>
+            </div>
+
+        </article>
+    </div>
+
+    <footer>
+        <p>Something missing or wrong here? Open an issue on <a href="https://github.com/adm1nsys/ServerMaster" target="_blank" rel="noopener">GitHub</a>.</p>
+    </footer>
+
+    <script>
+        // A sentinel plus IntersectionObserver rather than a scroll listener:
+        // the observer fires wherever the scrolling actually happens, including
+        // embedded viewers where window scroll events never arrive. The scroll
+        // listener stays as a fallback for anything without the observer.
+        (function () {
+            var header = document.querySelector('header');
+            if (!header) { return; }
+
+            var sentinel = document.createElement('div');
+            sentinel.setAttribute('aria-hidden', 'true');
+            sentinel.style.cssText = 'position:absolute;top:0;left:0;width:1px;height:14px;pointer-events:none;';
+            document.body.insertBefore(sentinel, document.body.firstChild);
+
+            function set(on) { header.classList.toggle('scrolled', on); }
+
+            if ('IntersectionObserver' in window) {
+                new IntersectionObserver(function (entries) {
+                    set(!entries[0].isIntersecting);
+                }).observe(sentinel);
+            }
+
+            function offset() {
+                return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+            }
+            function fromScroll() { set(offset() > 12); }
+            window.addEventListener('scroll', fromScroll, { passive: true });
+            document.addEventListener('scroll', fromScroll, { passive: true, capture: true });
+            fromScroll();
+
+            // Last resort: some embedded viewers deliver neither scroll events nor
+            // observer callbacks. Reading one number per frame and comparing costs
+            // nothing, and it keeps the header correct everywhere.
+            var last = -1;
+            (function tick() {
+                var y = offset();
+                if (y !== last) { last = y; set(y > 12); }
+                requestAnimationFrame(tick);
+            })();
+        })();
+    </script>
+
+</body>
+</html>
