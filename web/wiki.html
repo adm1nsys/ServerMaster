@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ServerMaster guides for installation, local servers, PHP projects, databases, HTTPS, ports, and troubleshooting.">
+  <meta name="theme-color" content="#090a0e">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" type="image/png" href="assets/icon.png">
+  <link rel="stylesheet" href="assets/site.css?v=20260912">
+  <link rel="stylesheet" href="assets/wiki.css?v=20260912">
+  <title>Wiki — ServerMaster</title>
+</head>
+<body>
+  <a class="skip-link" href="#guide">Skip to guide</a>
+  <header class="site-header">
+    <nav class="nav wrap" aria-label="Main navigation">
+      <a class="brand" href="./"><img src="assets/icon.png" width="36" height="36" alt=""><span>ServerMaster</span></a>
+      <div class="nav-links"><a href="./#automation">Automation</a><a href="./#inside">Inside the app</a><a aria-current="page" href="wiki.html">Wiki</a></div>
+      <a class="button button-small" href="./#downloads">Downloads <span aria-hidden="true">↗</span></a>
+    </nav>
+  </header>
+  <div class="wiki-layout wrap">
+    <aside class="wiki-sidebar">
+      <p class="wiki-label">SERVERMASTER WIKI</p>
+      <nav aria-label="Guide contents">
+        <strong>Start</strong>
+        <a href="#install">Install and first launch</a>
+        <a href="#profile">Create a profile</a>
+        <a href="#static">Serve a static site</a>
+        <a href="#php">Run a PHP project</a>
+        <strong>Projects</strong>
+        <a href="#cms">CMS projects</a>
+        <a href="#database">Local database</a>
+        <a href="#https">HTTPS</a>
+        <strong>Troubleshooting</strong>
+        <a href="#ports">Port conflicts</a>
+        <a href="#logs">Logs and checks</a>
+        <a href="#versions">Versions and support</a>
+      </nav>
+    </aside>
+    <main id="guide" class="wiki-content">
+      <header class="wiki-hero">
+        <p class="eyebrow">DOCUMENTATION</p>
+        <h1>Build the project.<br><span>Know where to look.</span></h1>
+        <p>Practical guides for getting a local site running and finding the useful clue when it does not.</p>
+        <div class="doc-notice"><strong>Release-aware documentation</strong><span>The interface and available automation evolve between releases. The download page always shows the exact version you receive.</span></div>
+      </header>
+
+      <section id="install" class="guide-section">
+        <p class="guide-index">01 · START</p><h2>Install and first launch</h2>
+        <ol class="steps">
+          <li><span>Download</span><p>Choose a published build on the <a href="./#downloads">downloads page</a>, then unpack the ZIP archive.</p></li>
+          <li><span>Move</span><p>Place <code>ServerMaster.app</code> in Applications so it has a stable home.</p></li>
+          <li><span>Approve once</span><p>The current build is unsigned. Try to open it, then use System Settings → Privacy &amp; Security → Open Anyway. Follow the exact instructions in its release notes.</p></li>
+          <li><span>Check dependencies</span><p>Open Dependencies and review the tools needed by the server engine you plan to use.</p></li>
+        </ol>
+        <div class="callout"><strong>Download from the source.</strong><p>Use the official ServerMaster GitHub release. Checksums are provided with published archives where available.</p></div>
+      </section>
+
+      <section id="profile" class="guide-section">
+        <p class="guide-index">02 · PROFILE</p><h2>Save the way a project runs</h2>
+        <p>A profile connects a project folder to an engine, a port, and its runtime settings. That turns a launch recipe into something you can reuse.</p>
+        <div class="recipe"><span>PROJECT FOLDER</span><b>+</b><span>ENGINE</span><b>+</b><span>PORT</span><b>→</b><span class="recipe-result">SAVED PROFILE</span></div>
+        <ol class="steps">
+          <li><span>Create</span><p>Open Profiles and add a profile. Depending on your release, start empty or choose a template.</p></li>
+          <li><span>Point</span><p>Select the folder containing your project. For a static site, that is usually the folder with <code>index.html</code>.</p></li>
+          <li><span>Choose</span><p>Select an engine suited to the project and pick a free local port such as <code>8080</code>.</p></li>
+          <li><span>Run</span><p>Return to Control, start the profile, and open its local address.</p></li>
+        </ol>
+      </section>
+
+      <section id="static" class="guide-section">
+        <p class="guide-index">03 · STATIC</p><h2>Serve HTML, CSS, and JavaScript</h2>
+        <p>Point a profile at the folder that contains <code>index.html</code>. A Node http-server, Python HTTP server, or Nginx profile can serve static files. If a single-page app owns its routes, enable the SPA fallback where the selected engine supports it.</p>
+        <div class="done"><strong>Done when</strong><span>Your page opens at the local address shown by ServerMaster, and refreshing a nested route behaves as expected.</span></div>
+      </section>
+
+      <section id="php" class="guide-section">
+        <p class="guide-index">04 · PHP</p><h2>Run a PHP project</h2>
+        <p>Choose a PHP-capable engine. The PHP built-in server is useful for a simple project; Nginx or Apache with PHP-FPM provides a configuration closer to a full web stack.</p>
+        <ul class="check-list"><li>Set Root to the folder containing the public entry point.</li><li>Choose the PHP version used by this profile.</li><li>Use Apache when the project relies on its own <code>.htaccess</code> rules.</li><li>Start the profile and read the server log if PHP exits or returns an error.</li></ul>
+        <div class="callout"><strong>Seeing PHP source in the browser?</strong><p>The current engine is serving the file as text. Switch the profile to a PHP engine.</p></div>
+      </section>
+
+      <section id="cms" class="guide-section">
+        <p class="guide-index">05 · CMS</p><h2>Joomla, WordPress, Drupal, and more</h2>
+        <p>Most CMS projects follow the same shape: project files, a PHP server profile, and a database. Templates can fill sensible defaults; availability and assisted downloads depend on the release.</p>
+        <div class="cms-grid"><article><h3>Joomla &amp; WordPress</h3><p>Use a PHP profile and create a database. Apache is a natural fit when the project uses <code>.htaccess</code>.</p></article><article><h3>Drupal</h3><p>Composer projects commonly expose the <code>web</code> subfolder. Point Root there.</p></article><article><h3>Laravel &amp; Symfony</h3><p>Point Root to the public web directory and keep credentials in the project's environment configuration.</p></article></div>
+      </section>
+
+      <section id="database" class="guide-section">
+        <p class="guide-index">06 · DATABASE</p><h2>Keep local data close</h2>
+        <p>Start ServerMaster's managed database, create a database and user, then enter those connection details in your application or installer. Use the exact host and port shown in the app.</p>
+        <div class="code-card"><span>Connection shape</span><code>host: 127.0.0.1<br>port: [shown in ServerMaster]<br>database: [your database]<br>user: [your user]</code></div>
+        <p>Database backups are useful only when the managed database is running and included in the selected snapshot workflow.</p>
+      </section>
+
+      <section id="https" class="guide-section">
+        <p class="guide-index">07 · HTTPS</p><h2>Use local HTTPS when the project needs it</h2>
+        <p>HTTPS support depends on the engine. Generate a self-signed certificate for quick testing, or use mkcert for a certificate your local browser can trust after its local authority is installed.</p>
+        <div class="callout"><strong>Keep it local.</strong><p>Development certificates and servers are for local work. Review configuration before exposing any service to another network.</p></div>
+      </section>
+
+      <section id="ports" class="guide-section">
+        <p class="guide-index">08 · PORTS</p><h2>When a port is already busy</h2>
+        <p>Open Ports to see which local process owns the address you want. Stop a process only when you recognize it, or choose another port in the profile. Ports below 1024 can require macOS authorization.</p>
+      </section>
+
+      <section id="logs" class="guide-section">
+        <p class="guide-index">09 · TROUBLESHOOT</p><h2>Follow the first useful clue</h2>
+        <div class="trouble-grid"><article><span>01</span><h3>Read the profile log</h3><p>Start with the first clear error, not the final exit code.</p></article><article><span>02</span><h3>Check the port</h3><p>Confirm the address is free and the expected process is listening.</p></article><article><span>03</span><h3>Check dependencies</h3><p>Make sure the selected engine and runtime exist.</p></article><article><span>04</span><h3>Test the address</h3><p>Use the available HTTP check, then compare its result with the server log.</p></article></div>
+      </section>
+
+      <section id="versions" class="guide-section">
+        <p class="guide-index">10 · RELEASES</p><h2>Versions and platform support</h2>
+        <p>ServerMaster is developed as one repository with platform-specific deliverables. Published source states are identified by Git tags; compiled archives remain attached to GitHub Releases.</p>
+        <ul class="check-list"><li>macOS application downloads list the required macOS version and supported architecture.</li><li>The shared Swift CLI targets macOS and Linux, with glibc and musl builds planned.</li><li>The Windows interface will have its own release version and requirements.</li><li>Older published builds remain available for rollback.</li></ul>
+        <p><a class="button button-primary" href="./#downloads">Open the release catalog <span aria-hidden="true">↗</span></a></p>
+      </section>
+    </main>
+  </div>
+  <footer class="footer wrap"><a class="brand" href="./"><img src="assets/icon.png" width="28" height="28" alt=""><span>ServerMaster</span></a><p>Documentation grows with published releases.</p><div class="footer-links"><a href="./">Home</a><a href="https://github.com/adm1nsys/ServerMaster">GitHub ↗</a></div></footer>
+  <script src="assets/wiki.js?v=20260912" defer></script>
+</body>
+</html>

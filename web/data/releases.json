@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "platforms": [
+    {
+      "id": "macos",
+      "label": "macOS",
+      "name": "ServerMaster for macOS",
+      "kind": "Native application",
+      "description": "Local server profiles, process controls, logs, port inspection, dependency checks, HTTPS tools, and database management.",
+      "status": "available",
+      "statusLabel": "Available now",
+      "currentRelease": "macos-v2.0.0",
+      "plannedTargets": [],
+      "releases": [
+        {
+          "id": "macos-v1.0.0",
+          "version": "1.0",
+          "date": "2026-08-29",
+          "requirements": "macOS 14 or later",
+          "architecture": "Apple Silicon + Intel",
+          "build": "arm.27.0.b6.uni",
+          "format": "Universal · ZIP",
+          "sizeBytes": 5585724,
+          "signed": false,
+          "notesUrl": "https://github.com/adm1nsys/ServerMaster/releases/tag/macos-v1.0.0",
+          "assets": [
+            {
+              "kind": "application",
+              "label": "Download app",
+              "filename": "ServerMaster.v1.0.app.zip",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/macos-v1.0.0/ServerMaster.v1.0.app.zip"
+            },
+            {
+              "kind": "source",
+              "label": "Source snapshot",
+              "filename": "ServerMaster.v1.0.zip",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/macos-v1.0.0/ServerMaster.v1.0.zip"
+            },
+            {
+              "kind": "checksums",
+              "label": "SHA256 checksums",
+              "filename": "SHA256SUMS.txt",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/macos-v1.0.0/SHA256SUMS.txt"
+            }
+          ]
+        },
+        {
+          "id": "macos-v1.1.0",
+          "version": "1.1",
+          "date": "2026-09-03",
+          "requirements": "macOS 14 or later",
+          "architecture": "Apple Silicon + Intel",
+          "build": "arm.27.0.b6.uni",
+          "format": "Universal · ZIP",
+          "sizeBytes": null,
+          "signed": false,
+          "notesUrl": "https://github.com/adm1nsys/ServerMaster/releases/tag/macos-v1.1.0",
+          "assets": [
+            {
+              "kind": "application",
+              "label": "Download app",
+              "filename": "ServerMaster.v1.1.app.zip",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/macos-v1.1.0/ServerMaster.v1.1.app.zip"
+            },
+            {
+              "kind": "source",
+              "label": "Source snapshot",
+              "filename": "ServerMaster.v1.1.zip",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/macos-v1.1.0/ServerMaster.v1.1.zip"
+            },
+            {
+              "kind": "checksums",
+              "label": "SHA256 checksums",
+              "filename": "SHA256SUMS.txt",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/macos-v1.1.0/SHA256SUMS.txt"
+            }
+          ]
+        },
+        {
+          "id": "macos-v1.2.0",
+          "version": "1.2",
+          "date": "2026-09-10",
+          "requirements": "macOS 14 or later",
+          "architecture": "Apple Silicon + Intel",
+          "build": "arm.27.0.b6.uni",
+          "format": "Universal · ZIP",
+          "sizeBytes": null,
+          "signed": false,
+          "notesUrl": "https://github.com/adm1nsys/ServerMaster/releases/tag/macos-v1.2.0",
+          "assets": [
+            {
+              "kind": "application",
+              "label": "Download app",
+              "filename": "ServerMaster.v1.2.app.zip",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/macos-v1.2.0/ServerMaster.v1.2.app.zip"
+            },
+            {
+              "kind": "source",
+              "label": "Source snapshot",
+              "filename": "ServerMaster.v1.2.zip",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/macos-v1.2.0/ServerMaster.v1.2.zip"
+            },
+            {
+              "kind": "checksums",
+              "label": "SHA256 checksums",
+              "filename": "SHA256SUMS.txt",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/macos-v1.2.0/SHA256SUMS.txt"
+            }
+          ]
+        },
+        {
+          "id": "macos-v2.0.0",
+          "version": "2.0",
+          "date": "2026-09-12",
+          "requirements": "macOS 14 or later",
+          "architecture": "Apple Silicon + Intel",
+          "build": "arm.27.0.b6.uni",
+          "format": "Universal · ZIP",
+          "sizeBytes": null,
+          "signed": false,
+          "notesUrl": "https://github.com/adm1nsys/ServerMaster/releases/tag/macos-v2.0.0",
+          "assets": [
+            {
+              "kind": "application",
+              "label": "Download app",
+              "filename": "ServerMaster.v2.0.app.zip",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/macos-v2.0.0/ServerMaster.v2.0.app.zip"
+            },
+            {
+              "kind": "source",
+              "label": "Source snapshot",
+              "filename": "ServerMaster.v2.0.zip",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/macos-v2.0.0/ServerMaster.v2.0.zip"
+            },
+            {
+              "kind": "checksums",
+              "label": "SHA256 checksums",
+              "filename": "SHA256SUMS.txt",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/macos-v2.0.0/SHA256SUMS.txt"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cli",
+      "label": "CLI · macOS & Linux",
+      "name": "ServerMaster CLI",
+      "kind": "One shared Swift codebase",
+      "description": "Local server management from the command line, built for the system you use. Native builds for macOS and Linux are planned.",
+      "status": "planned",
+      "statusLabel": "In development",
+      "currentRelease": null,
+      "plannedTargets": ["macOS", "Linux · glibc", "Linux · musl"],
+      "releases": []
+    },
+    {
+      "id": "windows",
+      "label": "Windows",
+      "name": "ServerMaster for Windows",
+      "kind": "Native application",
+      "description": "A native Windows interface is planned as part of the same ServerMaster project. Platform details will be published with its first release.",
+      "status": "planned",
+      "statusLabel": "Planned",
+      "currentRelease": null,
+      "plannedTargets": ["Windows"],
+      "releases": []
+    }
+  ]
+}

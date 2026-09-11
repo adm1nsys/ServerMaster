@@ -3,21 +3,28 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="color-scheme" content="dark light">
+    <meta name="color-scheme" content="dark">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1220'/%3E%3Cpath d='M18 20h28M18 32h28M18 44h18' stroke='%235eead4' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
     <title>Page not found — ServerMaster</title>
     <style>
       :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, sans-serif; }
-      body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: #070b12; color: #e5eef8; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: #090a0e; color: #f1f2f6; }
       main { width: min(32rem, calc(100% - 3rem)); }
       p { color: #9cabbc; font-size: 1.05rem; line-height: 1.6; }
-      a { color: #5eead4; font-weight: 700; }
+      a { color: #b5b3ff; font-weight: 600; }
+      h1 { font-size: clamp(80px, 15vw, 150px); letter-spacing: -6px; line-height: 1; margin: 0 0 30px; }
     </style>
   </head>
   <body>
     <main>
       <h1>404</h1>
-      <p>This page does not exist. <a href="./">Return to ServerMaster</a>.</p>
+      <p>This address doesn't lead to a server.<br><a href="/ServerMaster/" id="home-link">Return to ServerMaster ↗</a></p>
     </main>
   </body>
+  <script>
+    // GitHub Pages serves this file for missing nested routes as well.
+    if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+      document.getElementById("home-link").href = "/";
+    }
+  </script>
 </html>

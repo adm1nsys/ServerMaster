@@ -1,27 +1,145 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="ServerMaster project website">
-    <meta name="color-scheme" content="dark light">
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1220'/%3E%3Cpath d='M18 20h28M18 32h28M18 44h18' stroke='%235eead4' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
-    <link rel="stylesheet" href="assets/site.css">
-    <title>ServerMaster</title>
-  </head>
-  <body>
-    <main>
-      <p class="eyebrow">ServerMaster</p>
-      <h1>Local server control, without the clutter.</h1>
-      <p class="summary">
-        Native macOS tooling and a Swift command-line interface for managing
-        local web development environments.
-      </p>
-      <nav aria-label="Project links">
-        <a class="primary" href="https://github.com/adm1nsys/ServerMaster/releases">Downloads</a>
-        <a href="https://github.com/adm1nsys/ServerMaster">Source code</a>
-      </nav>
-      <p class="status">The new release archive and documentation are being prepared.</p>
-    </main>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ServerMaster brings local servers, databases, logs, profiles, and everyday automation into one focused workspace.">
+  <meta name="theme-color" content="#090a0e">
+  <meta name="color-scheme" content="dark">
+  <meta property="og:title" content="ServerMaster — Your servers. Under control.">
+  <meta property="og:description" content="A focused home for local servers, databases, profiles, logs, and everyday automation.">
+  <link rel="icon" type="image/png" href="assets/icon.png">
+  <link rel="stylesheet" href="assets/site.css?v=20260912">
+  <title>ServerMaster — Your servers. Under control.</title>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <nav class="nav wrap" aria-label="Main navigation">
+      <a class="brand" href="./" aria-label="ServerMaster home"><img src="assets/icon.png" width="36" height="36" alt=""><span>ServerMaster</span></a>
+      <div class="nav-links"><a href="#automation">Automation</a><a href="#workflow">The difference</a><a href="#inside">Inside the app</a><a href="wiki.html">Wiki</a></div>
+      <a class="button button-small" href="#downloads">Get ServerMaster <span aria-hidden="true">↗</span></a>
+    </nav>
+  </header>
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <p class="release-pill"><span class="pill-label">IN DEVELOPMENT</span> New capabilities arrive release by release</p>
+      <h1 id="hero-title">Your servers.<br><span>Under control.</span></h1>
+      <p class="hero-copy">Build your project. Let ServerMaster handle the routine.<br class="desktop-break"> Local servers, databases, and everyday automation — in one focused workspace.</p>
+      <div class="hero-actions"><a class="button button-primary" href="#downloads">Download for macOS <span aria-hidden="true">↓</span></a><a class="text-link" href="#inside">Take a closer look <span aria-hidden="true">↗</span></a></div>
+      <p class="hero-note">Free &amp; open source <span>·</span> Releases ship when they are ready <span>·</span> Every published version stays available</p>
+      <div class="theme-switcher" aria-label="Choose Control screen color">
+        <span>Control theme</span>
+        <div class="theme-buttons" role="group">
+          <button type="button" class="theme-dot is-active" data-theme="red" aria-pressed="true"><span class="dot red"></span>Red</button>
+          <button type="button" class="theme-dot" data-theme="blue" aria-pressed="false"><span class="dot blue"></span>Blue</button>
+          <button type="button" class="theme-dot" data-theme="green" aria-pressed="false"><span class="dot green"></span>Green</button>
+          <button type="button" class="theme-dot" data-theme="purple" aria-pressed="false"><span class="dot purple"></span>Purple</button>
+        </div>
+      </div>
+      <figure class="hero-screen color-stack theme-red" data-tilt>
+        <div class="stack-layer stack-blue"><img src="assets/control-blue.webp" width="1600" height="1005" alt="" aria-hidden="true"></div>
+        <div class="stack-layer stack-green"><img src="assets/control-green.webp" width="1600" height="1005" alt="" aria-hidden="true"></div>
+        <div class="stack-layer stack-purple"><img src="assets/control-purple.webp" width="1600" height="1005" alt="" aria-hidden="true"></div>
+        <div class="stack-layer stack-red"><img src="assets/control-red.webp" width="1600" height="1005" alt="" aria-hidden="true"></div>
+        <div class="stack-layer stack-main"><img id="hero-control-image" src="assets/control-red.webp" width="1600" height="1005" alt="ServerMaster Control screen showing several server profiles and their running state." fetchpriority="high"></div>
+        <figcaption><span>YOUR LOCAL DEVELOPMENT, TOGETHER.</span><span>Interface from the active development build</span></figcaption>
+      </figure>
+      <div class="engine-strip" aria-label="Supported engine families"><span>YOUR STACK.<br>YOUR CHOICE.</span><a href="https://httpd.apache.org/" target="_blank" rel="noopener">Apache</a><a href="https://nginx.org/" target="_blank" rel="noopener">Nginx</a><a href="https://www.php.net/" target="_blank" rel="noopener">PHP</a><a href="https://nodejs.org/" target="_blank" rel="noopener">Node.js</a><a href="https://www.python.org/" target="_blank" rel="noopener">Python</a><a href="https://caddyserver.com/" target="_blank" rel="noopener">Caddy</a></div>
+    </section>
+    <section id="automation" class="section wrap" aria-labelledby="automation-title">
+      <div class="section-heading">
+        <div><p class="eyebrow">SET IT ONCE</p><h2 id="automation-title">Less to remember.<br>More room to build.</h2></div>
+        <p class="section-copy">A workspace that remembers how you work. Capabilities land progressively as each release is completed.</p>
+      </div>
+      <div class="automation-grid">
+        <article class="automation-card">
+          <span class="feature-number">01 / START</span>
+          <div class="event-flow"><span>Open the app</span><span class="flow-connector" aria-hidden="true">↓</span><span class="flow-result">Default profile starts</span></div>
+          <h3>Pick up where you build.</h3><p>Choose a default profile and enable autostart. Your server starts with the app, with an option to open its address in your browser.</p>
+        </article>
+        <article class="automation-card">
+          <span class="feature-number">02 / RECOVER</span>
+          <div class="event-flow"><span>Process exits unexpectedly</span><span class="flow-connector" aria-hidden="true">↓</span><span class="flow-result">Restart is triggered</span></div>
+          <h3>Give your server a retry.</h3><p>Enable restart on crash to automatically attempt another start after an unexpected exit. Keep the logs close when a problem needs your attention.</p>
+        </article>
+        <article class="automation-card">
+          <span class="feature-number">03 / SAVE</span>
+          <div class="event-flow"><span>Your backup interval is due</span><span class="flow-connector" aria-hidden="true">↓</span><span class="flow-result">Snapshot &amp; retention</span></div>
+          <h3>A restore point. On repeat.</h3><p>Choose what to snapshot, how often, and how many copies to keep. Scheduled snapshots run while ServerMaster is open.</p>
+        </article>
+      </div>
+      <div class="feature-pair">
+        <article class="feature-panel">
+          <div class="panel-copy"><span class="tag">SMARTER SETUP · IN DEVELOPMENT</span><h3>A head start for your next project.</h3><p>22 profile templates, from a static folder to a PHP CMS. Pick a starting point and fine-tune the details. Joomla 5 and 6 can be downloaded and unpacked through the setup wizard.</p></div>
+          <img src="assets/templates.webp" width="1680" height="1055" loading="lazy" alt="The new-profile wizard offers templates for static sites, single-page apps, Joomla, WordPress, and other project types.">
+        </article>
+        <article class="feature-panel">
+          <div class="panel-copy"><span class="tag">BUILT-IN SNAPSHOTS · IN DEVELOPMENT</span><h3>Experiment with a way back.</h3><p>Save project files and settings, include your running managed database, and restore what you need. Keep manual snapshots beside your scheduled copies.</p></div>
+          <img src="assets/backups.webp" width="1680" height="1055" loading="lazy" alt="Backups screen with interval and retention settings, per-profile snapshots, database backups, and restore controls.">
+        </article>
+      </div>
+    </section>
+    <section id="workflow" class="section wrap" aria-labelledby="workflow-title">
+      <div class="section-heading"><div><p class="eyebrow">A BETTER EVERYDAY WORKFLOW</p><h2 id="workflow-title">From scattered steps<br>to a saved routine.</h2></div><p class="section-copy">The difference is what you have to keep in your head. Choose a task to compare a manual workflow with ServerMaster.</p></div>
+      <div class="segmented" role="group" aria-label="Compare a workflow">
+        <button type="button" data-workflow="start" aria-pressed="true">Start a project</button>
+        <button type="button" data-workflow="joomla" aria-pressed="false">Set up Joomla</button>
+        <button type="button" data-workflow="backup" aria-pressed="false">Keep a restore point</button>
+      </div>
+      <div class="comparison" id="comparison" aria-live="polite" aria-atomic="true">
+        <article class="comparison-lane manual"><div class="lane-heading"><h3>Without ServerMaster</h3><span>Manual workflow</span></div><ol id="manual-steps"><li>Find the project folder</li><li>Remember the runtime and port</li><li>Re-enter the launch command</li><li>Open the local address</li></ol><p id="manual-summary">Your settings are spread across commands, folders, and memory.</p></article>
+        <article class="comparison-lane managed"><div class="lane-heading"><h3>With ServerMaster</h3><span>Saved workflow</span></div><ol id="managed-steps"><li>Choose a saved profile</li><li>Press Start</li></ol><div class="handled"><span>REMEMBERED FOR YOU</span><p id="handled-tasks">Folder · Engine · Port · PHP version · Browser preference</p></div><p id="managed-summary">Configure the profile once. Reuse it whenever you return.</p></article>
+      </div>
+      <p class="fine-print">Illustrative workflows, not performance benchmarks. Setup depends on your project and installed dependencies.</p>
+      <div class="comparison-table-wrap"><table class="comparison-table"><caption>Keep the work. Lose the repetition.</caption><thead><tr><th scope="col">Everyday task</th><th scope="col">Managed by hand</th><th scope="col">With ServerMaster</th></tr></thead><tbody>
+        <tr><th scope="row">Project settings</th><td>Remember or copy command arguments</td><td>Reusable profiles and templates</td></tr>
+        <tr><th scope="row">Several local sites</th><td>Keep track of separate processes</td><td>Individual controls in one workspace</td></tr>
+        <tr><th scope="row">Backups</th><td>Archive files and export the database</td><td>Snapshots with a schedule and retention</td></tr>
+        <tr><th scope="row">Troubleshooting</th><td>Switch between logs and process tools</td><td>Server logs, ports, diagnostics, and HTTP checks</td></tr>
+      </tbody></table></div>
+    </section>
+    <section id="inside" class="section wrap" aria-labelledby="inside-title">
+      <div class="section-heading"><div><p class="eyebrow">NATIVE. THROUGH AND THROUGH.</p><h2 id="inside-title">Everything within reach.</h2></div><p class="section-copy">The overview when you need it. The details when you want them. Screens show current development work; downloadable features depend on the selected release.</p></div>
+      <div class="gallery-shell">
+        <div class="gallery-buttons" role="group" aria-label="Choose an application screen">
+          <button type="button" data-screen="control" aria-pressed="true">Control</button><button type="button" data-screen="database" aria-pressed="false">Database</button><button type="button" data-screen="files" aria-pressed="false">Files</button><button type="button" data-screen="terminal" aria-pressed="false">Terminal</button><button type="button" data-screen="diagnostics" aria-pressed="false">Diagnostics</button><button type="button" data-screen="backups" aria-pressed="false">Backups</button>
+        </div>
+        <figure class="gallery-figure">
+          <a id="screen-full" href="assets/control.webp" target="_blank" rel="noopener" aria-label="Open current application screenshot in a new tab"><img id="gallery-image" src="assets/control.webp" width="1920" height="1086" loading="lazy" alt="ServerMaster Control screen showing separate server profiles and their running state."></a>
+          <figcaption><div aria-live="polite"><strong id="screen-title">One view. Every project.</strong><p id="screen-description">Start and stop profiles independently, open their addresses, and inspect their status.</p></div><span>DEVELOPMENT BUILD <span aria-hidden="true">↗</span></span></figcaption>
+        </figure>
+      </div>
+      <div class="detail-grid">
+        <article><span class="detail-symbol" aria-hidden="true">⌘</span><h3>A Mac app, all the way.</h3><p>A native Swift interface with menu bar controls, widgets, and a Safari extension in active development.</p></article>
+        <article><span class="detail-symbol code-symbol" aria-hidden="true">&lt;/&gt;</span><h3>Your stack stays yours.</h3><p>10 engine modes. Per-profile settings. The freedom to use familiar tools or bring a custom command.</p></article>
+        <article><span class="detail-symbol" aria-hidden="true">↗</span><h3>Open to a closer look.</h3><p>MIT-licensed source, versioned releases, and downloadable snapshots. Follow the project as it grows.</p></article>
+      </div>
+    </section>
+    <section id="downloads" class="section wrap downloads" aria-labelledby="downloads-title">
+      <div class="section-heading"><div><p class="eyebrow">START BUILDING</p><h2 id="downloads-title">Find your ServerMaster.</h2></div><p class="section-copy">One project, different ways to work. Download an available release or see what is planned for your platform.</p></div>
+      <div id="download-catalog" aria-busy="true">
+        <p id="catalog-status" role="status">Loading available releases…</p>
+        <div id="platform-buttons" class="segmented platform-buttons" role="group" aria-label="Choose a platform"></div>
+        <div id="download-panel"></div>
+        <div id="release-archive"></div>
+      </div>
+      <p class="download-fallback"><a href="https://github.com/adm1nsys/ServerMaster/releases">Browse every published release on GitHub <span aria-hidden="true">↗</span></a></p>
+      <noscript><p class="fine-print">Enable JavaScript for the platform picker, or use the GitHub release archive above.</p></noscript>
+      <details class="intel-note"><summary>Looking for an Intel Mac build?</summary><p>The published 1.0 Universal build includes both Apple Silicon and Intel. A separate Intel-only legacy line is planned for later; it does not have a downloadable release yet.</p></details>
+    </section>
+    <section class="section wrap questions" aria-labelledby="questions-title">
+      <div><p class="eyebrow">A FEW GOOD QUESTIONS</p><h2 id="questions-title">Before you start.</h2></div>
+      <div class="faq-list">
+        <details><summary>Do the screenshots match every release?</summary><p>The screenshots show active development work. The download section identifies the exact published version you will receive; features can differ between releases and platforms.</p></details>
+        <details><summary>Does ServerMaster include every server runtime?</summary><p>ServerMaster manages local tools. Depending on your engine, you may need PHP, Node.js, Nginx, Caddy, or other dependencies. The app checks what is available and provides installation controls.</p></details>
+        <details><summary>Why does macOS warn when I open the app?</summary><p>The current release is unsigned and not notarized. Download it from the official GitHub release, then follow that release's first-launch instructions in System Settings → Privacy &amp; Security.</p></details>
+        <details><summary>Can I download an older version?</summary><p>Yes. Published builds stay in GitHub Releases. The release archive includes application downloads, source snapshots, and checksums where available. New releases can be added without replacing older entries.</p></details>
+        <details><summary>What about Linux and Windows?</summary><p>The Swift CLI is being developed as a shared codebase for macOS and Linux, with Linux glibc and musl builds planned. A native Windows interface is also planned. The platform picker will show downloads when those releases exist.</p></details>
+      </div>
+    </section>
+  </main>
+  <footer class="footer wrap"><a class="brand" href="./"><img src="assets/icon.png" width="28" height="28" alt=""><span>ServerMaster</span></a><p>Built by <a href="https://github.com/adm1nsys">adm1nsys</a>. Open by design.</p><div class="footer-links"><a href="wiki.html">Wiki</a><a href="https://github.com/adm1nsys/ServerMaster">Source on GitHub ↗</a></div></footer>
+  <script src="assets/site.js?v=20260912" defer></script>
+</body>
 </html>
