@@ -299,6 +299,28 @@ final class DatabaseService {
         return result
     }
 
+    /// Creates (or re-creates) the account the web admin panel signs in with.
+    ///
+    /// It is deliberately not root: both Adminer and phpMyAdmin refuse a
+    /// passwordless account, and giving root a password would break every CMS
+    /// already installed against “no password”.
+    @discardableResult
+    func grantPanelAccount(name: String, password: String) async -> CommandResult {
+        let account = sanitizeIdentifier(name)
+        guard !account.isEmpty else {
+            return CommandResult(exitCode: 1, stdout: "",
+                                 stderr: String(localized: "Invalid account name."))
+        }
+        let escaped = password.replacingOccurrences(of: "'", with: "''")
+        let sql = """
+        CREATE USER IF NOT EXISTS '\(account)'@'127.0.0.1' IDENTIFIED BY '\(escaped)';
+        ALTER USER '\(account)'@'127.0.0.1' IDENTIFIED BY '\(escaped)';
+        GRANT ALL PRIVILEGES ON *.* TO '\(account)'@'127.0.0.1' WITH GRANT OPTION;
+        FLUSH PRIVILEGES;
+        """
+        return await query(sql: sql)
+    }
+
     // MARK: - Browsing and editing
 
     nonisolated struct TableInfo: Identifiable, Sendable, Hashable {

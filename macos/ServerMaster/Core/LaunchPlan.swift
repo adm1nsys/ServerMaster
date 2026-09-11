@@ -123,6 +123,53 @@ nonisolated enum LaunchPlanBuilder {
                               generatedConfig: generated.map { (path: $0.0, contents: $0.1) },
                               errorPagesDirectory: profile.customErrorPages ? prefix : nil)
 
+        case .apache, .apachePHP:
+            let prefix = AppPaths.subdir("Runtime/apache-\(profile.id.uuidString.prefix(8))").path
+            AppPaths.ensure(URL(fileURLWithPath: prefix + "/logs"))
+
+            var sidecars: [SidecarPlan] = []
+            var apacheFiles: [(path: String, contents: String)] = []
+            var fpmPort: Int?
+            if profile.engine == .apachePHP {
+                let phpFpmBinary = try requirePHPFPM(profile: profile)
+                let port = freePort(startingAt: 9000)
+                fpmPort = port
+                let fpmConfigPath = prefix + "/php-fpm.conf"
+                sidecars.append(SidecarPlan(
+                    name: "php-fpm",
+                    executable: phpFpmBinary,
+                    arguments: ["--nodaemonize", "--fpm-config", fpmConfigPath],
+                    workingDirectory: cwd,
+                    environment: env,
+                    warmup: 1.2))
+                apacheFiles.append((path: fpmConfigPath,
+                                    contents: ConfigTemplates.phpFPM(for: profile, prefix: prefix, port: port)))
+            }
+
+            var generated: (String, String)?
+            let configPath: String
+            if profile.configPath.trimmingCharacters(in: .whitespaces).isEmpty {
+                configPath = prefix + "/httpd.conf"
+                generated = (configPath, ConfigTemplates.apache(for: profile, prefix: prefix,
+                                                                phpFpmPort: fpmPort))
+            } else {
+                configPath = AppPaths.expand(profile.configPath)
+                guard FileManager.default.fileExists(atPath: configPath) else {
+                    throw BuildError.invalid(String(localized: "Apache config not found: \(configPath)"))
+                }
+            }
+
+            // -D FOREGROUND keeps httpd attached, so the process can be supervised
+            // and stopped the same way as every other engine.
+            var args = ["-f", configPath, "-D", "FOREGROUND"]
+            args += extra
+            return LaunchPlan(executable: try requireApache(), arguments: args,
+                              workingDirectory: cwd, environment: env,
+                              generatedConfig: generated.map { (path: $0.0, contents: $0.1) },
+                              errorPagesDirectory: profile.customErrorPages ? prefix : nil,
+                              sidecars: sidecars,
+                              extraFiles: apacheFiles)
+
         case .phpFpm:
             let prefix = AppPaths.subdir("Runtime/php-\(profile.id.uuidString.prefix(8))").path
             AppPaths.ensure(URL(fileURLWithPath: prefix + "/logs"))
@@ -198,6 +245,21 @@ nonisolated enum LaunchPlanBuilder {
                               arguments: splitArguments(profile.customArguments) + extra,
                               workingDirectory: cwd, environment: env2, generatedConfig: nil)
         }
+    }
+
+    /// Apache ships with macOS, so the system copy is preferred and nothing needs
+    /// installing. Homebrew's httpd is accepted when it is there.
+    private static func requireApache() throws -> String {
+        let candidates = [
+            "/usr/sbin/httpd",
+            "/opt/homebrew/opt/httpd/bin/httpd",
+            "/usr/local/opt/httpd/bin/httpd"
+        ]
+        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
+            return path
+        }
+        if let found = ShellEnvironment.shared.which("httpd") { return found }
+        throw BuildError.toolNotFound("httpd")
     }
 
     /// The php interpreter of the chosen version — for the built-in server.

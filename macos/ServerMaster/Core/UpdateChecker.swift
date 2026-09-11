@@ -3,8 +3,8 @@
 //  ServerMaster
 //
 //  Update checking on a simple scheme:
-//    updates/maclastversion.txt holds the latest macOS version number,
-//    next to it a mac/<version> folder holds the build.
+//    updates/maclastversion.txt holds the latest version number,
+//    published GitHub releases hold the downloadable builds.
 //  If the version in the file is greater than the installed one — show a banner
 //  linking to that folder. Nothing is downloaded and nothing is executed.
 //
@@ -46,7 +46,7 @@ final class UpdateChecker {
         didSet { if state == .notConfigured && !normalizedRepository.isEmpty { state = .idle } }
     }
 
-    /// The repository-relative file holding the latest macOS version number.
+    /// The file in the repository root holding the latest version number.
     var versionFile: String = "updates/maclastversion.txt"
 
     /// The builds folder: a subfolder named after the version is expected inside it.
@@ -191,7 +191,7 @@ final class UpdateChecker {
 
     // MARK: - Parsing and comparison
 
-    /// Extract the version number from the contents of the version file.
+    /// Extract the version number from the contents of updates/maclastversion.txt.
     /// Tolerates stray spaces, a newline, a BOM and a “v” prefix.
     nonisolated static func parseVersion(_ raw: String) -> String? {
         let cleaned = raw

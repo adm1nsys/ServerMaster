@@ -64,6 +64,7 @@ final class AppModel {
     let dependencies = DependencyChecker()
     let updates = UpdateChecker()
     let database = DatabaseService()
+    let adminPanel = DatabaseAdminPanel()
     let certificates = CertificateManager()
     let reserver = PortReserver()
     let shell = ShellSession()
@@ -369,6 +370,7 @@ final class AppModel {
         flushPendingSaves()
         for tab in terminals { tab.session.terminate() }
         for controller in servers.values { controller.stopImmediately() }
+        adminPanel.stopSynchronously()
         database.stopImmediately()
         runningOrder.removeAll()
     }
@@ -574,7 +576,25 @@ final class AppModel {
     }
 
     func stopDatabase() async {
+        // The panel serves this database and must not outlive it.
+        adminPanel.stop()
         await database.stop()
+    }
+
+    /// Opens the web admin panel, starting it if it is not up yet.
+    func openAdminPanel() async {
+        if let url = adminPanel.address {
+            NSWorkspace.shared.open(url)
+            return
+        }
+        await adminPanel.start(tool: settings.databaseAdminTool,
+                               database: database,
+                               port: settings.databaseAdminPort)
+        if case .failed(let message) = adminPanel.state {
+            notify(message, isError: true)
+        } else if let url = adminPanel.address {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     // MARK: - Shutdown

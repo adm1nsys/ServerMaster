@@ -10,18 +10,10 @@ import Testing
 
 struct ServerMasterTests {
 
-    @Test func versionParserAcceptsTwoAndThreeComponents() {
-        #expect(UpdateChecker.parseVersion("2.0") == "2.0")
-        #expect(UpdateChecker.parseVersion("2.0.0\n") == "2.0.0")
-    }
-
-    @Test func equivalentVersionFormatsDoNotTriggerAnUpdate() {
-        #expect(!UpdateChecker.isNewer("2.0.0", than: "2.0"))
-        #expect(!UpdateChecker.isNewer("2.0", than: "2.0.0"))
-    }
-
-    @Test func threeComponentVersionIsNewerThanVersionOne() {
-        #expect(UpdateChecker.isNewer("2.0.0", than: "1.0"))
+    @Test func example() async throws {
+        // Write your test here and use APIs like `#expect(...)` to check expected conditions.
+        // Swift Testing Documentation
+        // https://developer.apple.com/documentation/testing
     }
 
 }

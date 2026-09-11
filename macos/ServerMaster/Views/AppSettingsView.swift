@@ -182,6 +182,33 @@ struct AppSettingsView: View {
                            isOn: $model.settings.checkDependenciesOnLaunch)
                 }
 
+                Card("Database admin panel", systemImage: "tablecells.badge.ellipsis") {
+                    Picker("Panel", selection: $model.settings.databaseAdminTool) {
+                        ForEach(DatabaseAdminTool.allCases) { tool in
+                            Text(tool.title).tag(tool)
+                        }
+                    }
+                    Text(model.settings.databaseAdminTool.subtitle)
+                        .font(.caption).foregroundStyle(.secondary)
+
+                    if model.settings.databaseAdminTool == .phpMyAdmin
+                        && DatabaseAdminPanel.phpMyAdminDirectory() == nil {
+                        Text("phpMyAdmin is not installed yet. Install it: brew install phpmyadmin")
+                            .font(.caption).foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    HStack {
+                        Text("Port")
+                        TextField("", value: $model.settings.databaseAdminPort,
+                                  format: .number.grouping(.never))
+                            .frame(width: 90)
+                    }
+                    Text("A port of its own, so it never collides with a profile. Reachable from this Mac only.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 Card("Certificates", systemImage: "lock") {
                     HStack {
                         Text("Default validity").frame(minWidth: 130, idealWidth: 190, maxWidth: 210, alignment: .leading)
@@ -237,7 +264,7 @@ struct AppSettingsView: View {
 
                     if model.updates.isConfigured {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("The app reads the version number from a file in the repository and, if it is higher than the installed one, gives you a link to the build folder. Nothing is downloaded or run automatically.")
+                            Text("The app reads the version number from a file in the repository root and, if it is higher than the installed one, gives you a link to the build folder. Nothing is downloaded or run automatically.")
                                 .font(.caption).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(model.updates.versionFileURL)

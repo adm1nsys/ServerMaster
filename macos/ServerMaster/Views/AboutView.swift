@@ -186,6 +186,8 @@ struct AboutView: View {
                        "The version belongs to the profile, not to the whole app. An old and a new project run side by side.")
             difference("Several servers at once",
                        "Every profile gets its own tab, port and engine, started and stopped on its own — instead of one Apache for everything.")
+            difference("Apache with .htaccess, nothing to install",
+                       "A project that ships its own .htaccess works as it did under XAMPP — macOS already carries Apache, so there is no download and no setup.")
             difference("Leaves your system alone",
                        "The database runs in its own folder on its own port. Any MySQL, Apache or system services you already have are left untouched.")
         }

@@ -1,0 +1,8 @@
+Adminer 6.0.1 — https://www.adminer.org
+Copyright Jakub Vrana and contributors.
+
+Dual licensed under:
+  Apache License, Version 2.0  https://www.apache.org/licenses/LICENSE-2.0
+  GNU General Public License, version 2  https://www.gnu.org/licenses/gpl-2.0.html
+
+Bundled unmodified as adminer.php (MySQL driver build, all languages).

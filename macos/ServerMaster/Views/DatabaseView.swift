@@ -24,6 +24,7 @@ struct DatabaseView: View {
     @State private var browsing: String?
 
     private var db: DatabaseService { model.database }
+    private var panel: DatabaseAdminPanel { model.adminPanel }
 
     var body: some View {
         ScrollView {
@@ -54,6 +55,7 @@ struct DatabaseView: View {
 
                 if db.state == .running {
                     connectionCard
+                    adminPanelCard
                     databasesCard
                 }
 
@@ -158,6 +160,83 @@ struct DatabaseView: View {
             .padding(6)
         } label: {
             Label("Connection", systemImage: "cable.connector")
+        }
+    }
+
+    // MARK: - Web admin panel
+
+    private var adminPanelCard: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("A web interface for this database, the way MAMP had one: its own port, opened in your browser.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 10) {
+                    Button {
+                        Task { await model.openAdminPanel() }
+                    } label: {
+                        Label(panel.isRunning ? "Open panel" : "Start and open",
+                              systemImage: "safari")
+                    }
+                    .disabled(!db.state.isActive || panel.state == .starting)
+
+                    if panel.isRunning {
+                        Button("Stop") { panel.stop() }
+                            .buttonStyle(.link)
+                    }
+                    if panel.state == .starting { ProgressView().controlSize(.small) }
+
+                    Spacer()
+
+                    Text(model.settings.databaseAdminTool.title)
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
+                if !db.state.isActive {
+                    Text("Start the database first.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
+                if let url = panel.address {
+                    Divider()
+                    InfoRow(label: "Address", value: url.absoluteString, monospaced: true,
+                            action: ("Copy", {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(url.absoluteString, forType: .string)
+                            }))
+                    // Both panels sign in on their own. These are shown only as a
+                    // fallback — and “Server” especially: left at “localhost”,
+                    // Adminer looks for a socket that is not there.
+                    if model.settings.databaseAdminTool == .adminer {
+                        Divider()
+                        InfoRow(label: "Server", value: db.connectionSummary, monospaced: true,
+                                action: ("Copy", {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(db.connectionSummary, forType: .string)
+                                }))
+                        Divider()
+                        InfoRow(label: "User", value: DatabaseAdminPanel.accountName, monospaced: true)
+                        Divider()
+                        InfoRow(label: "Password", value: panel.currentPassword, monospaced: true,
+                                action: ("Copy", {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(panel.currentPassword, forType: .string)
+                                }))
+                        Text("The panel signs in by itself; these are only needed if that fails. Leave Server at 127.0.0.1 with the port — “localhost” makes Adminer look for a socket that is not there. A new password is generated on every start.")
+                            .font(.caption).foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if case .failed(let message) = panel.state {
+                    Text(message).font(.caption).foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(6)
+        } label: {
+            Label("Web admin panel", systemImage: "tablecells.badge.ellipsis")
         }
     }
 

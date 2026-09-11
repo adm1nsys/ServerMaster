@@ -92,6 +92,12 @@ nonisolated struct AppSettings: Codable, Sendable, Equatable {
     /// The version whose banner the user dismissed. For a newer one we show it again.
     var dismissedUpdateVersion: String = ""
 
+    // Database admin panel
+    /// Which web panel the button opens.
+    var databaseAdminTool: DatabaseAdminTool = .adminer
+    /// The panel gets a port of its own so it never collides with a profile.
+    var databaseAdminPort: Int = 8036
+
     // Certificates
     var certificateDefaultDays: Int = 825
     var certificateDefaultDomains: String = "localhost,127.0.0.1,::1"
@@ -142,6 +148,8 @@ nonisolated struct AppSettings: Codable, Sendable, Equatable {
         checkUpdatesOnLaunch = container.value(.checkUpdatesOnLaunch, default: defaults.checkUpdatesOnLaunch)
         lastUpdateCheck = container.value(.lastUpdateCheck, default: defaults.lastUpdateCheck)
         dismissedUpdateVersion = container.value(.dismissedUpdateVersion, default: defaults.dismissedUpdateVersion)
+        databaseAdminTool = container.value(.databaseAdminTool, default: defaults.databaseAdminTool)
+        databaseAdminPort = container.value(.databaseAdminPort, default: defaults.databaseAdminPort)
         certificateDefaultDays = container.value(.certificateDefaultDays, default: defaults.certificateDefaultDays)
         certificateDefaultDomains = container.value(.certificateDefaultDomains, default: defaults.certificateDefaultDomains)
     }

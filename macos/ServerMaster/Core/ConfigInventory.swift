@@ -42,6 +42,7 @@ nonisolated struct ConfigFile: Identifiable, Sendable, Hashable {
     enum Validator: Sendable, Hashable {
         case none
         case nginx
+        case apache
         case caddyfile
         case php
         case phpFpm
@@ -112,6 +113,24 @@ nonisolated enum ConfigInventory {
                                      kind: .log,
                                      note: String(localized: "PHP errors — look here when the page is blank."),
                                      isReadOnly: true))
+
+        case .apache, .apachePHP:
+            let prefix = runtimePrefix("apache", profile)
+            if userConfig.isEmpty {
+                result.append(generated(prefix + "/httpd.conf", .engine, .apache,
+                                        String(localized: "Generated from the profile settings on every start.")))
+            }
+            if profile.engine == .apachePHP {
+                result.append(generated(prefix + "/php-fpm.conf", .runtime, .phpFpm,
+                                        String(localized: "The PHP-FPM pool: memory, upload and execution time limits.")))
+                result.append(ConfigFile(title: "php-fpm.log", path: prefix + "/logs/php-fpm.log",
+                                         kind: .log, isReadOnly: true))
+                result.append(ConfigFile(title: "php-error.log", path: prefix + "/logs/php-error.log",
+                                         kind: .log,
+                                         note: String(localized: "PHP errors — look here when the page is blank."),
+                                         isReadOnly: true))
+            }
+            result.append(contentsOf: nginxLogs(prefix))
 
         case .caddy:
             let prefix = runtimePrefix("caddy", profile)
@@ -206,8 +225,9 @@ nonisolated enum ConfigInventory {
 
     private static func validator(for engine: ServerEngine) -> ConfigFile.Validator {
         switch engine {
-        case .nginx, .phpFpm: return .nginx
-        case .caddy:          return .caddyfile
+        case .nginx, .phpFpm:     return .nginx
+        case .apache, .apachePHP: return .apache
+        case .caddy:              return .caddyfile
         default:              return .none
         }
     }
@@ -268,6 +288,19 @@ nonisolated enum ConfigInventory {
                                                  timeout: 30)
             return ValidationResult(ok: result.succeeded,
                                     message: clean(result.combined, temporary: temporary.path, as: file.title))
+
+        case .apache:
+            let binary = ["/usr/sbin/httpd",
+                          "/opt/homebrew/opt/httpd/bin/httpd",
+                          "/usr/local/opt/httpd/bin/httpd"]
+                .first { FileManager.default.isExecutableFile(atPath: $0) }
+                ?? ShellEnvironment.shared.which("httpd")
+            guard let binary else {
+                return ValidationResult(ok: true, message: "", skipped: true)
+            }
+            let apache = await ProcessRunner.run(binary, ["-f", temporary.path, "-t"], timeout: 30)
+            return ValidationResult(ok: apache.succeeded,
+                                    message: clean(apache.combined, temporary: temporary.path, as: file.title))
 
         case .caddyfile:
             guard ShellEnvironment.shared.which("caddy") != nil else {
