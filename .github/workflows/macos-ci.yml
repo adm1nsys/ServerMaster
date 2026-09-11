@@ -53,7 +53,9 @@ jobs:
       - name: Verify universal executable
         run: |
           EXECUTABLE="$RUNNER_TEMP/ServerMaster-DerivedData/Build/Products/Release/ServerMaster.app/Contents/MacOS/ServerMaster"
-          lipo -verify_arch arm64 x86_64 "$EXECUTABLE"
+          lipo -verify_arch arm64 "$EXECUTABLE"
+          lipo -verify_arch x86_64 "$EXECUTABLE"
+          lipo -archs "$EXECUTABLE"
 
       - name: Package application
         run: |
