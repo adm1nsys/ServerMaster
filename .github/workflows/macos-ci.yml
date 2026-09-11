@@ -1,7 +1,21 @@
 name: macOS build
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'macos/**'
+      - '.github/workflows/macos-ci.yml'
+  pull_request:
+    paths:
+      - 'macos/**'
+      - '.github/workflows/macos-ci.yml'
   workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Optional tag or commit to build (for example macos-v1.0.0)'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -17,6 +31,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Show Xcode version
         run: xcodebuild -version
@@ -30,9 +46,24 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/ServerMaster-DerivedData" \
             -destination "generic/platform=macOS" \
             CODE_SIGNING_ALLOWED=NO \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
             build
 
       - name: Verify universal executable
         run: |
           EXECUTABLE="$RUNNER_TEMP/ServerMaster-DerivedData/Build/Products/Release/ServerMaster.app/Contents/MacOS/ServerMaster"
           lipo -verify_arch arm64 x86_64 "$EXECUTABLE"
+
+      - name: Package application
+        run: |
+          ditto -c -k --keepParent \
+            "$RUNNER_TEMP/ServerMaster-DerivedData/Build/Products/Release/ServerMaster.app" \
+            "$RUNNER_TEMP/ServerMaster.app.zip"
+
+      - name: Upload application artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ServerMaster.app
+          path: ${{ runner.temp }}/ServerMaster.app.zip
+          if-no-files-found: error
