@@ -1,0 +1,64 @@
+# macOS and Finder
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+*.xcarchive/
+*.dSYM/
+*.app/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Visual Studio and .NET
+.vs/
+[Bb]in/
+[Oo]bj/
+[Tt]est[Rr]esults/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.nupkg
+*.snupkg
+.nuget/
+
+# Coverage, profiling, logs, and generated output
+*.profraw
+*.profdata
+coverage/
+lcov.info
+*.log
+output/
+dist/
+artifacts/
+
+# Release archives belong in GitHub Releases
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.dmg
+*.pkg
+*.msi
+
+# Local configuration and signing material
+.env
+.env.*
+!.env.example
+*.cer
+*.p12
+*.mobileprovision
+
+# Local Sites tooling
+.sites-runtime/

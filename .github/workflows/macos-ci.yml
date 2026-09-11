@@ -1,0 +1,38 @@
+name: macOS build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build universal Release application
+        run: |
+          xcodebuild \
+            -project macos/ServerMaster.xcodeproj \
+            -scheme ServerMaster \
+            -configuration Release \
+            -derivedDataPath "$RUNNER_TEMP/ServerMaster-DerivedData" \
+            -destination "generic/platform=macOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Verify universal executable
+        run: |
+          EXECUTABLE="$RUNNER_TEMP/ServerMaster-DerivedData/Build/Products/Release/ServerMaster.app/Contents/MacOS/ServerMaster"
+          lipo -verify_arch arm64 x86_64 "$EXECUTABLE"
