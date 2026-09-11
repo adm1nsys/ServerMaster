@@ -117,8 +117,13 @@ final class DatabaseAdminPanel {
             fail(String(localized: "PHP was not found. Install it on the Dependencies tab."))
             return
         }
+        // A panel from a previous run survives if the app was force-quit rather
+        // than closed: terminating the app does not take its child php with it,
+        // and the orphan keeps the port. Clear our own leftovers before giving up.
+        await reclaimOrphan(port: port)
+
         guard PortScanner.isPortFree(port, host: "127.0.0.1") else {
-            fail(String(localized: "Port \(String(port)) is taken. Choose another one in Settings."))
+            fail(String(localized: "Port \(String(port)) is taken by something else. Choose another one in Settings."))
             return
         }
 
@@ -175,6 +180,7 @@ final class DatabaseAdminPanel {
             return
         }
         process = task
+        writeSentinel(pid: task.processIdentifier, port: port)
 
         guard let url = URL(string: "http://127.0.0.1:\(String(port))/") else {
             fail(String(localized: "Could not build the panel address."))
@@ -202,15 +208,58 @@ final class DatabaseAdminPanel {
             try? FileManager.default.removeItem(at: directory)
             runtimeDirectory = nil
         }
+        try? FileManager.default.removeItem(at: Self.sentinelURL)
         log.system(String(localized: "The admin panel has stopped."))
     }
 
     /// Called when the application quits; the panel must not outlive it.
     func stopSynchronously() {
+        try? FileManager.default.removeItem(at: Self.sentinelURL)
         guard let task = process, task.isRunning else { return }
         process = nil
         task.terminate()
         task.waitUntilExit()
+    }
+
+    // MARK: - Leftovers from a previous run
+
+    /// Records which process is serving the panel, so a later run can recognise
+    /// its own orphan rather than blaming an unrelated program for the port.
+    private static var sentinelURL: URL {
+        AppPaths.subdir("Runtime").appendingPathComponent("dbadmin.pid")
+    }
+
+    private func writeSentinel(pid: Int32, port: Int) {
+        try? "\(String(pid))\n\(String(port))\n".write(to: Self.sentinelURL,
+                                                        atomically: true, encoding: .utf8)
+    }
+
+    /// Stops a panel left behind by a previous run of the app, if it is ours and
+    /// it is on the port we are about to use.
+    private func reclaimOrphan(port: Int) async {
+        let sentinel = Self.sentinelURL
+        guard let text = try? String(contentsOf: sentinel, encoding: .utf8) else { return }
+        defer { try? FileManager.default.removeItem(at: sentinel) }
+
+        let parts = text.split(separator: "\n").map(String.init)
+        guard parts.count >= 2, let pid = Int32(parts[0]), let recorded = Int(parts[1]),
+              recorded == port else { return }
+
+        // kill(pid, 0) does not kill — it only reports whether the process exists.
+        guard kill(pid, 0) == 0 else { return }
+
+        // Make sure the pid is still the panel and not a number reused by macOS
+        // for something entirely different.
+        let check = await ProcessRunner.run("/bin/ps", ["-o", "command=", "-p", String(pid)], timeout: 10)
+        guard check.stdout.contains("php") && check.stdout.contains("dbadmin") else { return }
+
+        log.system(String(localized: "Stopping an admin panel left over from the previous run."))
+        kill(pid, SIGTERM)
+        for _ in 0..<20 {
+            if kill(pid, 0) != 0 { break }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        if kill(pid, 0) == 0 { kill(pid, SIGKILL) }
     }
 
     // MARK: - What gets served

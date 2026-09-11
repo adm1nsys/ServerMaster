@@ -6,7 +6,7 @@
 //    updates/maclastversion.txt holds the latest version number,
 //    published GitHub releases hold the downloadable builds.
 //  If the version in the file is greater than the installed one — show a banner
-//  linking to that folder. Nothing is downloaded and nothing is executed.
+//  linking to that release. Nothing is downloaded and nothing is executed.
 //
 
 import Foundation
@@ -21,7 +21,7 @@ nonisolated struct ReleaseInfo: Sendable, Equatable {
     var publishedAt: Date?
     /// The branch the version was found in.
     var branch: String = ""
-    /// The build folder exists — the link works.
+    /// Kept for compatibility with older UI code.
     var buildFolderExists: Bool = true
 }
 
@@ -126,11 +126,8 @@ final class UpdateChecker {
                     return
                 }
 
-                let folder = "\(buildsFolder)/\(latest)"
-                let exists = await buildFolderExists(repo: repo, branch: branch, folder: folder)
-                let pageURL = exists
-                    ? "\(siteBaseURL)/\(repo)/tree/\(branch)/\(folder)"
-                    : "\(siteBaseURL)/\(repo)"
+                let releaseTag = "macos-v\(Self.releaseTagVersion(latest))"
+                let pageURL = "\(siteBaseURL)/\(repo)/releases/tag/\(releaseTag)"
 
                 state = .available(ReleaseInfo(
                     version: latest,
@@ -139,7 +136,7 @@ final class UpdateChecker {
                     pageURL: pageURL,
                     publishedAt: nil,
                     branch: branch,
-                    buildFolderExists: exists))
+                    buildFolderExists: true))
                 return
 
             } catch {
@@ -154,7 +151,7 @@ final class UpdateChecker {
         }
     }
 
-    /// Does the mac/<version> folder exist — otherwise the link would lead nowhere.
+    /// Does a repository path exist. Kept for tests and older update flows.
     private func buildFolderExists(repo: String, branch: String, folder: String) async -> Bool {
         let encoded = folder.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? folder
         guard let url = URL(string: "\(apiBaseURL)/repos/\(repo)/contents/\(encoded)?ref=\(branch)") else {
@@ -209,6 +206,13 @@ final class UpdateChecker {
 
         guard !value.isEmpty, value.contains(where: \.isNumber) else { return nil }
         return value
+    }
+
+    nonisolated static func releaseTagVersion(_ raw: String) -> String {
+        guard let parsed = parseVersion(raw) else { return raw.trimmingCharacters(in: .whitespacesAndNewlines) }
+        var parts = parsed.split(separator: ".").map(String.init)
+        while parts.count < 3 { parts.append("0") }
+        return parts.joined(separator: ".")
     }
 
     /// Comparison of the form 1.10.0 > 1.9.3.

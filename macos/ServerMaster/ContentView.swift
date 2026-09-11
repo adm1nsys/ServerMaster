@@ -92,6 +92,21 @@ struct ContentView: View {
     private var sidebarStatus: some View {
         VStack(alignment: .leading, spacing: 6) {
             Divider()
+
+            // Always in view, on every screen: the guides are the answer to most
+            // of what stops a newcomer, and burying them in a menu hides them.
+            Button {
+                AppLinks.open(.index)
+            } label: {
+                Label("Guides", systemImage: "book")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("How to run Joomla, WordPress and the rest — opens in your browser")
+            .padding(.horizontal, 12)
+            .padding(.top, 2)
+
             HStack(spacing: 8) {
                 StatusDot(state: model.aggregateState)
                 VStack(alignment: .leading, spacing: 1) {

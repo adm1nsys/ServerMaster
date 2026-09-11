@@ -264,7 +264,7 @@ struct AppSettingsView: View {
 
                     if model.updates.isConfigured {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("The app reads the version number from a file in the repository root and, if it is higher than the installed one, gives you a link to the build folder. Nothing is downloaded or run automatically.")
+                            Text("The app reads the version number from the update manifest and, if it is higher than the installed one, gives you a link to the GitHub release. Nothing is downloaded or run automatically.")
                                 .font(.caption).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(model.updates.versionFileURL)
@@ -272,7 +272,7 @@ struct AppSettingsView: View {
                                 .foregroundStyle(.tertiary)
                                 .textSelection(.enabled)
                                 .lineLimit(1).truncationMode(.middle)
-                            Text("The build is expected in \(model.updates.buildsFolder)/<version>. We look in the main and master branches.")
+                            Text("Release downloads are published in GitHub Releases. We look for the manifest in the main and master branches.")
                                 .font(.caption2).foregroundStyle(.tertiary)
                         }
                     } else {
@@ -395,13 +395,7 @@ struct AppSettingsView: View {
                 }
                 Text("Installed \(AppInfo.version), repository has \(release.version) (branch \(release.branch)).")
                     .font(.caption).foregroundStyle(.secondary)
-                if !release.buildFolderExists {
-                    Label("Folder \(model.updates.buildsFolder)/\(release.version) not found — the repository root will open instead.",
-                          systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption).foregroundStyle(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Button(release.buildFolderExists ? "Open the build folder" : "Open repository") {
+                Button("Open release") {
                     model.updates.openReleasePage()
                 }
                 .buttonStyle(.link)

@@ -26,6 +26,13 @@ struct DependenciesView: View {
                             Label("Check all", systemImage: "arrow.clockwise")
                         }
                         .disabled(model.dependencies.isChecking)
+
+                        Button {
+                            AppLinks.open(.install)
+                        } label: {
+                            Label("Guide", systemImage: "book")
+                        }
+                        .help("What each engine needs, and how to install it")
                     }
                 }
 

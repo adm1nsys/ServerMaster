@@ -202,8 +202,6 @@ the tests:
 Fresh checkouts should be able to run the intended test target without private
 scratchpad folders or a manually started helper server.
 
----
-
 ## Tool limitations — not app bugs
 
 **http-server does not protect dotfiles.** Its `--no-dotfiles` flag only hides

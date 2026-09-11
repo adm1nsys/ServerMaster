@@ -216,6 +216,15 @@ struct ControlView: View {
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
 
+                        // The moment someone actually needs the guides is the
+                        // moment something refused to start, so the link lands
+                        // on the page that explains this particular failure.
+                        Button("What does this mean?") {
+                            AppLinks.open(AppLinks.guide(forFailure: failure))
+                        }
+                        .buttonStyle(.link)
+                        .font(.callout)
+
                         if profile.port < 1024, !profile.runAsAdministrator {
                             HStack(spacing: 12) {
                                 if let replacement = PortPresets.localReplacement(for: profile.port) {

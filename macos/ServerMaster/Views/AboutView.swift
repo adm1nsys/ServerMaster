@@ -43,6 +43,24 @@ struct AboutView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Text(AppInfo.versionLine)
                     .font(.caption).foregroundStyle(.tertiary)
+                if let minimum = AppInfo.minimumSystemVersion {
+                    Text("Requires macOS \(minimum) or newer · \(AppInfo.architecture)")
+                        .font(.caption).foregroundStyle(.tertiary)
+                }
+
+                HStack(spacing: 14) {
+                    Button {
+                        AppLinks.open(.index)
+                    } label: {
+                        Label("Guides", systemImage: "book")
+                    }
+                    Button("Website") { NSWorkspace.shared.open(AppLinks.site) }
+                        .buttonStyle(.link)
+                    Button("Report a problem") { NSWorkspace.shared.open(AppLinks.issues) }
+                        .buttonStyle(.link)
+                }
+                .font(.callout)
+                .padding(.top, 4)
             }
             Spacer()
         }

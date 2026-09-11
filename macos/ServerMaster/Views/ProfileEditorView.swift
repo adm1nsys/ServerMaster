@@ -142,8 +142,16 @@ struct ProfileEditorView: View {
                     Text(engine.title).tag(engine)
                 }
             }
-            Text(draft.engine.subtitle)
-                .font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Text(draft.engine.subtitle)
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                // The guide follows the engine: picking Apache offers the
+                // .htaccess page, a PHP engine offers the CMS walkthrough.
+                Button("Guide") { AppLinks.open(AppLinks.guide(for: draft.engine)) }
+                    .buttonStyle(.link)
+                    .font(.caption)
+            }
 
             if draft.engine.runsPHP {
                 HStack(spacing: 6) {

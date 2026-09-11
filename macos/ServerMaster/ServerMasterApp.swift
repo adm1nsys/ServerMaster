@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 /// Quitting is intercepted so the servers can be shut down properly in time.
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -59,6 +60,23 @@ struct ServerMasterApp: App {
         .defaultSize(width: 1120, height: 720)
         .commands {
             CommandGroup(replacing: .newItem) { }
+
+            // macOS puts documentation under Help, so that is where the guides go.
+            CommandGroup(replacing: .help) {
+                Button("ServerMaster Guides") { AppLinks.open(.index) }
+                    .keyboardShortcut("?", modifiers: [.command])
+
+                Divider()
+
+                Button("Getting started") { AppLinks.open(.install) }
+                Button("Running a CMS") { AppLinks.open(.joomla) }
+                Button("Errors and what they mean") { AppLinks.open(.errors) }
+
+                Divider()
+
+                Button("Website") { NSWorkspace.shared.open(AppLinks.site) }
+                Button("Report a problem") { NSWorkspace.shared.open(AppLinks.issues) }
+            }
 
             CommandMenu("Server") {
                 Button("Start profile") {

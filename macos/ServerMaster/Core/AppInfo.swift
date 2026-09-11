@@ -32,6 +32,12 @@ nonisolated enum AppInfo {
         version.split(separator: ".").map { Int($0) ?? 0 }
     }
 
+    /// The oldest macOS this build declares it can run on. Read from the bundle
+    /// rather than written by hand, so it cannot drift from the deployment target.
+    static var minimumSystemVersion: String? {
+        Bundle.main.object(forInfoDictionaryKey: "LSMinimumSystemVersion") as? String
+    }
+
     static var systemVersion: String {
         let v = ProcessInfo.processInfo.operatingSystemVersion
         return "macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"

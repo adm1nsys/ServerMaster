@@ -82,17 +82,26 @@ struct ProfilesView: View {
             Divider()
 
             HStack(spacing: 6) {
-                Button {
-                    var profile = ServerProfile()
-                    profile.name = "Profile \(model.profiles.count + 1)"
-                    profile.port = suggestPort()
-                    model.addProfile(profile)
-                    renamingID = profile.id
-                    renameFocused = true
+                Menu {
+                    ForEach(ProfilePreset.all) { preset in
+                        Button {
+                            create(preset)
+                        } label: {
+                            Label(preset.title, systemImage: preset.symbol)
+                        }
+                    }
+                    Divider()
+                    Button("Empty profile") { create(nil) }
                 } label: {
                     Image(systemName: "plus")
+                } primaryAction: {
+                    // A plain click still gives the commonest case rather than a
+                    // menu: most people are serving a folder of files.
+                    create(ProfilePreset.all.first)
                 }
-                .help("New profile")
+                .menuStyle(.borderlessButton)
+                .frame(width: 34)
+                .help("New profile — hold to choose what you are serving")
 
                 Button {
                     if let profile = model.selectedProfile { deleteCandidate = profile }
@@ -171,6 +180,26 @@ struct ProfilesView: View {
         renamingID = nil
         renameFocused = false
         model.flushPendingSaves()
+    }
+
+    /// Creates a profile from a preset, or an empty one when none is given.
+    private func create(_ preset: ProfilePreset?) {
+        let number = model.profiles.count + 1
+        var profile: ServerProfile
+        if let preset {
+            profile = preset.makeProfile(name: preset.title, port: suggestPort())
+            // Two profiles from the same preset would otherwise share a name.
+            if model.profiles.contains(where: { $0.name == profile.name }) {
+                profile.name = "\(preset.title) \(String(number))"
+            }
+        } else {
+            profile = ServerProfile()
+            profile.name = "Profile \(String(number))"
+            profile.port = suggestPort()
+        }
+        model.addProfile(profile)
+        renamingID = profile.id
+        renameFocused = true
     }
 
     private func suggestPort() -> Int {

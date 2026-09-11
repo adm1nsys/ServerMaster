@@ -23,9 +23,7 @@ struct UpdateBanner: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Version \(release.version) is available")
                     .font(.callout).fontWeight(.medium)
-                Text(release.buildFolderExists
-                     ? "Installed \(AppInfo.version). The build is in \(model.settings.updateBuildsFolder)/\(release.version)."
-                     : "Installed \(AppInfo.version). The build folder was not found — the repository root will open.")
+                Text("Installed \(AppInfo.version). The download is available from the GitHub release.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -37,7 +35,7 @@ struct UpdateBanner: View {
             Button {
                 model.updates.openReleasePage()
             } label: {
-                Text(release.buildFolderExists ? "Open build" : "Open repository")
+                Text("Open release")
             }
             .buttonStyle(.borderedProminent)
 
