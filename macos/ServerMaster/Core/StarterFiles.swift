@@ -1,0 +1,389 @@
+//
+//  StarterFiles.swift
+//  ServerMaster
+//
+//  Nginx, Apache and Caddy get their config written for them. Everything else
+//  was left with nothing: a Node.js profile refuses to start until an entry file
+//  exists, and a fresh folder has no index.html to serve — both perfectly
+//  reasonable failures that a person new to this cannot act on.
+//
+//  So every engine now offers a starting point, usually more than one, and the
+//  file is written into the site folder rather than hidden in the app's
+//  Application Support: it belongs to the project.
+//
+//  Nothing here ever overwrites silently — the caller is told when a file is
+//  already there and asks first.
+//
+
+import Foundation
+
+nonisolated struct StarterFile: Identifiable, Sendable {
+
+    var id: String
+    var title: String
+    var summary: String
+    /// Where it goes, relative to the site folder.
+    var fileName: String
+    var symbol: String
+    /// Written when the person picks this one.
+    var contents: @Sendable (ServerProfile) -> String
+    /// Shown after writing, when there is something the person must still do.
+    var afterNote: String?
+
+    func write(into root: String, profile: ServerProfile, overwrite: Bool) throws -> URL {
+        let directory = URL(fileURLWithPath: AppPaths.expand(root))
+        let target = directory.appendingPathComponent(fileName)
+        if FileManager.default.fileExists(atPath: target.path) && !overwrite {
+            throw StarterError.exists(fileName)
+        }
+        AppPaths.ensure(target.deletingLastPathComponent())
+        try contents(profile).write(to: target, atomically: true, encoding: .utf8)
+        return target
+    }
+}
+
+nonisolated enum StarterError: LocalizedError {
+    case exists(String)
+    case noRoot
+
+    var errorDescription: String? {
+        switch self {
+        case .exists(let name): return String(localized: "“\(name)” already exists in the site folder.")
+        case .noRoot:           return String(localized: "Choose the site folder first.")
+        }
+    }
+}
+
+nonisolated enum StarterFiles {
+
+    /// What can be generated for a profile, in the order worth offering it.
+    static func available(for profile: ServerProfile) -> [StarterFile] {
+        var files: [StarterFile] = []
+
+        switch profile.engine {
+        case .nodeScript:
+            files += [nodeMinimal, nodeStatic, nodeExpress, packageJSON]
+
+        case .httpServer, .pythonHTTP:
+            files += [indexHTML, spaIndexHTML]
+
+        case .phpBuiltIn, .phpFpm:
+            files += [indexPHP, phpInfo, indexHTML]
+
+        case .apache, .apachePHP:
+            files += [htaccessBasic, htaccessSPA]
+            if profile.engine == .apachePHP { files += [indexPHP, phpInfo] }
+            files += [indexHTML]
+
+        case .nginx, .caddy:
+            files += [indexHTML, spaIndexHTML]
+
+        case .custom:
+            files += [indexHTML, packageJSON]
+        }
+
+        return files
+    }
+
+    // MARK: - Web pages
+
+    static let indexHTML = StarterFile(
+        id: "index.html",
+        title: String(localized: "Starter page"),
+        summary: String(localized: "A plain index.html so the folder serves something"),
+        fileName: "index.html",
+        symbol: "doc.richtext",
+        contents: { profile in
+            page(title: profile.name,
+                 heading: profile.name,
+                 body: """
+                 <p>This page is being served by ServerMaster.</p>
+                 <p class="muted">Replace <code>index.html</code> with your own site.</p>
+                 """)
+        },
+        afterNote: nil)
+
+    static let spaIndexHTML = StarterFile(
+        id: "index.html.spa",
+        title: String(localized: "Single-page app shell"),
+        summary: String(localized: "index.html with a mount point and a router-friendly base"),
+        fileName: "index.html",
+        symbol: "square.stack.3d.up",
+        contents: { profile in
+            page(title: profile.name,
+                 heading: profile.name,
+                 body: """
+                 <div id="root"></div>
+                 <p class="muted">Mount your app on <code>#root</code>. Deep links are
+                 sent here as long as “SPA fallback” stays switched on.</p>
+                 <script type="module">
+                   document.getElementById('root').textContent = 'Your app goes here.';
+                 </script>
+                 """)
+        },
+        afterNote: String(localized: "Switch on “SPA fallback” in the profile so deep links reach this page."))
+
+    static let indexPHP = StarterFile(
+        id: "index.php",
+        title: String(localized: "Starter PHP page"),
+        summary: String(localized: "Proves PHP is being executed, not shown as source"),
+        fileName: "index.php",
+        symbol: "curlybraces",
+        contents: { profile in
+            """
+            <?php
+            // Generated by ServerMaster as a starting point — replace it with your own.
+            $version = PHP_VERSION;
+            $served = $_SERVER['SERVER_SOFTWARE'] ?? 'unknown';
+            ?>
+            \(page(title: profile.name,
+                   heading: profile.name,
+                   body: """
+                   <p>PHP <?= htmlspecialchars($version) ?> is running.</p>
+                   <p class="muted">Served by <?= htmlspecialchars($served) ?>.</p>
+                   <p class="muted">If you see this file's source instead of this text,
+                   the profile is using an engine that does not execute PHP.</p>
+                   """))
+            """
+        },
+        afterNote: nil)
+
+    static let phpInfo = StarterFile(
+        id: "phpinfo.php",
+        title: String(localized: "PHP information page"),
+        summary: String(localized: "Every setting and extension — useful when a CMS complains"),
+        fileName: "phpinfo.php",
+        symbol: "list.bullet.rectangle",
+        contents: { _ in
+            """
+            <?php
+            // Generated by ServerMaster. Delete this file when you are done with it:
+            // it lists your entire PHP configuration and is not meant to be public.
+            phpinfo();
+            """
+        },
+        afterNote: String(localized: "Delete phpinfo.php when you are finished — it exposes your whole PHP configuration."))
+
+    // MARK: - Node.js
+
+    static let nodeMinimal = StarterFile(
+        id: "server.js.minimal",
+        title: String(localized: "Minimal HTTP server"),
+        summary: String(localized: "No dependencies — answers on the profile's port"),
+        fileName: "server.js",
+        symbol: "shippingbox",
+        contents: { profile in
+            """
+            // Generated by ServerMaster as a starting point.
+            // ServerMaster passes PORT and HOST in the environment, so the profile's
+            // port keeps working after you change it in the app.
+            import { createServer } from 'node:http';
+
+            const port = Number(process.env.PORT ?? \(String(profile.port)));
+            const host = process.env.HOST ?? '\(profile.host)';
+
+            createServer((request, response) => {
+              response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+              response.end(`Hello from \(profile.name)\\nYou asked for ${request.url}\\n`);
+            }).listen(port, host, () => {
+              console.log(`Listening on http://${host}:${port}`);
+            });
+            """
+        },
+        afterNote: nil)
+
+    static let nodeStatic = StarterFile(
+        id: "server.js.static",
+        title: String(localized: "Static file server"),
+        summary: String(localized: "Serves the folder next to it, still without dependencies"),
+        fileName: "server.js",
+        symbol: "folder",
+        contents: { profile in
+            """
+            // Generated by ServerMaster as a starting point.
+            // Serves the files in `public`, falling back to index.html.
+            import { createServer } from 'node:http';
+            import { readFile } from 'node:fs/promises';
+            import { extname, join, normalize } from 'node:path';
+
+            const port = Number(process.env.PORT ?? \(String(profile.port)));
+            const host = process.env.HOST ?? '\(profile.host)';
+            const root = join(import.meta.dirname, 'public');
+
+            const types = {
+              '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
+              '.js': 'text/javascript; charset=utf-8', '.json': 'application/json',
+              '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg'
+            };
+
+            createServer(async (request, response) => {
+              // normalize() first: without it a request for ../.. walks out of the folder.
+              const path = normalize(decodeURIComponent(new URL(request.url, 'http://x').pathname));
+              const file = join(root, path.endsWith('/') ? path + 'index.html' : path);
+              if (!file.startsWith(root)) {
+                response.writeHead(403).end('Forbidden');
+                return;
+              }
+              try {
+                const body = await readFile(file);
+                response.writeHead(200, { 'Content-Type': types[extname(file)] ?? 'application/octet-stream' });
+                response.end(body);
+              } catch {
+                response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+                response.end('Not found');
+              }
+            }).listen(port, host, () => {
+              console.log(`Listening on http://${host}:${port}`);
+            });
+            """
+        },
+        afterNote: String(localized: "Put your files in a “public” subfolder next to server.js."))
+
+    static let nodeExpress = StarterFile(
+        id: "server.js.express",
+        title: String(localized: "Express server"),
+        summary: String(localized: "Routing and middleware — needs npm install express"),
+        fileName: "server.js",
+        symbol: "arrow.triangle.branch",
+        contents: { profile in
+            """
+            // Generated by ServerMaster as a starting point.
+            // Run `npm install express` in this folder before starting.
+            import express from 'express';
+
+            const app = express();
+            const port = Number(process.env.PORT ?? \(String(profile.port)));
+            const host = process.env.HOST ?? '\(profile.host)';
+
+            app.use(express.static('public'));
+
+            app.get('/api/hello', (request, response) => {
+              response.json({ from: '\(profile.name)' });
+            });
+
+            app.listen(port, host, () => {
+              console.log(`Listening on http://${host}:${port}`);
+            });
+            """
+        },
+        afterNote: String(localized: "Run “npm install express” in the site folder, or the server will not start."))
+
+    static let packageJSON = StarterFile(
+        id: "package.json",
+        title: "package.json",
+        summary: String(localized: "Marks the folder as a module so import works"),
+        fileName: "package.json",
+        symbol: "shippingbox",
+        contents: { profile in
+            let name = profile.name.lowercased()
+                .replacingOccurrences(of: " ", with: "-")
+                .filter { $0.isLetter || $0.isNumber || $0 == "-" }
+            return """
+            {
+              "name": "\(name.isEmpty ? "site" : name)",
+              "private": true,
+              "type": "module",
+              "scripts": {
+                "start": "node server.js"
+              }
+            }
+            """
+        },
+        afterNote: String(localized: "“type”: “module” is what lets the generated server use import."))
+
+    // MARK: - Apache
+
+    static let htaccessBasic = StarterFile(
+        id: ".htaccess.basic",
+        title: String(localized: "Basic .htaccess"),
+        summary: String(localized: "Pretty URLs and a couple of safe defaults"),
+        fileName: ".htaccess",
+        symbol: "feather",
+        contents: { _ in
+            """
+            # Generated by ServerMaster as a starting point.
+            # Apache reads this file; Nginx and Caddy do not.
+
+            <IfModule mod_rewrite.c>
+                RewriteEngine On
+
+                # A request that matches no file or folder goes to index.php.
+                RewriteCond %{REQUEST_FILENAME} !-f
+                RewriteCond %{REQUEST_FILENAME} !-d
+                RewriteRule ^ index.php [L]
+            </IfModule>
+
+            <IfModule mod_headers.c>
+                Header always set X-Content-Type-Options "nosniff"
+            </IfModule>
+
+            # Never serve dotfiles, whatever the profile settings say.
+            <FilesMatch "^\\.">
+                Require all denied
+            </FilesMatch>
+            """
+        },
+        afterNote: nil)
+
+    static let htaccessSPA = StarterFile(
+        id: ".htaccess.spa",
+        title: String(localized: ".htaccess for a single-page app"),
+        summary: String(localized: "Deep links go to index.html instead of 404"),
+        fileName: ".htaccess",
+        symbol: "square.stack.3d.up",
+        contents: { _ in
+            """
+            # Generated by ServerMaster as a starting point.
+
+            <IfModule mod_rewrite.c>
+                RewriteEngine On
+
+                RewriteCond %{REQUEST_FILENAME} !-f
+                RewriteCond %{REQUEST_FILENAME} !-d
+                RewriteRule ^ index.html [L]
+            </IfModule>
+            """
+        },
+        afterNote: nil)
+
+    // MARK: - Shared page shell
+
+    /// One look for every generated page, so a starter page is recognisable as
+    /// one rather than being mistaken for the project's own.
+    private static func page(title: String, heading: String, body: String) -> String {
+        """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>\(escape(title))</title>
+        <style>
+          :root { color-scheme: light dark; }
+          body {
+            font: 16px/1.6 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+            margin: 0; min-height: 100vh; display: flex; align-items: center;
+            justify-content: center; text-align: center; padding: 2rem;
+          }
+          main { max-width: 32rem; }
+          h1 { font-size: 1.6rem; margin: 0 0 .6rem; }
+          .muted { opacity: .65; font-size: .95rem; }
+          code { font-family: ui-monospace, Menlo, monospace; font-size: .9em; }
+        </style>
+        </head>
+        <body>
+        <main>
+        <h1>\(escape(heading))</h1>
+        \(body)
+        </main>
+        </body>
+        </html>
+        """
+    }
+
+    private static func escape(_ text: String) -> String {
+        text.replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
+}

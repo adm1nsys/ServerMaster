@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - 'macos/**'
+      - 'cli/**'
       - '.github/workflows/macos-ci.yml'
   pull_request:
     paths:
       - 'macos/**'
+      - 'cli/**'
       - '.github/workflows/macos-ci.yml'
   workflow_dispatch:
     inputs:
@@ -36,6 +38,9 @@ jobs:
 
       - name: Show Xcode version
         run: xcodebuild -version
+
+      - name: Prepare bundled CLI helper
+        run: ./macos/Tools/update-cli.sh
 
       - name: Build universal Release application
         run: |

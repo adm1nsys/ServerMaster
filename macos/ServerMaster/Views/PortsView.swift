@@ -23,13 +23,13 @@ struct PortsView: View {
         @Bindable var model = model
 
         VStack(spacing: 0) {
-            header
-            Divider()
-
-            if model.settings.portReservationsEnabled {
-                reservationsBar
-                Divider()
+            VStack(spacing: 8) {
+                header
+                if model.settings.portReservationsEnabled { reservationsBar }
             }
+            .padding(.horizontal, 36)
+            .padding(.top, 36)
+            .padding(.bottom, 14)
 
             Table(filtered, selection: $selection, sortOrder: $sortOrder) {
                 TableColumn("Port", value: \.port) { entry in
@@ -50,7 +50,7 @@ struct PortsView: View {
                             Text(owner.name)
                                 .font(.caption2)
                                 .padding(.horizontal, 5).padding(.vertical, 1)
-                                .background(Color.accentColor.opacity(0.2), in: Capsule())
+                                .modifier(GlassCapsule(tinted: true))
                         }
                     }
                 }
@@ -126,9 +126,17 @@ struct PortsView: View {
                     }
                 }
             }
+            // No zebra striping, and no background of its own. The alternating
+            // rows were the strongest thing on the screen and they carry no
+            // information — the eye follows a row perfectly well without being
+            // painted a different colour every other line.
+            .tableStyle(.inset(alternatesRowBackgrounds: false))
+            .scrollContentBackground(.hidden)
+            .padding(.horizontal, 36)
 
-            Divider()
             footer
+                .padding(.horizontal, 36)
+                .padding(.vertical, 12)
         }
         .task {
             await model.refreshPorts()
@@ -211,41 +219,99 @@ struct PortsView: View {
     private var header: some View {
         @Bindable var model = model
 
-        return HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Ports").font(.title3).fontWeight(.semibold)
-                Text("Who is listening and how to free it")
-                    .font(.caption).foregroundStyle(.secondary)
+        return VStack(alignment: .leading, spacing: 14) {
+            ScreenTitle(title: "Ports", subtitle: "Who is listening and how to free it") {
+                if model.isScanningPorts { ProgressView().controlSize(.small) }
+                Button {
+                    Task { await model.refreshPorts() }
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .modifier(GlassStyle())
             }
 
-            Spacer()
+            HStack(spacing: 10) {
+                searchField
 
-            TextField("Search: port, process, PID", text: $search)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 230)
-
-            Toggle("UDP", isOn: $model.settings.portsIncludeUDP)
-                .toggleStyle(.checkbox)
-                .onChange(of: model.settings.portsIncludeUDP) { _, _ in
+                // Checkboxes next to a row of glass look like a preference pane.
+                // As toggles that stay pressed they read as filters, which is
+                // what they are.
+                filterToggle("UDP", isOn: $model.settings.portsIncludeUDP) {
                     model.saveSettings()
                     Task { await model.refreshPorts() }
                 }
-
-            Toggle("System", isOn: $model.settings.portsShowSystemProcesses)
-                .toggleStyle(.checkbox)
-                .onChange(of: model.settings.portsShowSystemProcesses) { _, _ in model.saveSettings() }
-
-            if model.isScanningPorts { ProgressView().controlSize(.small) }
-
-            Button {
-                Task { await model.refreshPorts() }
-            } label: {
-                Image(systemName: "arrow.clockwise")
+                filterToggle("System", isOn: $model.settings.portsShowSystemProcesses) {
+                    model.saveSettings()
+                }
+                Spacer()
             }
-            .help("Refresh")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "magnifyingglass")
+                .font(.caption).foregroundStyle(.secondary)
+            TextField("Port, process, PID", text: $search)
+                .textFieldStyle(.plain)
+                .font(.callout)
+                .frame(width: 190)
+            if !search.isEmpty {
+                Button { search = "" } label: {
+                    Image(systemName: "xmark.circle.fill").font(.caption)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .modifier(GlassCapsule(tinted: false))
+    }
+
+    private func filterToggle(_ title: LocalizedStringKey, isOn: Binding<Bool>,
+                              _ changed: @escaping () -> Void) -> some View {
+        Button {
+            isOn.wrappedValue.toggle()
+            changed()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: isOn.wrappedValue ? "checkmark" : "")
+                    .font(.caption2)
+                    .frame(width: isOn.wrappedValue ? 10 : 0)
+                Text(title).font(.callout)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .modifier(GlassCapsule(tinted: isOn.wrappedValue))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Glass on a capsule, tinted when the thing it stands for is switched on.
+    private struct GlassCapsule: ViewModifier {
+        let tinted: Bool
+        func body(content: Content) -> some View {
+            if #available(macOS 26.0, *) {
+                content.glassEffect(tinted ? .regular.tint(.accentColor.opacity(0.35)).interactive()
+                                           : .regular.interactive(),
+                                    in: .capsule)
+            } else {
+                content.background(tinted ? AnyShapeStyle(Color.accentColor.opacity(0.2))
+                                          : AnyShapeStyle(.quaternary),
+                                   in: Capsule())
+            }
+        }
+    }
+
+    private struct GlassStyle: ViewModifier {
+        func body(content: Content) -> some View {
+            if #available(macOS 26.0, *) {
+                content.buttonStyle(.glass)
+            } else {
+                content.buttonStyle(.bordered)
+            }
+        }
     }
 
     private var footer: some View {
@@ -273,6 +339,7 @@ struct PortsView: View {
                 TextField("why", text: $reserveNote)
                     .frame(width: 180)
                 Button("Reserve") { reserve() }
+                    .modifier(GlassStyle())
                     .disabled(Int(reservePort) == nil)
                 if let reserveError {
                     Text(reserveError).font(.caption).foregroundStyle(.red)
@@ -298,7 +365,7 @@ struct PortsView: View {
                             .buttonStyle(.borderless)
                         }
                         .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(.quaternary, in: Capsule())
+                        .modifier(GlassCapsule(tinted: false))
                     }
                     Spacer()
                 }

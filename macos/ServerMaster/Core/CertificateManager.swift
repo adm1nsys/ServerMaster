@@ -12,8 +12,13 @@ nonisolated struct CertificatePair: Identifiable, Sendable, Hashable {
     var certificatePath: String
     var privateKeyPath: String
     var subject: String?
+    /// Who signed it. A certificate issued by the mkcert local authority is
+    /// trusted by browsers; one we made with openssl never will be.
+    var issuer: String?
     var notAfter: Date?
     var domains: [String] = []
+
+    var isFromMkcert: Bool { issuer?.contains("mkcert") == true }
 
     var isExpired: Bool {
         guard let notAfter else { return false }
@@ -194,25 +199,102 @@ final class CertificateManager {
         status.trustedInSystem = trusted.succeeded
     }
 
+    /// Whether a browser will accept this certificate without complaining.
+    /// Being signed by mkcert is not enough on its own — its authority also has
+    /// to be in the system keychain, which is a separate, password-guarded step.
+    func isTrusted(_ pair: CertificatePair) -> Bool {
+        pair.isFromMkcert && mkcert.caExists && mkcert.trustedInSystem
+    }
+
+    /// Installs mkcert through Homebrew. `nss` comes with it because without it
+    /// Firefox keeps warning even after the authority is trusted everywhere else.
+    func installMkcert(log: ConsoleLog) async -> Bool {
+        guard ShellEnvironment.shared.which("brew") != nil else {
+            log.append(String(localized: "Homebrew is needed to install mkcert."), stream: .stderr)
+            return false
+        }
+        isWorking = true
+        defer { isWorking = false }
+
+        log.system(String(localized: "Installing mkcert…"))
+        let result = await ProcessRunner.shell("brew install mkcert nss", timeout: 1800)
+        if !result.combined.isEmpty { log.append(result.combined, stream: .stdout) }
+        ShellEnvironment.shared.invalidate()
+        await refreshMkcertStatus()
+
+        log.system(mkcert.available
+                   ? String(localized: "mkcert is installed.")
+                   : String(localized: "mkcert did not install. The log above says why."))
+        return mkcert.available
+    }
+
+    /// Everything needed for a certificate a browser accepts silently: install
+    /// mkcert if it is missing, put its authority in the keychain if it is not
+    /// there, then issue the certificate. Each step is skipped when already done.
+    ///
+    /// Returns the pair, or throws with the step that failed.
+    func makeTrustedCertificate(name: String, domains: String, log: ConsoleLog) async throws -> CertificatePair {
+        await refreshMkcertStatus()
+
+        if !mkcert.available {
+            guard await installMkcert(log: log) else {
+                throw CertError.failed(String(localized: "mkcert could not be installed."))
+            }
+        }
+
+        if !mkcert.trustedInSystem {
+            log.system(String(localized: "Adding the local authority to the keychain — macOS will ask for your password."))
+            let install = await installMkcertCA()
+            await refreshMkcertStatus()
+            guard mkcert.trustedInSystem else {
+                throw CertError.failed(install.stderr.isEmpty
+                                       ? String(localized: "The local authority was not installed. Without it the browser still warns.")
+                                       : install.stderr)
+            }
+        }
+
+        let pair = try await generateWithMkcert(name: name, domains: domains)
+        log.system(String(localized: "Certificate “\(name)” is ready and trusted."))
+        return pair
+    }
+
     /// Add the mkcert local CA to the system keychain (will ask for a password).
+    /// Puts the mkcert authority into the system keychain.
+    ///
+    /// Run as the user, deliberately. `mkcert -install` calls
+    /// SecTrustSettingsSetTrustSettings, which needs an interactive authorization
+    /// dialog — and escalating to root first with osascript takes away the very
+    /// session that dialog needs, failing with “the authorization was denied
+    /// since no user interaction was possible”. macOS asks for the password
+    /// itself, in its own window, which is also the safer arrangement: the app
+    /// never handles it.
     func installMkcertCA() async -> CommandResult {
         guard let binary = ShellEnvironment.shared.which("mkcert") else {
-            return CommandResult(exitCode: 127, stdout: "", stderr: String(localized: "mkcert is not installed."))
+            return CommandResult(exitCode: 127, stdout: "",
+                                 stderr: String(localized: "mkcert is not installed."))
         }
         isWorking = true
         defer { isWorking = false }
 
         let caRoot = mkcert.caRoot ?? (NSHomeDirectory() + "/Library/Application Support/mkcert")
+        var result = await ProcessRunner.run(binary, ["-install"],
+                                             env: ["CAROOT": caRoot],
+                                             timeout: 180)
+        await refreshMkcertStatus()
+        if mkcert.trustedInSystem { return result }
 
-        // The command runs as root, so CAROOT is set explicitly — otherwise the CA ends
-        // up in root's home folder. After installing, the files are handed back to the
-        // user so ordinary mkcert runs can read them.
-        let command = "CAROOT=\(ProcessRunner.shellQuote(caRoot)) \(ProcessRunner.shellQuote(binary)) -install"
-            + " && /usr/sbin/chown -R \(getuid()):\(getgid()) \(ProcessRunner.shellQuote(caRoot))"
+        // Some systems refuse the interactive route — a locked keychain, a
+        // managed Mac, or the dialog being dismissed. Falling back to adding the
+        // certificate as root works because at that point nothing needs a prompt.
+        let rootCA = caRoot + "/rootCA.pem"
+        guard FileManager.default.fileExists(atPath: rootCA) else { return result }
 
-        let result = await ProcessRunner.runAsAdmin(
+        let command = "/usr/bin/security add-trusted-cert -d -r trustRoot"
+            + " -k /Library/Keychains/System.keychain "
+            + ProcessRunner.shellQuote(rootCA)
+        result = await ProcessRunner.runAsAdmin(
             command,
-            prompt: String(localized: "ServerMaster wants to add the local mkcert certificate authority to the system keychain."))
+            prompt: String(localized: "ServerMaster wants to add the local mkcert authority to the system keychain."))
         await refreshMkcertStatus()
         return result
     }
@@ -254,7 +336,7 @@ final class CertificateManager {
     private nonisolated static func enrich(_ pair: inout CertificatePair) async {
         let result = await ProcessRunner.run("openssl",
                                              ["x509", "-in", pair.certificatePath, "-noout",
-                                              "-subject", "-enddate", "-ext", "subjectAltName"],
+                                              "-subject", "-issuer", "-enddate", "-ext", "subjectAltName"],
                                              timeout: 20)
         guard result.succeeded else { return }
 
@@ -262,6 +344,8 @@ final class CertificateManager {
             let text = String(line).trimmingCharacters(in: .whitespaces)
             if text.hasPrefix("subject=") {
                 pair.subject = String(text.dropFirst("subject=".count)).trimmingCharacters(in: .whitespaces)
+            } else if text.hasPrefix("issuer=") {
+                pair.issuer = String(text.dropFirst("issuer=".count)).trimmingCharacters(in: .whitespaces)
             } else if text.hasPrefix("notAfter=") {
                 pair.notAfter = parseOpenSSLDate(String(text.dropFirst("notAfter=".count)))
             } else if text.contains("DNS:") || text.contains("IP Address:") {

@@ -37,7 +37,16 @@
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "25BF0DBE3041F9F200D437E4"
                BuildableName = "ServerMasterTests.xctest"
-               BlueprintName = "ServerMasterTests"
+               ReferencedContainer = "container:ServerMaster.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "25BF0DC83041F9F200D437E4"
+               BuildableName = "ServerMasterUITests.xctest"
                ReferencedContainer = "container:ServerMaster.xcodeproj">
             </BuildableReference>
          </TestableReference>
@@ -52,7 +61,8 @@
       ignoresPersistentStateOnLaunch = "NO"
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
-      allowLocationSimulation = "YES">
+      allowLocationSimulation = "YES"
+      queueDebuggingEnabled = "No">
       <BuildableProductRunnable
          runnableDebuggingMode = "0">
          <BuildableReference

@@ -6,6 +6,7 @@
 import Foundation
 import Observation
 import AppKit
+import WidgetKit
 
 nonisolated enum SidebarSection: String, CaseIterable, Identifiable, Sendable {
     case control      = "control"
@@ -14,10 +15,25 @@ nonisolated enum SidebarSection: String, CaseIterable, Identifiable, Sendable {
     case profiles     = "profiles"
     case database     = "database"
     case ports        = "ports"
+    case backups      = "backups"
+    case diagnostics  = "diagnostics"
+    case files        = "files"
+    case commandLine  = "commandLine"
     case settings     = "settings"
     case about        = "about"
 
     var id: String { rawValue }
+
+    /// Sections tied to a feature that has not been released yet are simply not
+    /// there. See Features.swift for why finished work waits.
+    static var visible: [SidebarSection] {
+        allCases.filter { section in
+            switch section {
+            case .commandLine: return Features.isOn(.commandLineTool)
+            default:           return true
+            }
+        }
+    }
 
     var title: String {
         switch self {
@@ -27,9 +43,38 @@ nonisolated enum SidebarSection: String, CaseIterable, Identifiable, Sendable {
         case .profiles:     return String(localized: "Profiles")
         case .database:     return String(localized: "Database")
         case .ports:        return String(localized: "Ports")
+        case .backups:      return String(localized: "Backups")
+        case .diagnostics:  return String(localized: "Diagnostics")
+        case .files:        return String(localized: "Files")
+        case .commandLine:  return String(localized: "Command line")
         case .settings:     return String(localized: "Settings")
         case .about:        return String(localized: "About")
         }
+    }
+
+    /// Which group in the sidebar this belongs to.
+    ///
+    /// Here rather than in the view on purpose: the sidebar used to be a
+    /// hand-written list of rows, so a section could be added to this enum, be
+    /// given a title, an icon and a screen, and still be unreachable because
+    /// nobody remembered the one list that decides what is shown. Now the list
+    /// is derived, and a new case cannot go missing.
+    enum Group: String, CaseIterable {
+        case server = "Server"
+        case configuration = "Configuration"
+    }
+
+    var group: Group {
+        switch self {
+        case .control, .console, .database, .ports, .files:
+            return .server
+        case .profiles, .dependencies, .backups, .diagnostics, .commandLine, .settings, .about:
+            return .configuration
+        }
+    }
+
+    static func visible(in group: Group) -> [SidebarSection] {
+        visible.filter { $0.group == group }
     }
 
     var symbol: String {
@@ -40,6 +85,10 @@ nonisolated enum SidebarSection: String, CaseIterable, Identifiable, Sendable {
         case .profiles:     return "square.stack.3d.up"
         case .database:     return "cylinder.split.1x2"
         case .ports:        return "point.3.connected.trianglepath.dotted"
+        case .backups:      return "clock.arrow.circlepath"
+        case .diagnostics:  return "stethoscope"
+        case .files:        return "doc.text.magnifyingglass"
+        case .commandLine:  return "apple.terminal"
         case .settings:     return "gearshape"
         case .about:        return "info.circle"
         }
@@ -52,6 +101,10 @@ final class AppModel {
     // MARK: State
     var profiles: [ServerProfile] = []
     var settings = AppSettings()
+    let diagnostics = Diagnostics()
+    let trace = DomainTrace()
+    let health = HealthCheck()
+    let translations = TranslationStore()
     var section: SidebarSection = .control
     var selectedProfileID: UUID?
 
@@ -65,6 +118,18 @@ final class AppModel {
     let updates = UpdateChecker()
     let database = DatabaseService()
     let adminPanel = DatabaseAdminPanel()
+    let templates = TemplateStore()
+    /// Where installing something writes its output, wherever it was started from.
+    let installLog = ConsoleLog()
+    let commandLineTool = CommandLineTool()
+
+    /// Bumped whenever a feature gate is switched. The gates themselves live in
+    /// UserDefaults, which SwiftUI does not watch — without this the sidebar
+    /// keeps its old sections and turning developer mode on looks like it did
+    /// nothing at all.
+    private(set) var featureRevision = 0
+
+    func featuresChanged() { featureRevision += 1 }
     let certificates = CertificateManager()
     let reserver = PortReserver()
     let shell = ShellSession()
@@ -148,6 +213,13 @@ final class AppModel {
 
         await stage(String(localized: "Reading the environment…"), 0.15)
         _ = ShellEnvironment.shared.path
+        templates.load()
+        commandLineTool.refresh()
+        adoptExternalServers()
+        startWatchingProfilesFile()
+        startWatchingBrowserRequests()
+        startBackupSchedule()
+        publishStatus()
 
         if settings.checkDependenciesOnLaunch {
             await stage(String(localized: "Checking dependencies…"), 0.35)
@@ -232,6 +304,7 @@ final class AppModel {
             controller.stopImmediately()
         }
         runningOrder.removeAll { $0 == profile.id }
+        publishStatus()
         servers[profile.id] = nil
         removeRuntimeArtifacts(for: profile)
         profiles.removeAll { $0.id == profile.id }
@@ -275,6 +348,7 @@ final class AppModel {
             guard let self else { return }
             self.notify(String(localized: "Server “\(profile.name)” exited unexpectedly (code \(String(code)))."), isError: true)
             self.runningOrder.removeAll { $0 == profile.id }
+            self.publishStatus()
             if self.settings.restartOnCrash {
                 Task { await self.startServer(profile: profile) }
             }
@@ -303,6 +377,240 @@ final class AppModel {
 
     var activeCount: Int {
         servers.values.filter { $0.state.isActive }.count
+    }
+
+    /// Leaves the current picture on disk for the widget, which runs in its own
+    /// process and cannot see any of this otherwise. Called after every change
+    /// that alters what someone would see at a glance.
+    /// The last thing written, so a repeat publish costs nothing. `updated`
+    /// changes every time and is left out of the comparison.
+    private var lastPublished: [StatusSnapshot.Entry]?
+    private var lastPublishedExtras: (database: Bool, panel: String?)?
+
+    func publishStatus() {
+        let entries = profiles.map { profile -> StatusSnapshot.Entry in
+            let state = self.state(of: profile.id)
+            var detail: String?
+            var name = "stopped"
+            switch state {
+            case .running:  name = "running"
+            case .starting: name = "starting"
+            case .stopping: name = "starting"
+            case .failed(let message):
+                name = "failed"
+                detail = message
+            case .stopped:  name = "stopped"
+            }
+            return StatusSnapshot.Entry(id: profile.id.uuidString,
+                                        name: profile.name,
+                                        address: profile.address,
+                                        state: name,
+                                        detail: detail)
+        }
+        let extras = (database: database.state == .running,
+                      panel: adminPanel.address?.absoluteString)
+        guard entries != lastPublished
+                || extras.database != lastPublishedExtras?.database
+                || extras.panel != lastPublishedExtras?.panel else { return }
+        lastPublished = entries
+        lastPublishedExtras = extras
+
+        StatusSnapshot(updated: Date(),
+                       profiles: entries,
+                       databaseRunning: extras.database,
+                       adminPanelAddress: extras.panel).write()
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    // MARK: - Staying in step with the terminal
+
+    /// When the profiles file was last written, so a change made outside this
+    /// window can be noticed.
+    private var profilesFileStamp: Date?
+
+    /// Watches the profiles file and reloads when something else writes it.
+    ///
+    /// The window and the command line tool are meant to be independent: either
+    /// can be used without the other, and neither may block the other's work.
+    /// That only holds if the one holding a list in memory notices when the file
+    /// underneath it changes — otherwise the app would quietly write its stale
+    /// copy back and the terminal's edit would vanish with no error anywhere.
+    ///
+    /// Polling the modification date rather than watching the file descriptor:
+    /// the file is replaced atomically, which breaks a vnode watch on the first
+    /// write, and one stat every couple of seconds costs nothing.
+    // MARK: - Requests from the Safari extension
+
+    /// Ids already carried out, so a request is never run twice — the file is
+    /// removed after acting on it, but a failed removal must not turn into a
+    /// server that restarts every two seconds.
+    private var handledRequests: Set<String> = []
+
+    /// The Safari extension cannot start a server itself: it is sandboxed, as
+    /// every app extension on macOS must be. It leaves a request in the group
+    /// container instead, and this picks it up.
+    func startWatchingBrowserRequests() {
+        Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self else { return }
+                await self.handleBrowserRequest()
+            }
+        }
+    }
+
+    // MARK: - Backups
+
+    /// Built on first use rather than at init: the destination comes from
+    /// settings, which are not read yet when the model is created.
+    @ObservationIgnored private var snapshotStore: SnapshotStore?
+
+    var snapshots: SnapshotStore {
+        if let snapshotStore { return snapshotStore }
+        let store = SnapshotStore(destination: settings.backupDestination.isEmpty
+                                    ? SnapshotStore.defaultDestination()
+                                    : settings.backupDestination,
+                                  log: installLog)
+        snapshotStore = store
+        return store
+    }
+
+    /// Checked once a minute rather than scheduled to the second. A backup is
+    /// not a deadline: being a minute late costs nothing, and a timer that fires
+    /// exactly on the hour is a timer that fires while the machine is asleep and
+    /// never catches up.
+    func startBackupSchedule() {
+        Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                guard let self else { return }
+                await self.runScheduledBackupIfDue()
+            }
+        }
+    }
+
+    func runScheduledBackupIfDue() async {
+        guard settings.backupsEnabled, settings.backupEvery > 0 else { return }
+        let gap = Double(settings.backupEvery) * settings.backupUnit.seconds
+        if let last = settings.lastBackup, Date().timeIntervalSince(last) < gap { return }
+
+        let wanted = settings.backupProfileIDs.isEmpty
+            ? profiles
+            : profiles.filter { settings.backupProfileIDs.contains($0.id) }
+        guard !wanted.isEmpty else { return }
+
+        for profile in wanted {
+            await snapshots.take(profile: profile,
+                                 database: settings.backupIncludesDatabase ? database : nil,
+                                 trigger: .scheduled)
+        }
+        if settings.backupAllDatabases, database.state == .running {
+            for item in database.databases {
+                await snapshots.takeDatabase(named: item.name, database: database, trigger: .scheduled)
+            }
+        }
+        snapshots.prune(keep: settings.backupsToKeep)
+        settings.lastBackup = Date()
+        saveSettings()
+    }
+
+    private func handleBrowserRequest() async {
+        // Publishing on this tick too, not only where a state change is noticed.
+        // A server takes its time coming up — Joomla especially — and the state
+        // it settles into is not always reached inside the call that started it.
+        // Nothing is written unless something actually changed.
+        publishStatus()
+
+
+        let file = AppPaths.shared.appendingPathComponent("command.json")
+        guard let data = try? Data(contentsOf: file),
+              let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = request["id"] as? String,
+              let action = request["action"] as? String,
+              let profileID = request["profile"] as? String
+        else { return }
+
+        try? FileManager.default.removeItem(at: file)
+        guard !handledRequests.contains(id) else { return }
+        handledRequests.insert(id)
+
+        // A request left behind by a crash should not fire hours later, when
+        // whoever clicked it has long since moved on.
+        if let at = request["at"] as? TimeInterval,
+           Date().timeIntervalSinceReferenceDate - at > 60 { return }
+
+        guard let profile = profiles.first(where: { $0.id.uuidString == profileID }) else { return }
+        switch action {
+        case "start":   await startServer(profile: profile)
+        case "stop":    await stopServer(profileID: profile.id)
+        case "restart": await restartServer(profile: profile)
+        default:        break
+        }
+    }
+
+    func startWatchingProfilesFile() {
+        profilesFileStamp = profilesFileModified()
+        Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self else { return }
+                await MainActor.run { self.reloadProfilesIfChangedOutside() }
+            }
+        }
+    }
+
+    private func profilesFileModified() -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: AppPaths.profilesFile.path))?[.modificationDate] as? Date
+    }
+
+    private func loadProfilesFromDisk() -> [ServerProfile] {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let data = try? Data(contentsOf: AppPaths.profilesFile),
+              let decoded = try? decoder.decode([ServerProfile].self, from: data)
+        else { return profiles }
+        return decoded
+    }
+
+    private func reloadProfilesIfChangedOutside() {
+        guard let stamp = profilesFileModified() else { return }
+        guard let previous = profilesFileStamp else {
+            profilesFileStamp = stamp
+            return
+        }
+        guard stamp > previous else { return }
+        profilesFileStamp = stamp
+
+        // Our own save moved the date too; only a real difference is worth acting on.
+        let onDisk = loadProfilesFromDisk()
+        guard onDisk != profiles else { return }
+
+        let selected = selectedProfileID
+        profiles = onDisk
+        if let selected, !profiles.contains(where: { $0.id == selected }) {
+            selectedProfileID = profiles.first?.id
+        }
+        adoptExternalServers()
+        publishStatus()
+        notify(String(localized: "Profiles were changed outside this window and have been reloaded."))
+    }
+
+    /// Servers the terminal started, which this window does not own but must
+    /// still show — a running site missing from the list is the window lying.
+    func adoptExternalServers() {
+        for record in RunRegistry.all() where record.origin == .commandLine {
+            guard let id = UUID(uuidString: record.id),
+                  profiles.contains(where: { $0.id == id }),
+                  !runningOrder.contains(id)
+            else { continue }
+            runningOrder.append(id)
+        }
+        // And drop anything whose process has gone since we last looked.
+        let alive = Set(RunRegistry.all().map(\.id))
+        runningOrder.removeAll { id in
+            guard servers[id] == nil else { return false }   // ours, tracked properly
+            return !alive.contains(id.uuidString)
+        }
     }
 
     /// Combined state for the sidebar indicator.
@@ -346,13 +654,38 @@ final class AppModel {
         if case .failed(let message) = controller.state {
             runningOrder.removeAll { $0 == profile.id }
             notify(message, isError: true)
+        } else if let pid = controller.processIdentifier {
+            // Written down where the command line tool can see it, so a server
+            // started here can be stopped there and the two stay one system.
+            RunRegistry.record(RunRecord(id: profile.id.uuidString,
+                                         name: profile.name,
+                                         address: profile.address,
+                                         port: profile.port,
+                                         pid: pid,
+                                         origin: .app,
+                                         startedAt: Date()))
         }
+        // After the attempt either way: the widget and the command line tool read
+        // this file, and a server that started without being written down here is
+        // a server they would both report as stopped.
+        publishStatus()
     }
 
     func stopServer(profileID: UUID) async {
-        guard let controller = servers[profileID] else { return }
+        // A server the terminal started has no controller here, but it is still
+        // ours to stop — the registry knows where it is.
+        guard let controller = servers[profileID] else {
+            if let record = RunRegistry.find(profileID: profileID) {
+                _ = await RunRegistry.stop(record)
+                runningOrder.removeAll { $0 == profileID }
+                publishStatus()
+            }
+            return
+        }
         await controller.stop(settings: settings)
+        RunRegistry.forget(profileID)
         runningOrder.removeAll { $0 == profileID }
+        publishStatus()
     }
 
     func restartServer(profile: ServerProfile) async {
@@ -370,6 +703,7 @@ final class AppModel {
         flushPendingSaves()
         for tab in terminals { tab.session.terminate() }
         for controller in servers.values { controller.stopImmediately() }
+        for id in runningOrder { RunRegistry.forget(id) }
         adminPanel.stopSynchronously()
         database.stopImmediately()
         runningOrder.removeAll()
@@ -570,6 +904,7 @@ final class AppModel {
 
     func startDatabase() async {
         await database.start()
+        defer { publishStatus() }
         if case .failed(let message) = database.state {
             notify(message, isError: true)
         }
@@ -579,6 +914,35 @@ final class AppModel {
         // The panel serves this database and must not outlive it.
         adminPanel.stop()
         await database.stop()
+        publishStatus()
+    }
+
+    /// Brings the database up if needed and creates the database a new profile
+    /// asked for, so the person can go straight to the CMS installer.
+    func prepareDatabase(named name: String, for profile: ServerProfile) async {
+        if database.state != .running {
+            await database.start()
+        }
+        guard database.state == .running else {
+            notify(String(localized: "The database did not start; create it later on the Database screen."),
+                   isError: true)
+            return
+        }
+        if database.databases.contains(where: { $0.name == name }) {
+            notify(String(localized: "Database “\(name)” already exists — use it in the installer."))
+            return
+        }
+        // One account per database, named after it: a CMS installer wants a user
+        // and a password, and reusing root would tie every site together.
+        let result = await database.createDatabase(name: name,
+                                                   user: name,
+                                                   password: DatabaseAdminPanel.generatedPassword(length: 16))
+        if result.succeeded {
+            notify(String(localized: "Database “\(name)” is ready for “\(profile.name)”."))
+        } else {
+            notify(result.stderr.isEmpty ? String(localized: "Could not create the database.") : result.stderr,
+                   isError: true)
+        }
     }
 
     /// Opens the web admin panel, starting it if it is not up yet.
@@ -769,10 +1133,7 @@ final class AppModel {
         let defaults = AppSettings()
         var migrated = false
         if settings.updateRepository.isEmpty { settings.updateRepository = defaults.updateRepository; migrated = true }
-        if settings.updateVersionFile.isEmpty || settings.updateVersionFile == "lastversion.txt" {
-            settings.updateVersionFile = defaults.updateVersionFile
-            migrated = true
-        }
+        if settings.updateVersionFile.isEmpty { settings.updateVersionFile = defaults.updateVersionFile; migrated = true }
         if settings.updateBuildsFolder.isEmpty { settings.updateBuildsFolder = defaults.updateBuildsFolder; migrated = true }
         if migrated { saveSettings() }
 
@@ -790,6 +1151,9 @@ final class AppModel {
         encoder.dateEncodingStrategy = .iso8601
         if let data = try? encoder.encode(profiles) {
             try? data.write(to: AppPaths.profilesFile, options: .atomic)
+            // Remember our own write, or the watcher would read it back as a
+            // change from outside and announce it.
+            profilesFileStamp = profilesFileModified()
         }
     }
 

@@ -24,6 +24,35 @@ nonisolated enum AppPaths {
 
     static var home: URL { URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true) }
 
+    /// The one folder the app, the widget and the Safari extension can all
+    /// reach.
+    ///
+    /// The extensions are sandboxed — they have to be, macOS will not register
+    /// an extension that is not — so the app's own Application Support folder is
+    /// invisible to them. A group container is the supported way through, and
+    /// all three carry the group in their entitlements.
+    ///
+    /// Resolved through the container API when it works, and by path when it
+    /// does not: the command line tool has no entitlements of its own, but it is
+    /// not sandboxed either, so the plain path is open to it.
+    static let shared: URL = {
+        // The Team ID prefix is required on macOS: a group without it is not a
+        // valid container for a sandboxed process, and `containerURL` answers
+        // nil rather than complaining — which is why the widget and the Safari
+        // extension both reported that the app had never run.
+        let group = "88M5SYPGUR.com.adm1nsys.ServerMaster"
+        if let container = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: group) {
+            ensure(container)
+            return container
+        }
+        let byPath = home
+            .appendingPathComponent("Library/Group Containers", isDirectory: true)
+            .appendingPathComponent(group, isDirectory: true)
+        ensure(byPath)
+        return byPath
+    }()
+
     static func subdir(_ name: String) -> URL {
         let dir = support.appendingPathComponent(name, isDirectory: true)
         ensure(dir)

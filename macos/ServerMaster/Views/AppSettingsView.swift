@@ -5,8 +5,12 @@
 
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct AppSettingsView: View {
+
+    /// Bumped when a gate is toggled, so the sidebar and cards redraw at once.
+    @State private var pendingRefresh = 0
 
     @Environment(AppModel.self) private var model
     @State private var newPathEntry = ""
@@ -18,8 +22,102 @@ struct AppSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
 
-                SectionHeader(title: "App settings",
+                ScreenTitle(title: "App settings",
                               subtitle: "Defaults, console, ports and environment")
+
+                Card("Appearance", systemImage: "paintpalette") {
+                    Toggle("Moving background", isOn: $model.settings.backgroundEnabled)
+                        .onChange(of: model.settings.backgroundEnabled) { model.saveSettings() }
+                    Text("A mesh of colour behind every screen. It takes its colour from the servers that are running, so the window says what is happening before you have read a word.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack {
+                        Text("Colour").frame(width: 110, alignment: .leading)
+                        // The hue as a strip of the colour itself. A number from
+                        // 0 to 1 means nothing to anyone; the swatch does.
+                        LinearGradient(colors: (0...12).map {
+                            Color(hue: Double($0) / 12, saturation: 0.55, brightness: 0.55)
+                        }, startPoint: .leading, endPoint: .trailing)
+                            .frame(height: 10)
+                            .clipShape(Capsule())
+                        Slider(value: $model.settings.backgroundHue, in: 0...1)
+                            .frame(width: 200)
+                            .onChange(of: model.settings.backgroundHue) { model.saveSettings() }
+                        Circle()
+                            .fill(Color(hue: model.settings.backgroundHue,
+                                        saturation: 0.6, brightness: 0.6))
+                            .frame(width: 18, height: 18)
+                            .overlay(Circle().stroke(.quaternary))
+                    }
+                    .disabled(!model.settings.backgroundEnabled)
+
+                    HStack {
+                        Text("Speed").frame(width: 110, alignment: .leading)
+                        Slider(value: $model.settings.backgroundSpeed, in: 0...8) {
+                            EmptyView()
+                        } minimumValueLabel: {
+                            Text("still").font(.caption2).foregroundStyle(.secondary)
+                        } maximumValueLabel: {
+                            Text("fast").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        .frame(width: 260)
+                        .onChange(of: model.settings.backgroundSpeed) { model.saveSettings() }
+                        // A fixed box. Without it the label is as wide as
+                        // whatever it currently says — "held still" and "×1.0"
+                        // are different widths — so dragging the slider resized
+                        // the row and everything under it jumped.
+                        Text(model.settings.backgroundSpeed == 0
+                             ? "held still"
+                             : String(format: "×%.1f", model.settings.backgroundSpeed))
+                            .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                            .frame(width: 78, alignment: .leading)
+                    }
+                    .disabled(!model.settings.backgroundEnabled)
+
+                    HStack {
+                        Text("Colour amount").frame(width: 110, alignment: .leading)
+                        Slider(value: $model.settings.backgroundSaturation, in: 0...1) {
+                            EmptyView()
+                        } minimumValueLabel: {
+                            Text("grey").font(.caption2).foregroundStyle(.secondary)
+                        } maximumValueLabel: {
+                            Text("full").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        .frame(width: 260)
+                        .onChange(of: model.settings.backgroundSaturation) { model.saveSettings() }
+                        Text(model.settings.backgroundSaturation == 0
+                             ? "black and white"
+                             : String(format: "%.0f%%", model.settings.backgroundSaturation * 100))
+                            .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                            .frame(width: 96, alignment: .leading)
+                    }
+                    .disabled(!model.settings.backgroundEnabled)
+
+                    Toggle("Take the colour from running servers", isOn: $model.settings.backgroundFollowsServers)
+                        .onChange(of: model.settings.backgroundFollowsServers) { model.saveSettings() }
+                        .disabled(!model.settings.backgroundEnabled)
+                    Text("With this on, starting a server repaints the background with that profile's accent colour, and the colour chosen above applies only while nothing is running.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Divider()
+
+                    HStack {
+                        Text("Sidebar").frame(width: 110, alignment: .leading)
+                        Picker("", selection: $model.settings.sidebarStyle) {
+                            ForEach(SidebarStyle.allCases) { style in
+                                Text(style.title).tag(style)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 220)
+                        .onChange(of: model.settings.sidebarStyle) { model.saveSettings() }
+                        Spacer()
+                    }
+
+                }
 
                 Card("Profiles", systemImage: "star") {
                     Picker("Default profile", selection: $model.settings.defaultProfileID) {
@@ -182,6 +280,76 @@ struct AppSettingsView: View {
                            isOn: $model.settings.checkDependenciesOnLaunch)
                 }
 
+                if Features.isOn(.commandLineTool) {
+                Card("Command line", systemImage: "terminal") {
+                    Text("A servermaster command for scripts, Makefiles and AI agents. Every command can print JSON, and the exit codes say what went wrong.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    switch model.commandLineTool.state {
+                    case .working:
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Working…").font(.caption).foregroundStyle(.secondary)
+                        }
+
+                    case .installed(let path):
+                        HStack(spacing: 10) {
+                            Label("Installed", systemImage: "checkmark.circle.fill")
+                                .font(.caption).foregroundStyle(.green)
+                            Text(path)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Remove") { Task { await model.commandLineTool.uninstall() } }
+                                .modifier(ChipStyle())
+                        }
+                        Text("Try: servermaster list --json")
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+
+                    case .pointsElsewhere(let destination):
+                        // Two copies of the app, or one moved: silently
+                        // overwriting someone else's link would be rude.
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label("A servermaster command is already installed, pointing somewhere else.",
+                                  systemImage: "exclamationmark.triangle")
+                                .font(.caption).foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(destination)
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                            Button("Point it at this copy") { Task { await model.commandLineTool.install() } }
+                        }
+
+                    case .failed(let message):
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(message).font(.caption).foregroundStyle(.red)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button("Try again") { Task { await model.commandLineTool.install() } }
+                        }
+
+                    case .notInstalled:
+                        HStack(spacing: 10) {
+                            Button {
+                                Task { await model.commandLineTool.install() }
+                            } label: {
+                                Label("Install the command", systemImage: "arrow.down.to.line")
+                            }
+                            .disabled(!model.commandLineTool.isAvailable)
+                            Text("Puts a link in /usr/local/bin. Asks for your password once.")
+                                .font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if !model.commandLineTool.isAvailable {
+                            Text("This build does not carry the tool yet.")
+                                .font(.caption).foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+
+                }
+
                 Card("Database admin panel", systemImage: "tablecells.badge.ellipsis") {
                     Picker("Panel", selection: $model.settings.databaseAdminTool) {
                         ForEach(DatabaseAdminTool.allCases) { tool in
@@ -207,6 +375,65 @@ struct AppSettingsView: View {
                     Text("A port of its own, so it never collides with a profile. Reachable from this Mac only.")
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Card("Developer mode", systemImage: "hammer") {
+                    Toggle(isOn: Binding(
+                        get: { Features.developerMode },
+                        set: {
+                            Features.developerMode = $0
+                            model.featuresChanged()
+                            pendingRefresh += 1
+                        }
+                    )) {
+                        Text("Show beta features")
+                    }
+                    Text("Beta features are finished but not released yet, and they may be unstable. Each one goes out in its own version so a problem in one does not arrive alongside four others. Switch this off and the app is exactly what everyone else has.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if Features.developerMode {
+                        Label("Beta features are on. Anything unusual here is worth reporting rather than working around.",
+                              systemImage: "exclamationmark.triangle")
+                            .font(.caption).foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if Features.developerMode, !Features.pending.isEmpty {
+                    Card("Beta features", systemImage: "hourglass") {
+                        Text("Finished and waiting for the version it is tied to. Switch one on to use it now — a feature that sits behind a gate untouched is not seasoned, only late.")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        ForEach(Features.pending) { feature in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Toggle(isOn: Binding(
+                                    get: { Features.isOn(feature) },
+                                    set: {
+                                        Features.setOverride(feature, on: $0)
+                                        model.featuresChanged()
+                                        pendingRefresh += 1
+                                    }
+                                )) {
+                                    HStack(spacing: 6) {
+                                        Text(feature.title)
+                                        Text("from \(feature.availableFrom)")
+                                            .font(.caption2).foregroundStyle(.secondary)
+                                            .padding(.horizontal, 5).padding(.vertical, 1)
+                                            .background(.quaternary, in: Capsule())
+                                    }
+                                }
+                                Text(feature.settlingNote)
+                                    .font(.caption).foregroundStyle(.tertiary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(.vertical, 2)
+                        }
+
+                        Text("Switching one on changes this Mac only — it never reaches anyone else.")
+                            .font(.caption2).foregroundStyle(.tertiary)
+                    }
+                    .id(pendingRefresh)
                 }
 
                 Card("Certificates", systemImage: "lock") {
@@ -241,9 +468,77 @@ struct AppSettingsView: View {
                          : String(localized: "The language change takes effect after restarting the app."))
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    Label("The command line tool is English only. Its output is read by scripts as often as by people, and a translated message is one a script cannot match on.",
+                          systemImage: "apple.terminal")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Divider()
+
+                    // Packs: taken out, edited, put back.
+                    if let stale = model.translations.mismatched {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("An imported translation was made for ServerMaster \(stale.appVersion), and this is \(AppInfo.version).")
+                                    .fontWeight(.medium)
+                                Text("Strings added since then show in English, and any that changed meaning may read wrong. Export a fresh pack and move your wording into it.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    ForEach(Array(model.translations.installed.values), id: \.language) { pack in
+                        HStack {
+                            Image(systemName: pack.matchesApp ? "checkmark.circle" : "exclamationmark.triangle")
+                                .foregroundStyle(pack.matchesApp ? Color.green : Color.orange)
+                            Text(AppLanguage.title(for: pack.language))
+                            Text(pack.summary)
+                                .font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Remove") { model.translations.remove(language: pack.language) }
+                                .modifier(ChipStyle())
+                        }
+                    }
+
+                    HStack(spacing: 8) {
+                        Button("Export translation…") { exportTranslation() }
+                            .modifier(ChipStyle())
+                        Button("Import translation…") { importTranslation() }
+                            .modifier(ChipStyle())
+                        Spacer()
+                    }
+
+                    Text("An exported pack is a plain text file: one line per string, the English key on the left and the translation on the right. Edit it in any editor and import it back — an imported pack takes precedence over the built-in one, and anything left out falls back to it.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Card("Updates", systemImage: "arrow.down.circle") {
+                    HStack(spacing: 8) {
+                        // Drawn but not wired up, and disabled so it cannot be
+                        // switched on. Shown rather than hidden because the shape
+                        // of this card is settled now — a row that appears later
+                        // moves everything under it.
+                        Toggle("Update automatically", isOn: .constant(false))
+                            .disabled(true)
+                        Text("SOON")
+                            .font(.caption2).fontWeight(.semibold)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(.quaternary, in: Capsule())
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    Text("For now the app only tells you a new version exists and gives you the link. Downloading and replacing itself is not written yet.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Divider()
+
                     HStack {
                         Text("Repository").frame(minWidth: 130, idealWidth: 190, maxWidth: 210, alignment: .leading)
                         TextField("owner/repo or a GitHub link",
@@ -264,7 +559,7 @@ struct AppSettingsView: View {
 
                     if model.updates.isConfigured {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("The app reads the version number from the update manifest and, if it is higher than the installed one, gives you a link to the GitHub release. Nothing is downloaded or run automatically.")
+                            Text("The app reads the version number from a file in the repository root and, if it is higher than the installed one, gives you a link to the build folder. Nothing is downloaded or run automatically.")
                                 .font(.caption).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(model.updates.versionFileURL)
@@ -272,7 +567,7 @@ struct AppSettingsView: View {
                                 .foregroundStyle(.tertiary)
                                 .textSelection(.enabled)
                                 .lineLimit(1).truncationMode(.middle)
-                            Text("Release downloads are published in GitHub Releases. We look for the manifest in the main and master branches.")
+                            Text("The build is expected in \(model.updates.buildsFolder)/<version>. We look in the main and master branches.")
                                 .font(.caption2).foregroundStyle(.tertiary)
                         }
                     } else {
@@ -295,7 +590,7 @@ struct AppSettingsView: View {
 
                         if model.updates.isConfigured {
                             Button("Open repository") { model.updates.openRepository() }
-                                .buttonStyle(.link)
+                                .modifier(ChipStyle())
                         }
                         if model.updates.state.isChecking { ProgressView().controlSize(.small) }
                         Spacer()
@@ -335,7 +630,7 @@ struct AppSettingsView: View {
                                 \(AppInfo.buildIdentifier.summary ?? "")
                                 """, forType: .string)
                         }
-                        .buttonStyle(.link)
+                        .modifier(ChipStyle())
                     }
                 }
 
@@ -353,8 +648,8 @@ struct AppSettingsView: View {
                     }
                 }
             }
-            .padding(20)
-            .frame(maxWidth: 820, alignment: .leading)
+            .padding(36)
+//.frame(maxWidth: 820, alignment: .leading)
         }
         .frame(maxWidth: .infinity)
         .onChange(of: model.settings) { _, _ in
@@ -395,10 +690,16 @@ struct AppSettingsView: View {
                 }
                 Text("Installed \(AppInfo.version), repository has \(release.version) (branch \(release.branch)).")
                     .font(.caption).foregroundStyle(.secondary)
-                Button("Open release") {
+                if !release.buildFolderExists {
+                    Label("Folder \(model.updates.buildsFolder)/\(release.version) not found — the repository root will open instead.",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Button(release.buildFolderExists ? "Open the build folder" : "Open repository") {
                     model.updates.openReleasePage()
                 }
-                .buttonStyle(.link)
+                .modifier(ChipStyle())
             }
             .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -436,4 +737,56 @@ struct AppSettingsView: View {
         }
         model.notify(removed == 0 ? "No old logs found." : "Files removed: \(removed).")
     }
+
+    // MARK: - Translation packs
+
+    /// Writes out every key the app knows, with the current translation, so the
+    /// file is a starting point rather than an empty form.
+    private func exportTranslation() {
+        let code = AppLanguage.effective?.code ?? "en"
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "\(code).strings"
+        panel.allowedContentTypes = [.plainText]
+        panel.message = String(localized: "Save the translation for editing")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        if TranslationStore.export(language: code, to: url) {
+            model.notify(String(localized: "Translation exported to \(url.lastPathComponent)."))
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } else {
+            model.notify(String(localized: "The translation could not be written."), isError: true)
+        }
+    }
+
+    private func importTranslation() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.message = String(localized: "Choose an exported translation file")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        switch model.translations.importPack(from: url) {
+        case .installed(let pack):
+            TranslationOverride.shared.refresh()
+            model.notify(pack.matchesApp
+                         ? String(localized: "Translation imported. Restart the app to see it.")
+                         : String(localized: "Imported, but it was made for ServerMaster \(pack.appVersion) — some strings will stay in English."),
+                         isError: !pack.matchesApp)
+        case .notAStringsFile:
+            model.notify(String(localized: "That file is not a translation the app can read."), isError: true)
+        case .couldNotSave(let message):
+            model.notify(message, isError: true)
+        }
+    }
+
+    private struct ChipStyle: ViewModifier {
+        func body(content: Content) -> some View {
+            if #available(macOS 26.0, *) {
+                content.buttonStyle(.glass).controlSize(.small).font(.caption)
+            } else {
+                content.buttonStyle(.bordered).controlSize(.small).font(.caption)
+            }
+        }
+    }
+
 }

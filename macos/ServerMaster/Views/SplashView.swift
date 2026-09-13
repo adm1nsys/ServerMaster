@@ -11,9 +11,27 @@ struct SplashView: View {
 
     let stage: String
     let progress: Double
+    /// Read straight from disk rather than from the model: this is shown while
+    /// the model is still being built, so there is nothing to ask yet.
+    var settings: AppSettings = AppSettings.load()
 
     var body: some View {
-        VStack(spacing: 20) {
+        ZStack {
+            if settings.backgroundEnabled {
+                AmbientBackground(colours: [],
+                                  isActive: false,
+                                  hue: settings.backgroundHue,
+                                  speed: settings.backgroundSpeed,
+                                  saturation: settings.backgroundSaturation)
+            }
+            card
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(settings.backgroundEnabled ? AnyShapeStyle(.clear) : AnyShapeStyle(.background))
+    }
+
+    private var card: some View {
+        let content = VStack(spacing: 20) {
             LogoView(size: 104)
 
             VStack(spacing: 5) {
@@ -35,8 +53,15 @@ struct SplashView: View {
                     .animation(.default, value: stage)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.background)
+        .padding(36)
+
+        return Group {
+            if #available(macOS 26.0, *) {
+                content.glassEffect(.regular, in: .rect(cornerRadius: 18))
+            } else {
+                content.background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+            }
+        }
     }
 }
 

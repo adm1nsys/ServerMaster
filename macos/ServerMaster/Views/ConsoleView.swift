@@ -26,10 +26,16 @@ struct ConsoleView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            tabBar
-            Divider()
-            toolbar
-            Divider()
+            // No dividers between these. The two bars are glass panels floating
+            // over the background, and a hairline across the window is the thing
+            // that made this screen look like a form.
+            VStack(spacing: 8) {
+                tabBar
+                toolbar
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
 
             switch tab {
             case .terminal(let id):
@@ -60,9 +66,20 @@ struct ConsoleView: View {
 
     // MARK: - Tabs
 
+    @Namespace private var glass
+
+    @ViewBuilder
     private var tabBar: some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: 8) { tabRow }
+        } else {
+            tabRow
+        }
+    }
+
+    private var tabRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 ForEach(model.terminals) { item in
                     if renamingTerminal == item.id {
                         TextField("", text: Binding(
@@ -96,8 +113,8 @@ struct ConsoleView: View {
                 } label: {
                     Image(systemName: "plus")
                         .font(.caption)
-                        .padding(.horizontal, 7).padding(.vertical, 5)
-                        .background(.quaternary, in: Capsule())
+                        .padding(.horizontal, 9).padding(.vertical, 7)
+                        .modifier(TabGlass(isSelected: false))
                 }
                 .buttonStyle(.plain)
                 .help("New terminal tab")
@@ -111,9 +128,9 @@ struct ConsoleView: View {
                          tab: .server(profile.id))
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.vertical, 2)
         }
+        .scrollClipDisabled()
     }
 
     /// Profiles with something to show: running, or with a launch history.
@@ -159,14 +176,35 @@ struct ConsoleView: View {
                 }
             }
             .font(.callout)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(isSelected ? AnyShapeStyle(Color.accentColor.opacity(0.18))
-                                   : AnyShapeStyle(.quaternary),
-                        in: Capsule())
-            .overlay(Capsule().stroke(isSelected ? Color.accentColor.opacity(0.5) : .clear))
+            .fontWeight(isSelected ? .medium : .regular)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .modifier(TabGlass(isSelected: isSelected))
         }
         .buttonStyle(.plain)
+    }
+
+    /// Glass on a tab, and the selected one carries more of it.
+    ///
+    /// Both states get glass rather than only the selected one: a row of tabs is
+    /// a row of the same thing, and giving half of them a different material
+    /// makes the unselected ones read as disabled.
+    private struct TabGlass: ViewModifier {
+        let isSelected: Bool
+
+        func body(content: Content) -> some View {
+            if #available(macOS 26.0, *) {
+                content
+                    .glassEffect(isSelected ? .regular.tint(.accentColor.opacity(0.35)).interactive()
+                                            : .regular.interactive(),
+                                 in: .capsule)
+            } else {
+                content
+                    .background(isSelected ? AnyShapeStyle(Color.accentColor.opacity(0.18))
+                                           : AnyShapeStyle(.quaternary),
+                                in: Capsule())
+            }
+        }
     }
 
     // MARK: - Toolbar
@@ -199,13 +237,18 @@ struct ConsoleView: View {
 
             Spacer()
 
-            TextField("Filter", text: $filter)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 170)
+            // Everything that used to sit in a strip along the bottom. It was
+            // the only part of the window that was neither content nor chrome,
+            // and it separated the log from the edge for no reason — the actions
+            // belong with the other controls.
+            tabActions
+
+            filterField
 
             if let currentLog {
                 Text("\(currentLog.lines.count) lines")
                     .font(.caption2).foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
 
             Menu {
@@ -229,6 +272,14 @@ struct ConsoleView: View {
                 Button("Logs folder") {
                     NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: AppPaths.logs.path)
                 }
+                // The file this tab is writing to. It used to be a caption in
+                // the strip along the bottom; here it is something you can act
+                // on rather than only read.
+                if let url = currentLog?.fileURL {
+                    Button("Reveal \(url.lastPathComponent)") {
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    }
+                }
                 if case .terminal(let id) = tab {
                     Divider()
                     Button("Go to the profile root") {
@@ -249,8 +300,104 @@ struct ConsoleView: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .modifier(BarGlass())
+    }
+
+    /// The toolbar itself on glass, so it reads as a panel over the log rather
+    /// than as another band of window.
+    private struct BarGlass: ViewModifier {
+        func body(content: Content) -> some View {
+            if #available(macOS 26.0, *) {
+                content.glassEffect(.regular, in: .rect(cornerRadius: 12))
+            } else {
+                content.background(.bar, in: RoundedRectangle(cornerRadius: 12))
+            }
+        }
+    }
+
+    /// A search field that looks like the rest of the screen. A rounded-border
+    /// text field next to a row of glass is the one control that still looks
+    /// like a settings dialog.
+    private var filterField: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "line.3.horizontal.decrease")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField("Filter", text: $filter)
+                .textFieldStyle(.plain)
+                .font(.callout)
+                .frame(width: 130)
+            if !filter.isEmpty {
+                Button { filter = "" } label: {
+                    Image(systemName: "xmark.circle.fill").font(.caption)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .modifier(TabGlass(isSelected: false))
+    }
+
+    /// Start, stop, restart, open — whichever of them applies to the tab in
+    /// front of you.
+    @ViewBuilder
+    private var tabActions: some View {
+        switch tab {
+        case .server(let id):
+            if let profile = model.profiles.first(where: { $0.id == id }),
+               let controller = model.existingController(for: id) {
+                if controller.state.isActive {
+                    consoleButton("Stop", "stop.fill") {
+                        Task { await model.stopServer(profileID: id) }
+                    }
+                    consoleButton("Restart", "arrow.clockwise") {
+                        Task { await model.restartServer(profile: profile) }
+                    }
+                } else {
+                    consoleButton("Start", "play.fill", prominent: true) {
+                        Task { await model.startServer(profile: profile) }
+                    }
+                }
+                if controller.state == .running {
+                    consoleButton("Open", "safari") { controller.openInBrowser() }
+                }
+            }
+
+        case .terminal(let id):
+            if let item = model.terminal(id) {
+                if item.session.isRunning {
+                    Text("\(String(item.session.terminal.columns))×\(String(item.session.terminal.rows))")
+                        .font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
+                    consoleButton("Interrupt", "hand.raised") { item.session.interrupt() }
+                } else {
+                    Label("Shell stopped", systemImage: "exclamationmark.triangle")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+                consoleButton("Restart", "arrow.clockwise") { model.restartTerminal(id) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func consoleButton(_ title: LocalizedStringKey, _ symbol: String,
+                               prominent: Bool = false,
+                               _ run: @escaping () -> Void) -> some View {
+        let button = Button(action: run) {
+            Label(title, systemImage: symbol).font(.callout)
+        }
+        if #available(macOS 26.0, *) {
+            if prominent {
+                button.buttonStyle(.glassProminent).controlSize(.small)
+            } else {
+                button.buttonStyle(.glass).controlSize(.small)
+            }
+        } else {
+            button.buttonStyle(.bordered).controlSize(.small)
+        }
     }
 
     private var currentLog: ConsoleLog? {
@@ -263,81 +410,18 @@ struct ConsoleView: View {
     // MARK: - Server log
 
     private func serverConsole(id: UUID, controller: ServerController) -> some View {
-        VStack(spacing: 0) {
-            LogOutputView(log: controller.log,
-                          fontSize: model.settings.consoleFontSize,
-                          autoScroll: model.settings.autoScrollConsole,
-                          filter: filter)
-
-            Divider()
-            HStack(spacing: 10) {
-                if let profile = model.profiles.first(where: { $0.id == id }) {
-                    if controller.state.isActive {
-                        Button {
-                            Task { await model.stopServer(profileID: id) }
-                        } label: {
-                            Label("Stop", systemImage: "stop.fill")
-                        }
-                        Button {
-                            Task { await model.restartServer(profile: profile) }
-                        } label: {
-                            Label("Restart", systemImage: "arrow.clockwise")
-                        }
-                    } else {
-                        Button {
-                            Task { await model.startServer(profile: profile) }
-                        } label: {
-                            Label("Start", systemImage: "play.fill")
-                        }
-                    }
-                }
-
-                if controller.state == .running {
-                    Button {
-                        controller.openInBrowser()
-                    } label: {
-                        Label("Open", systemImage: "safari")
-                    }
-                }
-
-                Spacer()
-
-                if let url = controller.log.fileURL {
-                    Text("→ \(url.lastPathComponent)")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-        }
+        // Just the log. Everything that used to be in a strip underneath is in
+        // the toolbar above, where the rest of the controls are.
+        LogOutputView(log: controller.log,
+                      fontSize: model.settings.consoleFontSize,
+                      autoScroll: model.settings.autoScrollConsole,
+                      filter: filter)
     }
 
     // MARK: - Terminal
 
     private func terminalConsole(_ item: AppModel.TerminalTab) -> some View {
-        VStack(spacing: 0) {
-            TerminalView(session: item.session, fontSize: model.settings.consoleFontSize)
-
-            Divider()
-            HStack(spacing: 10) {
-                if item.session.isRunning {
-                    Text("\(String(item.session.terminal.columns))×\(String(item.session.terminal.rows))")
-                        .font(.caption2).foregroundStyle(.secondary)
-                    Button("Interrupt") { item.session.interrupt() }
-                        .help("Ctrl-C")
-                } else {
-                    Label("Shell is not running", systemImage: "exclamationmark.triangle")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Button("Restart") { model.restartTerminal(item.id) }
-                Spacer()
-                Button("Open external terminal") { openExternalTerminal() }
-                    .buttonStyle(.link)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(.bar)
-        }
+        TerminalView(session: item.session, fontSize: model.settings.consoleFontSize)
     }
 
     private func startRenaming(_ id: UUID) {

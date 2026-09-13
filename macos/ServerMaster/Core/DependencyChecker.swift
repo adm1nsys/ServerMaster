@@ -75,9 +75,9 @@ nonisolated struct Dependency: Identifiable, Sendable, Hashable {
                    installCommand: "brew install nginx", required: false,
                    website: "https://nginx.org"),
         Dependency(command: "httpd", title: "Apache",
-                   summary: String(localized: "Web server that honours .htaccess — ships with macOS"),
+                   summary: String(localized: "Reads .htaccess. macOS carries a copy, but only the Homebrew one can serve a site kept in Documents, Desktop or Downloads."),
                    kind: .server, versionArguments: ["-v"],
-                   installCommand: "brew install httpd", required: false,
+                   installCommand: "brew install httpd", required: true,
                    website: "https://httpd.apache.org"),
         Dependency(command: "caddy", title: "Caddy", summary: String(localized: "Web server with automatic HTTPS"),
                    kind: .server, versionArguments: ["version"],
@@ -140,10 +140,16 @@ nonisolated enum PHPVersions {
                 }
             }
         }
-        // A plain php with no version in the name — the main installation.
+        // The plain `php` formula, which has no version in its path. It is very
+        // often the same version as one already found through php@X.Y — listing
+        // it again would show one version twice, each with its own buttons.
         if let defaultBinary, !found.contains(where: \.isDefault) {
             let version = defaultVersion() ?? "?"
-            found.append(Installed(version: version, binary: defaultBinary, isDefault: true))
+            if let index = found.firstIndex(where: { $0.version == version }) {
+                found[index].isDefault = true
+            } else {
+                found.append(Installed(version: version, binary: defaultBinary, isDefault: true))
+            }
         }
         return found.sorted { $0.version < $1.version }
     }
@@ -204,6 +210,8 @@ final class DependencyChecker {
     private(set) var lastCheck: Date?
     private(set) var phpExtensions: Set<String> = []
     private(set) var phpVersions: [PHPVersions.Installed] = []
+    /// Versions being installed or removed right now, so the UI can show it.
+    private(set) var installingPHP: Set<String> = []
 
     func status(for command: String) -> DependencyStatus {
         statuses[command] ?? DependencyStatus()
@@ -269,6 +277,51 @@ final class DependencyChecker {
     }
 
     /// Installing a dependency — progress goes to the console that was passed in.
+    /// Installs a PHP version through Homebrew. Picking a version the profile
+    /// needs and being told to go and type a brew command is a poor answer when
+    /// the app already knows how to run brew.
+    func installPHP(version: String, log: ConsoleLog) async -> Bool {
+        let wanted = version.trimmingCharacters(in: .whitespaces)
+        guard PHPVersions.known.contains(wanted) else {
+            log.append(String(localized: "PHP \(wanted) is not a version Homebrew offers."), stream: .stderr)
+            return false
+        }
+        guard ShellEnvironment.shared.which("brew") != nil else {
+            log.append(String(localized: "Homebrew is not installed — see the Dependencies screen."), stream: .stderr)
+            return false
+        }
+
+        installingPHP.insert(wanted)
+        defer { installingPHP.remove(wanted) }
+
+        log.system(String(localized: "Installing PHP \(wanted). This takes a few minutes."))
+        let result = await ProcessRunner.shell("brew install php@\(wanted)", timeout: 1800)
+        if !result.stdout.isEmpty { log.append(result.stdout, stream: .stdout) }
+        if !result.stderr.isEmpty { log.append(result.stderr, stream: .stderr) }
+
+        phpVersions = PHPVersions.scan()
+        let ok = phpVersions.contains { $0.version == wanted }
+        log.system(ok
+                   ? String(localized: "PHP \(wanted) is ready.")
+                   : String(localized: "PHP \(wanted) did not install. The log above says why."))
+        return ok
+    }
+
+    /// Removes a version. Never touches the plain `php` formula: that is the one
+    /// the rest of the system is probably using.
+    func uninstallPHP(version: String, log: ConsoleLog) async -> Bool {
+        let wanted = version.trimmingCharacters(in: .whitespaces)
+        guard PHPVersions.known.contains(wanted) else { return false }
+        installingPHP.insert(wanted)
+        defer { installingPHP.remove(wanted) }
+
+        log.system(String(localized: "Removing PHP \(wanted)…"))
+        let result = await ProcessRunner.shell("brew uninstall --ignore-dependencies php@\(wanted)", timeout: 900)
+        if !result.combined.isEmpty { log.append(result.combined, stream: .stdout) }
+        phpVersions = PHPVersions.scan()
+        return !phpVersions.contains { $0.version == wanted }
+    }
+
     func install(_ dependency: Dependency, log: ConsoleLog) async {
         log.system(String(localized: "Installing \(dependency.title): \(dependency.installCommand)"))
         let result = await ProcessRunner.shell(dependency.installCommand, timeout: 900)

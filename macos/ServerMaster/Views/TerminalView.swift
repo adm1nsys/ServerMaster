@@ -19,7 +19,7 @@ struct TerminalView: View {
         GeometryReader { geometry in
             let metrics = TerminalMetrics(fontSize: fontSize)
             ZStack(alignment: .topLeading) {
-                Color(nsColor: .textBackgroundColor)
+                //Color(nsColor: .textBackgroundColor)
 
                 TerminalScreen(terminal: session.terminal, metrics: metrics)
                     .padding(6)

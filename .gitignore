@@ -54,6 +54,9 @@ artifacts/
 *.pkg
 *.msi
 
+# Local helper binary embedded into macOS builds when present
+macos/Tools/servermaster
+
 # Local configuration and signing material
 .env
 .env.*

@@ -17,6 +17,11 @@ struct ProfileEditorView: View {
     @State private var permissions: PermissionReport?
     @State private var checkingPermissions = false
     @State private var fixingPermissions = false
+    /// A starter file the person asked for that would replace an existing one.
+    @State private var pendingStarter: StarterFile?
+    @State private var preparingCertificate = false
+    @State private var showIconPicker = false
+    @State private var renaming = false
 
     init(profile: ServerProfile) {
         _draft = State(initialValue: profile)
@@ -41,12 +46,25 @@ struct ProfileEditorView: View {
                 environmentSection
                 notesSection
             }
-            .padding(20)
+            .padding(15)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .environment(\.cardStyle, .inset)
+        .modifier(FullHeightGlass())
         .onChange(of: draft) { _, newValue in
             model.updateProfile(newValue)
+        }
+        .sheet(isPresented: $showIconPicker) {
+            IconPickerSheet(engineSymbol: draft.engine.symbol, selection: $draft.iconName)
+        }
+        .sheet(isPresented: $renaming) {
+            RenameProfileSheet(name: draft.name, iconName: draft.iconName,
+                               engineSymbol: draft.engine.symbol) { name, icon in
+                draft.name = name
+                draft.iconName = icon
+            }
         }
         .sheet(isPresented: $showCertificates) {
             CertificatesSheet { pair in
@@ -55,6 +73,23 @@ struct ProfileEditorView: View {
                 draft.httpsEnabled = true
             }
             .environment(model)
+        }
+        .confirmationDialog("Replace “\(pendingStarter?.fileName ?? "")”?",
+                            isPresented: Binding(get: { pendingStarter != nil },
+                                                 set: { if !$0 { pendingStarter = nil } })) {
+            Button("Replace", role: .destructive) {
+                guard let starter = pendingStarter else { return }
+                pendingStarter = nil
+                do {
+                    let url = try starter.write(into: draft.rootPath, profile: draft, overwrite: true)
+                    finishGenerating(starter, at: url)
+                } catch {
+                    model.notify(error.localizedDescription, isError: true)
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingStarter = nil }
+        } message: {
+            Text("That file already exists in the site folder. Replacing it cannot be undone.")
         }
         .sheet(item: $editingFile) { file in
             ConfigEditorSheet(file: file) { adoptedPath in
@@ -73,35 +108,28 @@ struct ProfileEditorView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Menu {
-                    Button {
-                        draft.iconName = ""
-                    } label: {
-                        Label("Same as the engine", systemImage: draft.engine.symbol)
-                    }
-                    ForEach(ProfileIcons.groups) { group in
-                        Section(group.title) {
-                            ForEach(group.symbols, id: \.self) { symbol in
-                                Button {
-                                    draft.iconName = symbol
-                                } label: {
-                                    Label(symbol, systemImage: symbol)
-                                }
-                            }
-                        }
-                    }
-                } label: {
+                // The icon is the button, which is where people click first.
+                Button { renaming = true } label: {
                     Image(systemName: draft.symbol)
                         .font(.title3)
                         .frame(width: 26, height: 26)
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .help("Profile icon")
+                .buttonStyle(.plain)
+                .help("Rename and change the icon")
 
-                TextField("Profile name", text: $draft.name)
-                    .textFieldStyle(.plain)
+                // Read-only here, changed behind a button.
+                //
+                // The name was a live text field bound straight to the profile,
+                // so every keystroke wrote a new profile and everything watching
+                // it reacted mid-word — the file, the widget, the running
+                // server's title. Renaming is a deliberate act; it gets its own
+                // sheet where the change lands once, on OK.
+                Text(draft.name)
                     .font(.title2).fontWeight(.semibold)
+                    .lineLimit(1)
+
+                Button("Rename…") { renaming = true }
+                    .modifier(EditorChip())
 
                 if model.settings.defaultProfileID == draft.id {
                     Label("Default", systemImage: "star.fill")
@@ -109,7 +137,7 @@ struct ProfileEditorView: View {
                         .foregroundStyle(.yellow)
                 } else {
                     Button("Make default") { model.makeDefault(draft) }
-                        .buttonStyle(.link)
+                        .modifier(EditorChip())
                 }
 
                 Button {
@@ -149,7 +177,7 @@ struct ProfileEditorView: View {
                 // The guide follows the engine: picking Apache offers the
                 // .htaccess page, a PHP engine offers the CMS walkthrough.
                 Button("Guide") { AppLinks.open(AppLinks.guide(for: draft.engine)) }
-                    .buttonStyle(.link)
+                    .modifier(EditorChip())
                     .font(.caption)
             }
 
@@ -176,7 +204,7 @@ struct ProfileEditorView: View {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     Text("Not installed: \(missing.joined(separator: ", "))").font(.caption)
                     Button("Open dependencies") { model.section = .dependencies }
-                        .buttonStyle(.link).font(.caption)
+                        .modifier(EditorChip()).font(.caption)
                 }
             }
 
@@ -260,11 +288,11 @@ struct ProfileEditorView: View {
                         if !draft.runAsAdministrator,
                            let replacement = PortPresets.localReplacement(for: draft.port) {
                             Button("Use \(String(replacement))") { draft.port = replacement }
-                                .buttonStyle(.link).font(.caption)
+                                .modifier(EditorChip()).font(.caption)
                             Text("or")
                                 .font(.caption).foregroundStyle(.secondary)
                             Button("start as administrator") { draft.runAsAdministrator = true }
-                                .buttonStyle(.link).font(.caption)
+                                .modifier(EditorChip()).font(.caption)
                         }
                     }
                 }
@@ -293,7 +321,7 @@ struct ProfileEditorView: View {
         }
         if !free {
             Button("Show who") { model.section = .ports }
-                .buttonStyle(.link).font(.caption)
+                .modifier(EditorChip()).font(.caption)
         }
     }
 
@@ -353,7 +381,7 @@ struct ProfileEditorView: View {
             HStack {
                 if !draft.configPath.isEmpty {
                     Button("Reset to auto generation") { draft.configPath = "" }
-                        .buttonStyle(.link)
+                        .modifier(EditorChip())
                 }
                 Spacer()
             }
@@ -366,6 +394,44 @@ struct ProfileEditorView: View {
         }
     }
 
+
+    private var starterHint: String {
+        draft.rootPath.trimmingCharacters(in: .whitespaces).isEmpty
+            ? String(localized: "Choose the site folder first — generated files go there.")
+            : String(localized: "Written into the site folder. Nothing is overwritten without asking.")
+    }
+
+    /// Writes a starter file, asking before replacing one that is already there.
+    private func generate(_ starter: StarterFile) {
+        let root = draft.rootPath.trimmingCharacters(in: .whitespaces)
+        guard !root.isEmpty else {
+            model.notify(StarterError.noRoot.localizedDescription, isError: true)
+            return
+        }
+        do {
+            let url = try starter.write(into: root, profile: draft, overwrite: false)
+            finishGenerating(starter, at: url)
+        } catch StarterError.exists {
+            pendingStarter = starter
+        } catch {
+            model.notify(error.localizedDescription, isError: true)
+        }
+    }
+
+    private func finishGenerating(_ starter: StarterFile, at url: URL) {
+        // A Node.js profile points at its entry file by name; generating one and
+        // leaving the profile pointing elsewhere would be a puzzle.
+        if draft.engine == .nodeScript, starter.fileName.hasSuffix(".js") {
+            draft.nodeEntryFile = starter.fileName
+        }
+        if let note = starter.afterNote {
+            model.notify(note)
+        } else {
+            model.notify(String(localized: "Created \(starter.fileName)."))
+        }
+        NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: url.deletingLastPathComponent().path)
+    }
+
     // MARK: - Profile files
 
     private var configFilesSection: some View {
@@ -375,9 +441,37 @@ struct ProfileEditorView: View {
             return items.isEmpty ? nil : (kind, items)
         }
 
+        let starters = StarterFiles.available(for: draft)
+
         return Card("Configuration files", systemImage: "doc.on.doc") {
+            if !starters.isEmpty {
+                // Every engine now has a starting point. A Node.js profile used
+                // to refuse to start until an entry file existed, with no way to
+                // create one from here.
+                HStack(spacing: 8) {
+                    Menu {
+                        ForEach(starters) { starter in
+                            Button {
+                                generate(starter)
+                            } label: {
+                                Label("\(starter.title) — \(starter.fileName)", systemImage: starter.symbol)
+                            }
+                        }
+                    } label: {
+                        Label("Create a file…", systemImage: "plus.rectangle.on.folder")
+                    }
+                    .frame(width: 190)
+
+                    Text(starterHint)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(.bottom, 4)
+            }
+
             if groups.isEmpty {
-                Text("This engine has no separate config files — everything is set by the launch options above.")
+                Text("This engine has no generated config of its own — the launch options above are the whole configuration.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
@@ -395,13 +489,13 @@ struct ProfileEditorView: View {
                 Divider()
                 HStack {
                     Button("App folder") { model.revealSupportFolder() }
-                        .buttonStyle(.link).font(.caption)
+                        .modifier(EditorChip()).font(.caption)
                     if draft.engine.usesRootDirectory {
                         Button("Site folder") {
                             NSWorkspace.shared.selectFile(nil,
                                 inFileViewerRootedAtPath: AppPaths.expand(draft.rootPath))
                         }
-                        .buttonStyle(.link).font(.caption)
+                        .modifier(EditorChip()).font(.caption)
                     }
                     Spacer()
                 }
@@ -441,7 +535,7 @@ struct ProfileEditorView: View {
             }
 
             Button(file.isReadOnly ? "View" : "Open") { editingFile = file }
-                .buttonStyle(.link)
+                .modifier(EditorChip())
                 .disabled(!file.exists && !file.isGenerated)
 
             Button {
@@ -470,6 +564,8 @@ struct ProfileEditorView: View {
                 PathField(title: "Private key", path: $draft.privateKeyPath, isDirectory: false,
                           placeholder: "key.pem")
 
+                trustRow
+
                 HStack {
                     Button {
                         showCertificates = true
@@ -478,10 +574,75 @@ struct ProfileEditorView: View {
                     }
                     Spacer()
                 }
+            }
+        }
+    }
 
-                Text("The browser will mark a self-signed certificate as unsafe until you add it to the system keychain — do that in the certificates window.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+
+    /// Says plainly whether the browser will complain, and offers the one action
+    /// that fixes it. The old text explained the problem and left the person to
+    /// find the cure in another window.
+    @ViewBuilder
+    private var trustRow: some View {
+        let current = model.certificates.certificates.first {
+            AppPaths.expand($0.certificatePath) == AppPaths.expand(draft.certificatePath)
+        }
+
+        VStack(alignment: .leading, spacing: 6) {
+            if preparingCertificate {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Preparing a trusted certificate. macOS may ask for your password.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            } else if let current, model.certificates.isTrusted(current) {
+                Label("Browsers trust this certificate — no warning.", systemImage: "checkmark.seal.fill")
+                    .font(.caption).foregroundStyle(.green)
+            } else {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange).font(.caption)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(draft.certificatePath.isEmpty
+                             ? String(localized: "No certificate yet. HTTPS will not start without one.")
+                             : String(localized: "This certificate is self-signed, so the browser shows a warning every time."))
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Button {
+                            prepareTrustedCertificate()
+                        } label: {
+                            Label("Make a trusted certificate", systemImage: "wand.and.stars")
+                        }
+                        .font(.caption)
+
+                        Text("Installs mkcert if needed, adds its local authority to the keychain, and issues the certificate. One password prompt.")
+                            .font(.caption2).foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+    }
+
+    private func prepareTrustedCertificate() {
+        preparingCertificate = true
+        Task {
+            defer { preparingCertificate = false }
+            do {
+                let domains = draft.host.isEmpty
+                    ? model.settings.certificateDefaultDomains
+                    : "localhost,127.0.0.1,::1,\(draft.host)"
+                let pair = try await model.certificates.makeTrustedCertificate(
+                    name: CertificateManager.sanitizeName(draft.name),
+                    domains: domains,
+                    log: model.installLog)
+                draft.certificatePath = pair.certificatePath
+                draft.privateKeyPath = pair.privateKeyPath
+                await model.certificates.reload()
+                model.notify(String(localized: "The certificate is ready — the browser will not warn."))
+            } catch {
+                model.notify(error.localizedDescription, isError: true)
             }
         }
     }
@@ -497,6 +658,36 @@ struct ProfileEditorView: View {
                     Spacer()
                 }
             }
+            // The preset comes first because choosing one sets several of the
+            // switches below it. They stay editable afterwards — a preset is a
+            // starting point, not a mode.
+            if ConfigPreset.available(for: draft.engine).count > 1 {
+                HStack(alignment: .top) {
+                    Text("Shape").frame(minWidth: 110, idealWidth: 150, maxWidth: 170, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Picker("", selection: Binding(
+                            get: { draft.configPreset },
+                            set: { chosen in
+                                draft.configPreset = chosen
+                                ConfigPreset.named(chosen, for: draft.engine).apply(to: &draft)
+                            })) {
+                            ForEach(ConfigPreset.available(for: draft.engine)) { preset in
+                                Text(preset.title).tag(preset.id)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 280)
+
+                        Text(ConfigPreset.named(draft.configPreset, for: draft.engine).summary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                }
+                Divider()
+            }
+
             Toggle("Directory listing", isOn: $draft.directoryListing)
             Toggle("Gzip compression", isOn: $draft.enableGzip)
             Toggle("CORS (Access-Control-Allow-Origin: *)", isOn: $draft.enableCORS)
@@ -705,7 +896,7 @@ struct ProfileEditorView: View {
                         model.section = .dependencies
                         model.notify(String(localized: "Run: brew install php@\(draft.phpVersion)"))
                     }
-                    .buttonStyle(.link).font(.caption)
+                    .modifier(EditorChip()).font(.caption)
                     Spacer()
                 }
                 .padding(.leading, 160)
@@ -745,7 +936,7 @@ struct ProfileEditorView: View {
                         .font(.caption)
                         .fixedSize(horizontal: false, vertical: true)
                     Button("Open") { model.section = .database }
-                        .buttonStyle(.link).font(.caption)
+                        .modifier(EditorChip()).font(.caption)
                     Spacer()
                 }
             }
@@ -767,7 +958,7 @@ struct ProfileEditorView: View {
                         .font(.caption)
                         .fixedSize(horizontal: false, vertical: true)
                     Button("This Mac only") { draft.host = "127.0.0.1" }
-                        .buttonStyle(.link).font(.caption)
+                        .modifier(EditorChip()).font(.caption)
                 }
             }
 
@@ -900,7 +1091,7 @@ struct ProfileEditorView: View {
                 } label: {
                     Label("Add variable", systemImage: "plus")
                 }
-                .buttonStyle(.link)
+                .modifier(EditorChip())
                 Spacer()
             }
         }
@@ -910,8 +1101,13 @@ struct ProfileEditorView: View {
         Card("Notes", systemImage: "note.text") {
             TextEditor(text: $draft.notes)
                 .font(.callout)
-                .frame(height: 70)
-                .overlay(RoundedRectangle(cornerRadius: 5).stroke(.quaternary))
+                .frame(height: 90)
+                // A TextEditor paints an opaque text background of its own,
+                // which on glass is a black rectangle cut out of the panel.
+                .scrollContentBackground(.hidden)
+                .padding(6)
+                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
         }
     }
 }
@@ -922,6 +1118,8 @@ struct ProfileEditorView: View {
 struct Card<Content: View>: View {
     // LocalizedStringKey, not String: Label(String, systemImage:) does not go
     // through localization, and the section headings stayed in the source language.
+    @Environment(\.cardStyle) private var style
+
     let title: LocalizedStringKey
     let systemImage: String
     @ViewBuilder var content: Content
@@ -933,14 +1131,70 @@ struct Card<Content: View>: View {
     }
 
     var body: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 10) {
-                content
+        // One wrapper for every section in the editor, so the whole screen
+        // changes together — and cannot half-change, which is what happens when
+        // fourteen sections each carry their own copy of the layout.
+        let panel = VStack(alignment: .leading, spacing: 10) {
+            PanelHeader(title: title, symbol: systemImage)
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(15)
+
+        // Glass by default. The one place that asks for something quieter is the
+        // profile editor, where the whole column is already one panel and a card
+        // inside it would be glass on glass — it sets `cardStyle` to `.inset`.
+        switch style {
+        case .glass:
+            if #available(macOS 26.0, *) {
+                panel.glassEffect(.regular, in: .rect(cornerRadius: 12))
+            } else {
+                panel.background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(6)
-        } label: {
-            Label(title, systemImage: systemImage)
+        case .inset:
+            panel.background(.quaternary.opacity(0.18), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+}
+
+/// How a `Card` draws itself.
+enum CardStyle {
+    /// Its own glass panel — the default, for a card sitting on the background.
+    case glass
+    /// A quiet inset, for a card already inside a panel.
+    case inset
+}
+
+extension EnvironmentValues {
+    @Entry var cardStyle: CardStyle = .glass
+}
+
+/// One glass panel behind the whole editor, filling the height.
+///
+/// The list on the left is a single panel from top to bottom; without this the
+/// right-hand side was a stack of separate cards that simply stopped wherever
+/// the content ran out, and the two columns did not line up.
+struct FullHeightGlass: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+                .frame(maxHeight: .infinity)
+                .glassEffect(.regular, in: .rect(cornerRadius: 12))
+        } else {
+            content
+                .frame(maxHeight: .infinity)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+}
+
+/// The small glass button used for inline actions in the editor.
+struct EditorChip: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content.buttonStyle(.glass).controlSize(.small).font(.caption)
+        } else {
+            content.buttonStyle(.bordered).controlSize(.small).font(.caption)
         }
     }
 }
@@ -991,5 +1245,74 @@ extension Color {
                      red: Double((value >> 16) & 0xFF) / 255,
                      green: Double((value >> 8) & 0xFF) / 255,
                      blue: Double(value & 0xFF) / 255)
+    }
+}
+
+/// Renaming a profile and picking its icon, in one place and applied once.
+///
+/// Both used to be edited live in the header, which meant the profile was
+/// rewritten on every keystroke — and everything watching it, from the file on
+/// disk to the widget, followed along mid-word. Here the change is made on a
+/// copy and handed back when the sheet is confirmed.
+struct RenameProfileSheet: View {
+
+    @State var name: String
+    @State var iconName: String
+    let engineSymbol: String
+    let onDone: (String, String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var pickingIcon = false
+
+    private var symbol: String { iconName.isEmpty ? engineSymbol : iconName }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Rename profile").font(.headline)
+
+            HStack(spacing: 12) {
+                Button { pickingIcon = true } label: {
+                    Image(systemName: symbol)
+                        .font(.title)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .modifier(EditorChip())
+                .help("Choose an icon")
+
+                TextField("Name", text: $name)
+                    .glassField()
+                    .font(.title3)
+                    .onSubmit(finish)
+            }
+
+            if iconName.isEmpty {
+                Text("Using the engine's own icon.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Button("Use the engine's icon") { iconName = "" }
+                    .modifier(EditorChip())
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Rename", action: finish)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 420)
+        .sheet(isPresented: $pickingIcon) {
+            IconPickerSheet(engineSymbol: engineSymbol, selection: $iconName)
+        }
+    }
+
+    private func finish() {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        onDone(trimmed, iconName)
+        dismiss()
     }
 }

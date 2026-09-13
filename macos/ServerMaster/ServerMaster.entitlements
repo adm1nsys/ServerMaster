@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- No sandbox: this app runs web servers, reads folders anywhere the person
+	     points it at, and installs things. The extensions are a different matter
+	     — see their own entitlements. -->
+	<key>com.apple.security.app-sandbox</key>
+	<false/>
+	<!-- The one place the app and its extensions can both reach. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>88M5SYPGUR.com.adm1nsys.ServerMaster</string>
+	</array>
+</dict>
+</plist>

@@ -58,7 +58,7 @@ with `X-Powered-By: PHP/8.5.10`, so Joomla's own rewrite rules carried it to
 `index.php`. That is exactly what Nginx cannot do without hand-translating the
 rules.
 
-### [~] Intel support — universal build in 1.1
+### [~] Intel support — universal, untested on real hardware
 
 The deployment target came down to macOS 14 Sonoma and `ARCHS` is now
 `arm64 x86_64`, so the build is genuinely universal — verified with `lipo` on the
@@ -69,8 +69,21 @@ The x86_64 slice was exercised under Rosetta on this Mac: the settings and
 decoding suite (48 checks) and the Apache suite (15 checks, including spawning
 httpd and php-fpm and serving real HTTP) both pass as x86_64.
 
-Keep this as `[~]` until there is a regular Intel validation checklist for each
-public release.
+What is still missing is a real Intel Mac. Rosetta is close to Intel, not
+identical, so this stays `[~]` until someone runs it on the actual hardware.
+
+**How to build it universal, which is not the default.** `xcodebuild build`
+without `-destination` picks “My Mac” and emits that one architecture — the
+build succeeds and says nothing, and every release built that way is arm64 only.
+It has to be:
+
+    xcodebuild -scheme ServerMaster -configuration Release \
+               -destination 'generic/platform=macOS' build
+
+Check before shipping, on every nested binary and not just the app:
+
+    lipo -archs ServerMaster.app/Contents/MacOS/ServerMaster
+    lipo -archs ServerMaster.app/Contents/Helpers/servermaster
 
 ### [~] Database work without the command line
 
@@ -109,7 +122,29 @@ person does: loads the login page, takes the token out of it, submits the form.
 Verified in a browser — it lands straight on the database list. The account and
 password are still shown in the app as a fallback.
 
-### [ ] Command line tool and its installer
+### [x] Desktop widgets — fixed in 2.0
+
+They were built, signed and embedded correctly all along, and macOS still never
+listed them: `pluginkit` showed nothing, in any location, however often the app
+was re-registered.
+
+The cause was `ENABLE_APP_SANDBOX = NO` on the extension targets. Every app
+extension on macOS must be sandboxed, and one that is not is refused **without
+any error** — it simply never appears. Turning the sandbox off for the app is
+right and stays; turning it off for its extensions is what broke them.
+
+Which made the app's Application Support folder invisible to them, so the shared
+state moved into the group container `group.com.adm1nsys.ServerMaster`, carried
+by the app and both extensions. `AppPaths.shared` resolves it.
+
+### [x] Safari extension — added in 2.0
+
+Shows what is running, opens a server in a tab, starts and stops one. The
+extension cannot start anything itself — it is sandboxed — so it leaves a request
+in `command.json` and the app acts on it; the profile id is checked against what
+the app itself published before it is written down.
+
+### [x] Command line tool and its installer — done in 2.0
 
 A `servermaster` command for the terminal, so a profile can be started, stopped
 and inspected without touching the window — useful in scripts, in a Makefile, or
@@ -123,6 +158,18 @@ anyone's `PATH`. A button in Settings that symlinks the tool into
 `/usr/local/bin` (with the system password prompt when that directory is not
 writable), plus the matching uninstall. The Settings row should show whether the
 tool is currently installed and which version it points at.
+
+Built as a Swift Package under the monorepo `cli/` folder, so it can be ported
+to Linux later without dragging an AppKit app along. The app carries the binary
+rather than a source dependency: `macos/Tools/update-cli.sh` rebuilds it and
+copies a local ignored helper into `macos/Tools/servermaster`, and a build phase
+puts it in `Contents/Helpers`. Not `Contents/MacOS` — the volume is
+case-insensitive, so `servermaster` there is the same file as the app's own
+`ServerMaster` executable and replaces it without any error.
+
+Left for a signed release: the tool keeps the signature from its own build, so
+whoever notarizes the app has to make sure both are signed with the same
+Developer ID. See the notarization item below.
 
 ### [ ] Interface modes — Standard and Advanced
 
@@ -141,10 +188,10 @@ sidecars, privileged ports, database tooling.
 
 ### [ ] Release builds are not signed for distribution
 
-The app checks `updates/maclastversion.txt` for the latest macOS version and
-links users to the project releases. Current public builds are unsigned and not
-notarized, so macOS shows the normal first-launch warning for apps from an
-unidentified developer.
+The app points people at GitHub Releases to download a new build, but a build
+made today cannot be opened by anyone else without the usual unsigned-app
+workaround. Verified: an archive signed with *Apple Development* is rejected by
+`spctl` for distribution — on another Mac Gatekeeper refuses to launch it.
 
 Only an *Apple Development* certificate is installed. Distribution needs a
 **Developer ID Application** certificate (Apple Developer Program, team
@@ -159,20 +206,18 @@ xcrun notarytool submit build/export/ServerMaster.zip --keychain-profile AC --wa
 xcrun stapler staple build/export/ServerMaster.app
 ```
 
-with `method` set to `developer-id` in `ExportOptions.plist`.
+with `method` set to `developer-id` in `ExportOptions.plist`. Until then, anyone
+downloading a build has to strip the quarantine flag by hand, which is a poor
+first impression for the exact beginner this tool is aimed at.
 
-### [ ] Manual release QA checklist
+### [ ] Several sections have never been looked at
 
-Keep a short manual pass before every release:
+Confirmed working by the user: **Control**, **Profiles**, and starting on port
+443.
 
-- Control: start, stop, restart, open URL, copy address, health check.
-- Profiles: create, edit, duplicate, delete, import/export profile data.
-- Console and Terminal: open logs, run a command, close tabs cleanly.
-- Database: start the managed database, browse tables, open the web panel.
-- Ports and Dependencies: refresh data and handle missing tools gracefully.
-- Settings: update checks, language, PATH entries, database panel choice.
-- Certificates and config editor: create, trust/export, edit and restore config.
-- Shutdown window: stop every managed process and release reserved ports.
+Never opened and clicked by anyone: **Console**, **Database**, **Ports**,
+**Dependencies**, **Settings**, the certificates window, the config editor, and
+the shutdown window. They pass their tests, but tests are not eyes.
 
 ### [ ] Self-signed certificate is not marked as trusted
 
@@ -189,18 +234,30 @@ Two ways to remove the warning, both requiring a password:
 
 Either is fine, and so is leaving it as is.
 
-### [ ] Make test fixtures self-contained
+### [~] Tests outside the repository — and what that cost
 
-Move the integration-test scaffolding into the repository or generate it during
-the tests:
+This stopped being hypothetical on 3 September 2026: the scratch folder holding
+the regression suites was cleared by the system, and **22 of 23 suites were
+lost** — roughly 650 accumulated checks. The application sources were never at
+risk; they are in git. The tests were not.
 
-- Joomla fixture downloads for Joomla 5 and 6.
-- A local mock server for update-checker raw/API responses.
-- Isolated MariaDB datadir and port for database tests.
-- Cleanup for child processes left behind by interrupted test runs.
+Fixed for the part that can be: the checks that need nothing but the app itself
+now live in `ServerMasterTests/`, run by `xcodebuild test`, version controlled.
+Sixty-one of them now, covering the guide links, the profile presets, the build
+identifier, the engine contracts, config presets, the snapshot index format, the
+waiting messages, the sidebar, and — most importantly — the coverage checks that
+catch a field forgotten in `init(from:)`, which is how a settings file used to
+reset itself on upgrade.
 
-Fresh checkouts should be able to run the intended test target without private
-scratchpad folders or a manually started helper server.
+Still outside the repository: the integration suites that need a running
+database, a real Apache and a downloaded CMS. Those are the ones that were lost,
+and they have not been rewritten.
+
+Still to do: the integration suites. Serving real HTTP through Apache and Nginx,
+installing a CMS, driving the database panel — those need real services and
+fixtures, so they cannot be plain unit tests. They need either a second test
+target that is allowed to be slow, or a script in the repository. Until then
+that coverage exists only as the record of having passed once.
 
 ## Tool limitations — not app bugs
 

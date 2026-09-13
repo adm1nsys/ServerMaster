@@ -27,6 +27,9 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
     // MARK: Files
     /// The document root.
     var rootPath: String = NSHomeDirectory() + "/Sites"
+    /// The database this site uses, when it has one. Needed so a snapshot knows
+    /// what to dump alongside the files.
+    var databaseName: String = ""
     /// The process working directory. Empty → rootPath is used.
     var workingDirectory: String = ""
     /// Path to the config (nginx.conf / Caddyfile). Empty → generate one.
@@ -42,6 +45,9 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
     var enableGzip: Bool = true
     var directoryListing: Bool = true
     var spaFallback: Bool = false          // every 404 → index.html
+    /// Which ready-made shape the generated config is built from.
+    /// See ConfigPresets.swift.
+    var configPreset: String = "standard"
     var cacheSeconds: Int = -1             // -1 = no-cache
     var basicAuthEnabled: Bool = false
     var basicAuthUser: String = ""
@@ -107,6 +113,7 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
         host = container.value(.host, default: defaults.host)
         port = container.value(.port, default: defaults.port)
         rootPath = container.value(.rootPath, default: defaults.rootPath)
+        databaseName = container.value(.databaseName, default: defaults.databaseName)
         workingDirectory = container.value(.workingDirectory, default: defaults.workingDirectory)
         configPath = container.value(.configPath, default: defaults.configPath)
         httpsEnabled = container.value(.httpsEnabled, default: defaults.httpsEnabled)
@@ -116,6 +123,7 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
         enableGzip = container.value(.enableGzip, default: defaults.enableGzip)
         directoryListing = container.value(.directoryListing, default: defaults.directoryListing)
         spaFallback = container.value(.spaFallback, default: defaults.spaFallback)
+        configPreset = container.value(.configPreset, default: defaults.configPreset)
         cacheSeconds = container.value(.cacheSeconds, default: defaults.cacheSeconds)
         basicAuthEnabled = container.value(.basicAuthEnabled, default: defaults.basicAuthEnabled)
         basicAuthUser = container.value(.basicAuthUser, default: defaults.basicAuthUser)
@@ -237,6 +245,10 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
             if !FileManager.default.fileExists(atPath: entry) {
                 issues.append(String(localized: "Entry file not found: \(entry)"))
             }
+        }
+        if engine.honoursHtaccess, !rootPath.isEmpty,
+           let warning = ApacheInstallation.privacyWarning(forRoot: rootPath) {
+            issues.append(warning)
         }
         if httpsEnabled && engine.supportsHTTPS {
             if certificatePath.isEmpty || privateKeyPath.isEmpty {

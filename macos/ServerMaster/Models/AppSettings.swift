@@ -37,7 +37,36 @@ nonisolated enum TerminalApp: String, Codable, CaseIterable, Identifiable, Senda
     var bundleName: String { rawValue }
 }
 
+/// Which sidebar the window draws.
+nonisolated enum SidebarStyle: String, Codable, CaseIterable, Sendable, Identifiable {
+    /// The system sidebar list, the way every other Mac app looks.
+    case standard
+    /// Larger rows on glass, with the icon carrying the colour.
+    case modern
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .standard: String(localized: "Standard")
+        case .modern:   String(localized: "Updated")
+        }
+    }
+}
+
 nonisolated struct AppSettings: Codable, Sendable, Equatable {
+
+    /// The settings on disk, or the defaults.
+    ///
+    /// Static because the loading screen needs them before the model exists —
+    /// it is what decides whether that screen has a background at all.
+    static func load() -> AppSettings {
+        guard let data = try? Data(contentsOf: AppPaths.settingsFile),
+              let decoded = try? JSONDecoder().decode(AppSettings.self, from: data)
+        else { return AppSettings() }
+        return decoded
+    }
+
 
     // Profiles
     var defaultProfileID: UUID? = nil
@@ -76,6 +105,41 @@ nonisolated struct AppSettings: Codable, Sendable, Equatable {
     // Environment
     var extraPATHEntries: [String] = ["/opt/homebrew/bin", "/usr/local/bin"]
 
+    // Appearance
+    /// The moving mesh behind every screen. Off means a plain window.
+    var backgroundEnabled: Bool = true
+    /// Which colour it is made of, as a hue from 0 to 1. Only used when nothing
+    /// is running — a running server paints the background with its own accent.
+    var backgroundHue: Double = 0.62
+    /// A multiplier on how fast the mesh drifts. 0 holds it still.
+    var backgroundSpeed: Double = 1.0
+    /// How much colour the background has. 0 is black and white.
+    var backgroundSaturation: Double = 1.0
+    /// Whether a running server repaints the background with its own accent.
+    ///
+    /// Off by default. It was on, and unconditional, which meant choosing a
+    /// colour and then starting a server threw the choice away — the window
+    /// went back to the profile's accent, which is blue unless it was changed.
+    /// A setting you picked should outrank one you never touched.
+    var backgroundFollowsServers: Bool = false
+    /// Which sidebar to draw. See SidebarStyle.
+    var sidebarStyle: SidebarStyle = .standard
+
+    // Backups
+    var backupsEnabled: Bool = false
+    /// Empty → SnapshotStore.defaultDestination(), which is ~/Documents.
+    var backupDestination: String = ""
+    var backupEvery: Int = 1
+    var backupUnit: BackupInterval = .days
+    /// Scheduled snapshots kept per profile. Manual ones are never pruned.
+    var backupsToKeep: Int = 10
+    /// Which profiles are backed up automatically. Empty → all of them.
+    var backupProfileIDs: [UUID] = []
+    var backupIncludesDatabase: Bool = true
+    /// Also snapshot every database on its own, not only alongside a profile.
+    var backupAllDatabases: Bool = false
+    var lastBackup: Date? = nil
+
     // Dependencies
     var checkDependenciesOnLaunch: Bool = true
 
@@ -86,7 +150,7 @@ nonisolated struct AppSettings: Codable, Sendable, Equatable {
     // Updates
     var updateRepository: String = "adm1nsys/ServerMaster"
     var updateVersionFile: String = "updates/maclastversion.txt"
-    var updateBuildsFolder: String = "mac"
+    var updateBuildsFolder: String = "macos"
     var checkUpdatesOnLaunch: Bool = false
     var lastUpdateCheck: Date? = nil
     /// The version whose banner the user dismissed. For a newer one we show it again.
@@ -140,6 +204,21 @@ nonisolated struct AppSettings: Codable, Sendable, Equatable {
         defaultKillSignal = container.value(.defaultKillSignal, default: defaults.defaultKillSignal)
         portReservationsEnabled = container.value(.portReservationsEnabled, default: defaults.portReservationsEnabled)
         extraPATHEntries = container.value(.extraPATHEntries, default: defaults.extraPATHEntries)
+        backgroundEnabled = container.value(.backgroundEnabled, default: defaults.backgroundEnabled)
+        backgroundHue = container.value(.backgroundHue, default: defaults.backgroundHue)
+        backgroundSpeed = container.value(.backgroundSpeed, default: defaults.backgroundSpeed)
+        backgroundSaturation = container.value(.backgroundSaturation, default: defaults.backgroundSaturation)
+        backgroundFollowsServers = container.value(.backgroundFollowsServers, default: defaults.backgroundFollowsServers)
+        sidebarStyle = container.value(.sidebarStyle, default: defaults.sidebarStyle)
+        backupsEnabled = container.value(.backupsEnabled, default: defaults.backupsEnabled)
+        backupDestination = container.value(.backupDestination, default: defaults.backupDestination)
+        backupEvery = container.value(.backupEvery, default: defaults.backupEvery)
+        backupUnit = container.value(.backupUnit, default: defaults.backupUnit)
+        backupsToKeep = container.value(.backupsToKeep, default: defaults.backupsToKeep)
+        backupProfileIDs = container.value(.backupProfileIDs, default: defaults.backupProfileIDs)
+        backupIncludesDatabase = container.value(.backupIncludesDatabase, default: defaults.backupIncludesDatabase)
+        backupAllDatabases = container.value(.backupAllDatabases, default: defaults.backupAllDatabases)
+        lastBackup = container.value(.lastBackup, default: defaults.lastBackup)
         checkDependenciesOnLaunch = container.value(.checkDependenciesOnLaunch, default: defaults.checkDependenciesOnLaunch)
         language = container.value(.language, default: defaults.language)
         updateRepository = container.value(.updateRepository, default: defaults.updateRepository)

@@ -1,0 +1,173 @@
+name: macOS release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'macOS app version to release'
+        required: true
+        default: '2.0.0'
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: xcode-27
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Prepare bundled CLI helper
+        run: ./macos/Tools/update-cli.sh
+
+      - name: Build universal release application
+        run: |
+          xcodebuild \
+            -project macos/ServerMaster.xcodeproj \
+            -scheme ServerMaster \
+            -configuration Release \
+            -derivedDataPath "$RUNNER_TEMP/ServerMaster-DerivedData" \
+            -destination "generic/platform=macOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
+            build
+
+      - name: Verify universal executables
+        run: |
+          APP_EXECUTABLE="$RUNNER_TEMP/ServerMaster-DerivedData/Build/Products/Release/ServerMaster.app/Contents/MacOS/ServerMaster"
+          CLI_EXECUTABLE="$RUNNER_TEMP/ServerMaster-DerivedData/Build/Products/Release/ServerMaster.app/Contents/Helpers/servermaster"
+          lipo -verify_arch arm64 "$APP_EXECUTABLE"
+          lipo -verify_arch x86_64 "$APP_EXECUTABLE"
+          lipo -verify_arch arm64 "$CLI_EXECUTABLE"
+          lipo -verify_arch x86_64 "$CLI_EXECUTABLE"
+          lipo -archs "$APP_EXECUTABLE"
+          lipo -archs "$CLI_EXECUTABLE"
+
+      - name: Check app version metadata
+        run: |
+          INFO="$RUNNER_TEMP/ServerMaster-DerivedData/Build/Products/Release/ServerMaster.app/Contents/Info.plist"
+          MARKETING_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO")"
+          BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO")"
+          test "$MARKETING_VERSION" = "2.0"
+          test "$BUILD_VERSION" = "arm.27.0.b6.uni"
+
+      - name: Package application
+        run: |
+          APP_ZIP="$RUNNER_TEMP/ServerMaster-v${{ inputs.version }}.app.zip"
+          SOURCE_ZIP="$RUNNER_TEMP/ServerMaster-macos-v${{ inputs.version }}-source.zip"
+          ditto -c -k --keepParent \
+            "$RUNNER_TEMP/ServerMaster-DerivedData/Build/Products/Release/ServerMaster.app" \
+            "$APP_ZIP"
+          git archive \
+            --format=zip \
+            --prefix="ServerMaster-macos-v${{ inputs.version }}/" \
+            -o "$SOURCE_ZIP" \
+            HEAD:macos
+          shasum -a 256 "$APP_ZIP" "$SOURCE_ZIP" > "$RUNNER_TEMP/SHA256SUMS.txt"
+
+      - name: Publish GitHub Release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs')
+            const path = require('path')
+
+            const version = '${{ inputs.version }}'
+            const tag = `macos-v${version}`
+            const owner = context.repo.owner
+            const repo = context.repo.repo
+            const assetName = `ServerMaster-v${version}.app.zip`
+            const sourceAssetName = `ServerMaster-macos-v${version}-source.zip`
+            const body = `ServerMaster for macOS v${version} focuses on making local server work easier to control, inspect, and repeat.
+
+            What's new:
+            - Redesigned SwiftUI interface with a faster control dashboard, glass-style panels, and richer status cards.
+            - Profile control improvements for starting, stopping, opening, and inspecting local servers.
+            - Database workspace with browsing, editing, SQL execution, imports, and a bundled/admin web panel.
+            - Project/template helpers for common PHP and CMS workflows.
+            - Diagnostics, health checks, domain tracing, waiting messages, and improved logs.
+            - Backups and snapshots for local profile data.
+            - Safari extension and desktop monitor/widget targets.
+            - Bundled ServerMaster CLI helper built from the monorepo CLI package.
+            - Updated website, wiki, and update-check links for the new repository structure.
+            - Universal macOS build for Apple Silicon and Intel Macs.
+            - macOS project source snapshot as a separate zip archive.
+
+            Notes:
+            - This build is unsigned and not notarized.
+            - macOS 14 or later is required.
+            - GitHub Actions artifacts are temporary; this release asset is the durable download.`
+
+            let release
+            try {
+              release = await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tag,
+                target_commitish: context.sha,
+                name: `ServerMaster macOS v${version}`,
+                body,
+                draft: false,
+                prerelease: false,
+                make_latest: 'true'
+              })
+            } catch (error) {
+              if (error.status !== 422) throw error
+              release = await github.rest.repos.getReleaseByTag({ owner, repo, tag })
+              release = await github.rest.repos.updateRelease({
+                owner,
+                repo,
+                release_id: release.data.id,
+                name: `ServerMaster macOS v${version}`,
+                body,
+                draft: false,
+                prerelease: false,
+                make_latest: 'true'
+              })
+            }
+
+            const managedAssetNames = new Set([assetName, sourceAssetName, 'SHA256SUMS.txt'])
+            const existingAssets = await github.paginate(github.rest.repos.listReleaseAssets, {
+              owner,
+              repo,
+              release_id: release.data.id,
+              per_page: 100
+            })
+            for (const asset of existingAssets) {
+              if (!managedAssetNames.has(asset.name)) continue
+              await github.rest.repos.deleteReleaseAsset({
+                owner,
+                repo,
+                asset_id: asset.id
+              })
+            }
+
+            for (const file of [
+              `${process.env.RUNNER_TEMP}/${assetName}`,
+              `${process.env.RUNNER_TEMP}/${sourceAssetName}`,
+              `${process.env.RUNNER_TEMP}/SHA256SUMS.txt`
+            ]) {
+              const data = fs.readFileSync(file)
+              await github.rest.repos.uploadReleaseAsset({
+                owner,
+                repo,
+                release_id: release.data.id,
+                name: path.basename(file),
+                data,
+                headers: {
+                  'content-type': 'application/octet-stream',
+                  'content-length': data.length
+                }
+              })
+            }

@@ -6,7 +6,43 @@
 	objectVersion = 110;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		2516A0FE304AF4FF000BBDAF /* ServerMasterWeb Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 2516A0FD304AF4FF000BBDAF /* ServerMasterWeb Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		2562BC513049BA48004C5018 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2562BC503049BA48004C5018 /* WidgetKit.framework */; };
+		2562BC533049BA48004C5018 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2562BC523049BA48004C5018 /* SwiftUI.framework */; };
+		2562BC623049BA49004C5018 /* ServerMasterMonitorExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 2562BC4E3049BA48004C5018 /* ServerMasterMonitorExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		25SF10010001000000000001 /* ServerMasterWeb Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 2516A0FD304AF4FF000BBDAF /* ServerMasterWeb Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
+		2516A0EA304AF4FF000BBDAF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 25BF0DAA3041F9F100D437E4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2516A0CF304AF4FE000BBDAF;
+			remoteInfo = ServerMasterWeb;
+		};
+		2516A0F4304AF4FF000BBDAF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 25BF0DAA3041F9F100D437E4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2516A0CF304AF4FE000BBDAF;
+			remoteInfo = ServerMasterWeb;
+		};
+		2516A0FF304AF4FF000BBDAF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 25BF0DAA3041F9F100D437E4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2516A0FC304AF4FF000BBDAF;
+			remoteInfo = "ServerMasterWeb Extension";
+		};
+		2562BC603049BA49004C5018 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 25BF0DAA3041F9F100D437E4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2562BC4D3049BA48004C5018;
+			remoteInfo = ServerMasterMonitorExtension;
+		};
 		25BF0DC03041F9F200D437E4 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 25BF0DAA3041F9F100D437E4 /* Project object */;
@@ -21,15 +57,103 @@
 			remoteGlobalIDString = 25BF0DB13041F9F100D437E4;
 			remoteInfo = ServerMaster;
 		};
+		25SF10010001000000000003 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 25BF0DAA3041F9F100D437E4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2516A0FC304AF4FF000BBDAF;
+			remoteInfo = "ServerMasterWeb Extension";
+		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		2516A11A304AF4FF000BBDAF /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				2516A0FE304AF4FF000BBDAF /* ServerMasterWeb Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
+		2562BC673049BA49004C5018 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				2562BC623049BA49004C5018 /* ServerMasterMonitorExtension.appex in Embed Foundation Extensions */,
+				25SF10010001000000000001 /* ServerMasterWeb Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		2516A0D0304AF4FE000BBDAF /* ServerMasterWeb.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ServerMasterWeb.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2516A0E9304AF4FF000BBDAF /* ServerMasterWebTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ServerMasterWebTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2516A0F3304AF4FF000BBDAF /* ServerMasterWebUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ServerMasterWebUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2516A0FD304AF4FF000BBDAF /* ServerMasterWeb Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "ServerMasterWeb Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		2562BC4E3049BA48004C5018 /* ServerMasterMonitorExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ServerMasterMonitorExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		2562BC503049BA48004C5018 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		2562BC523049BA48004C5018 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		25BF0DB23041F9F100D437E4 /* ServerMaster.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ServerMaster.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		25BF0DBF3041F9F200D437E4 /* ServerMasterTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ServerMasterTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		25BF0DC93041F9F200D437E4 /* ServerMasterUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ServerMasterUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		2516A116304AF4FF000BBDAF /* Exceptions for "ServerMasterWeb Extension" folder in "ServerMasterWeb Extension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 2516A0FC304AF4FF000BBDAF /* ServerMasterWeb Extension */;
+		};
+		2562BC633049BA49004C5018 /* Exceptions for "ServerMasterMonitor" folder in "ServerMasterMonitorExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 2562BC4D3049BA48004C5018 /* ServerMasterMonitorExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		2516A0D1304AF4FE000BBDAF /* ServerMasterWeb */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ServerMasterWeb;
+			sourceTree = "<group>";
+		};
+		2516A0EC304AF4FF000BBDAF /* ServerMasterWebTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ServerMasterWebTests;
+			sourceTree = "<group>";
+		};
+		2516A0F6304AF4FF000BBDAF /* ServerMasterWebUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ServerMasterWebUITests;
+			sourceTree = "<group>";
+		};
+		2516A101304AF4FF000BBDAF /* ServerMasterWeb Extension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				2516A116304AF4FF000BBDAF /* Exceptions for "ServerMasterWeb Extension" folder in "ServerMasterWeb Extension" target */,
+			);
+			explicitFolders = (
+				Resources/_locales,
+				Resources/images,
+			);
+			path = "ServerMasterWeb Extension";
+			sourceTree = "<group>";
+		};
+		2562BC543049BA48004C5018 /* ServerMasterMonitor */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				2562BC633049BA49004C5018 /* Exceptions for "ServerMasterMonitor" folder in "ServerMasterMonitorExtension" target */,
+			);
+			path = ServerMasterMonitor;
+			sourceTree = "<group>";
+		};
 		25BF0DB43041F9F100D437E4 /* ServerMaster */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = ServerMaster;
@@ -48,6 +172,33 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		2516A0CD304AF4FE000BBDAF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		2516A0E6304AF4FF000BBDAF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		2516A0F0304AF4FF000BBDAF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		2516A0FA304AF4FF000BBDAF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		2562BC4B3049BA48004C5018 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				2562BC533049BA48004C5018 /* SwiftUI.framework in Frameworks */,
+				2562BC513049BA48004C5018 /* WidgetKit.framework in Frameworks */,
+			);
+		};
 		25BF0DAF3041F9F100D437E4 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
@@ -66,12 +217,27 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		2562BC4F3049BA48004C5018 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				2562BC503049BA48004C5018 /* WidgetKit.framework */,
+				2562BC523049BA48004C5018 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		25BF0DA93041F9F100D437E4 = {
 			isa = PBXGroup;
 			children = (
 				25BF0DB43041F9F100D437E4 /* ServerMaster */,
 				25BF0DC23041F9F200D437E4 /* ServerMasterTests */,
 				25BF0DCC3041F9F200D437E4 /* ServerMasterUITests */,
+				2562BC543049BA48004C5018 /* ServerMasterMonitor */,
+				2516A0D1304AF4FE000BBDAF /* ServerMasterWeb */,
+				2516A0EC304AF4FF000BBDAF /* ServerMasterWebTests */,
+				2516A0F6304AF4FF000BBDAF /* ServerMasterWebUITests */,
+				2516A101304AF4FF000BBDAF /* ServerMasterWeb Extension */,
+				2562BC4F3049BA48004C5018 /* Frameworks */,
 				25BF0DB33041F9F100D437E4 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -82,6 +248,11 @@
 				25BF0DB23041F9F100D437E4 /* ServerMaster.app */,
 				25BF0DBF3041F9F200D437E4 /* ServerMasterTests.xctest */,
 				25BF0DC93041F9F200D437E4 /* ServerMasterUITests.xctest */,
+				2562BC4E3049BA48004C5018 /* ServerMasterMonitorExtension.appex */,
+				2516A0D0304AF4FE000BBDAF /* ServerMasterWeb.app */,
+				2516A0E9304AF4FF000BBDAF /* ServerMasterWebTests.xctest */,
+				2516A0F3304AF4FF000BBDAF /* ServerMasterWebUITests.xctest */,
+				2516A0FD304AF4FF000BBDAF /* ServerMasterWeb Extension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -89,6 +260,106 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		2516A0CF304AF4FE000BBDAF /* ServerMasterWeb */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2516A11B304AF4FF000BBDAF /* Build configuration list for PBXNativeTarget "ServerMasterWeb" */;
+			buildPhases = (
+				2516A0CC304AF4FE000BBDAF /* Sources */,
+				2516A0CD304AF4FE000BBDAF /* Frameworks */,
+				2516A0CE304AF4FE000BBDAF /* Resources */,
+				2516A11A304AF4FF000BBDAF /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2516A100304AF4FF000BBDAF /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				2516A0D1304AF4FE000BBDAF /* ServerMasterWeb */,
+			);
+			name = ServerMasterWeb;
+			productName = ServerMasterWeb;
+			productReference = 2516A0D0304AF4FE000BBDAF /* ServerMasterWeb.app */;
+			productType = "com.apple.product-type.application";
+		};
+		2516A0E8304AF4FF000BBDAF /* ServerMasterWebTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2516A11E304AF4FF000BBDAF /* Build configuration list for PBXNativeTarget "ServerMasterWebTests" */;
+			buildPhases = (
+				2516A0E5304AF4FF000BBDAF /* Sources */,
+				2516A0E6304AF4FF000BBDAF /* Frameworks */,
+				2516A0E7304AF4FF000BBDAF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2516A0EB304AF4FF000BBDAF /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				2516A0EC304AF4FF000BBDAF /* ServerMasterWebTests */,
+			);
+			name = ServerMasterWebTests;
+			productName = ServerMasterWebTests;
+			productReference = 2516A0E9304AF4FF000BBDAF /* ServerMasterWebTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		2516A0F2304AF4FF000BBDAF /* ServerMasterWebUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2516A121304AF4FF000BBDAF /* Build configuration list for PBXNativeTarget "ServerMasterWebUITests" */;
+			buildPhases = (
+				2516A0EF304AF4FF000BBDAF /* Sources */,
+				2516A0F0304AF4FF000BBDAF /* Frameworks */,
+				2516A0F1304AF4FF000BBDAF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2516A0F5304AF4FF000BBDAF /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				2516A0F6304AF4FF000BBDAF /* ServerMasterWebUITests */,
+			);
+			name = ServerMasterWebUITests;
+			productName = ServerMasterWebUITests;
+			productReference = 2516A0F3304AF4FF000BBDAF /* ServerMasterWebUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		2516A0FC304AF4FF000BBDAF /* ServerMasterWeb Extension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2516A117304AF4FF000BBDAF /* Build configuration list for PBXNativeTarget "ServerMasterWeb Extension" */;
+			buildPhases = (
+				2516A0F9304AF4FF000BBDAF /* Sources */,
+				2516A0FA304AF4FF000BBDAF /* Frameworks */,
+				2516A0FB304AF4FF000BBDAF /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				2516A101304AF4FF000BBDAF /* ServerMasterWeb Extension */,
+			);
+			name = "ServerMasterWeb Extension";
+			productName = "ServerMasterWeb Extension";
+			productReference = 2516A0FD304AF4FF000BBDAF /* ServerMasterWeb Extension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		2562BC4D3049BA48004C5018 /* ServerMasterMonitorExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2562BC643049BA49004C5018 /* Build configuration list for PBXNativeTarget "ServerMasterMonitorExtension" */;
+			buildPhases = (
+				2562BC4A3049BA48004C5018 /* Sources */,
+				2562BC4B3049BA48004C5018 /* Frameworks */,
+				2562BC4C3049BA48004C5018 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				2562BC543049BA48004C5018 /* ServerMasterMonitor */,
+			);
+			name = ServerMasterMonitorExtension;
+			productName = ServerMasterMonitorExtension;
+			productReference = 2562BC4E3049BA48004C5018 /* ServerMasterMonitorExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		25BF0DB13041F9F100D437E4 /* ServerMaster */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 25BF0DD13041F9F200D437E4 /* Build configuration list for PBXNativeTarget "ServerMaster" */;
@@ -96,8 +367,14 @@
 				25BF0DAE3041F9F100D437E4 /* Sources */,
 				25BF0DAF3041F9F100D437E4 /* Frameworks */,
 				25BF0DB03041F9F100D437E4 /* Resources */,
+				2562BC673049BA49004C5018 /* Embed Foundation Extensions */,
+				25CL10010001000000000001 /* Embed Command Line Tool */,
 			);
 			buildRules = (
+			);
+			dependencies = (
+				2562BC613049BA49004C5018 /* PBXTargetDependency */,
+				25SF10010001000000000002 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				25BF0DB43041F9F100D437E4 /* ServerMaster */,
@@ -159,6 +436,23 @@
 				LastSwiftUpdateCheck = 2700;
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
+					2516A0CF304AF4FE000BBDAF = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					2516A0E8304AF4FF000BBDAF = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = 2516A0CF304AF4FE000BBDAF;
+					};
+					2516A0F2304AF4FF000BBDAF = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = 2516A0CF304AF4FE000BBDAF;
+					};
+					2516A0FC304AF4FF000BBDAF = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					2562BC4D3049BA48004C5018 = {
+						CreatedOnToolsVersion = 27.0;
+					};
 					25BF0DB13041F9F100D437E4 = {
 						CreatedOnToolsVersion = 27.0;
 					};
@@ -178,6 +472,7 @@
 			knownRegions = (
 				en,
 				Base,
+				uk,
 			);
 			mainGroup = 25BF0DA93041F9F100D437E4;
 			minimizedProjectReferenceProxies = 1;
@@ -189,11 +484,41 @@
 				25BF0DB13041F9F100D437E4 /* ServerMaster */,
 				25BF0DBE3041F9F200D437E4 /* ServerMasterTests */,
 				25BF0DC83041F9F200D437E4 /* ServerMasterUITests */,
+				2562BC4D3049BA48004C5018 /* ServerMasterMonitorExtension */,
+				2516A0CF304AF4FE000BBDAF /* ServerMasterWeb */,
+				2516A0E8304AF4FF000BBDAF /* ServerMasterWebTests */,
+				2516A0F2304AF4FF000BBDAF /* ServerMasterWebUITests */,
+				2516A0FC304AF4FF000BBDAF /* ServerMasterWeb Extension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		2516A0CE304AF4FE000BBDAF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		2516A0E7304AF4FF000BBDAF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		2516A0F1304AF4FF000BBDAF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		2516A0FB304AF4FF000BBDAF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		2562BC4C3049BA48004C5018 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
 		25BF0DB03041F9F100D437E4 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
@@ -211,7 +536,80 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		25CL10010001000000000001 /* Embed Command Line Tool */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			inputPaths = (
+				"$(SRCROOT)/Tools/servermaster",
+			);
+			name = "Embed Command Line Tool";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/servermaster",
+			);
+			shellPath = /bin/sh;
+			shellScript = (
+				"# Puts the command line tool inside the bundle, at Contents/Helpers.",
+				"#",
+				"# A copy and not a build dependency: the two projects are independent, so this",
+				"# ships whatever Tools/update-cli.sh last put there. Run that script to refresh",
+				"# it — this phase will not notice that the tool has changed on its own.",
+				"TOOL=\"$SRCROOT/Tools/servermaster\"",
+				"if [ ! -f \"$TOOL\" ]; then",
+				"    echo \"warning: $TOOL is missing — this build will not carry the command line tool. Run ./Tools/update-cli.sh\"",
+				"    exit 0",
+				"fi",
+				"",
+				"# Contents/Helpers and not Contents/MacOS. The volume is case-insensitive, so",
+				"# Contents/MacOS/servermaster and Contents/MacOS/ServerMaster are the same",
+				"# file — copying the tool there overwrites the app's own executable, and the",
+				"# build still succeeds. Helpers is the conventional place for a bundled tool",
+				"# and cannot collide with anything.",
+				"DEST=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/servermaster\"",
+				"/bin/mkdir -p \"$(dirname \"$DEST\")\"",
+				"/bin/cp -f \"$TOOL\" \"$DEST\"",
+				"/bin/chmod +x \"$DEST\"",
+				"",
+				"# Not signed here, on purpose. The tool arrives already signed by its own",
+				"# project — same team, hardened runtime — and copying a Mach-O keeps the",
+				"# signature, which is embedded in the file. Signing it again in this phase",
+				"# is not possible anyway: the phase runs in a sandbox that lets it write the",
+				"# declared output but not read it back, and codesign verifies what it has",
+				"# just written, so it fails with “the code cannot be read by the verifier”.",
+				"#",
+				"# Tools/update-cli.sh checks the signature when it refreshes the copy, so a",
+				"# broken one is caught there rather than at release time.",
+				"",
+			);
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
+		2516A0CC304AF4FE000BBDAF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		2516A0E5304AF4FF000BBDAF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		2516A0EF304AF4FF000BBDAF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		2516A0F9304AF4FF000BBDAF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		2562BC4A3049BA48004C5018 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 		25BF0DAE3041F9F100D437E4 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
@@ -230,6 +628,26 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		2516A0EB304AF4FF000BBDAF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2516A0CF304AF4FE000BBDAF /* ServerMasterWeb */;
+			targetProxy = 2516A0EA304AF4FF000BBDAF /* PBXContainerItemProxy */;
+		};
+		2516A0F5304AF4FF000BBDAF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2516A0CF304AF4FE000BBDAF /* ServerMasterWeb */;
+			targetProxy = 2516A0F4304AF4FF000BBDAF /* PBXContainerItemProxy */;
+		};
+		2516A100304AF4FF000BBDAF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2516A0FC304AF4FF000BBDAF /* ServerMasterWeb Extension */;
+			targetProxy = 2516A0FF304AF4FF000BBDAF /* PBXContainerItemProxy */;
+		};
+		2562BC613049BA49004C5018 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2562BC4D3049BA48004C5018 /* ServerMasterMonitorExtension */;
+			targetProxy = 2562BC603049BA49004C5018 /* PBXContainerItemProxy */;
+		};
 		25BF0DC13041F9F200D437E4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 25BF0DB13041F9F100D437E4 /* ServerMaster */;
@@ -240,9 +658,322 @@
 			target = 25BF0DB13041F9F100D437E4 /* ServerMaster */;
 			targetProxy = 25BF0DCA3041F9F200D437E4 /* PBXContainerItemProxy */;
 		};
+		25SF10010001000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2516A0FC304AF4FF000BBDAF /* ServerMasterWeb Extension */;
+			targetProxy = 25SF10010001000000000003 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		2516A118304AF4FF000BBDAF /* Debug configuration for PBXNativeTarget "ServerMasterWeb Extension" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "ServerMasterWeb Extension/ServerMasterWeb Extension.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = arm.27.0.b6.uni;
+				DEVELOPMENT_TEAM = 88M5SYPGUR;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "ServerMasterWeb Extension/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "ServerMasterWeb Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 2.0;
+				ONLY_ACTIVE_ARCH = YES;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.adm1nsys.ServerMaster.SafariExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		2516A119304AF4FF000BBDAF /* Release configuration for PBXNativeTarget "ServerMasterWeb Extension" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "ServerMasterWeb Extension/ServerMasterWeb Extension.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = arm.27.0.b6.uni;
+				DEVELOPMENT_TEAM = 88M5SYPGUR;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "ServerMasterWeb Extension/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "ServerMasterWeb Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 2.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.adm1nsys.ServerMaster.SafariExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		2516A11C304AF4FF000BBDAF /* Debug configuration for PBXNativeTarget "ServerMasterWeb" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = arm.27.0.b6.uni;
+				DEVELOPMENT_TEAM = 88M5SYPGUR;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = ServerMasterWeb;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMainStoryboardFile = Main;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				INFOPLIST_KEY_NSViewGestureRecognizerIsExclusive = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 2.0;
+				ONLY_ACTIVE_ARCH = YES;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.adm1nsys.ServerMasterWeb;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		2516A11D304AF4FF000BBDAF /* Release configuration for PBXNativeTarget "ServerMasterWeb" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = arm.27.0.b6.uni;
+				DEVELOPMENT_TEAM = 88M5SYPGUR;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = ServerMasterWeb;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMainStoryboardFile = Main;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				INFOPLIST_KEY_NSViewGestureRecognizerIsExclusive = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 2.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.adm1nsys.ServerMasterWeb;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		2516A11F304AF4FF000BBDAF /* Debug configuration for PBXNativeTarget "ServerMasterWebTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = arm.27.0.b6.uni;
+				DEVELOPMENT_TEAM = 88M5SYPGUR;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 2.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adm1nsys.ServerMasterWebTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ServerMasterWeb.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ServerMasterWeb";
+			};
+			name = Debug;
+		};
+		2516A120304AF4FF000BBDAF /* Release configuration for PBXNativeTarget "ServerMasterWebTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = arm.27.0.b6.uni;
+				DEVELOPMENT_TEAM = 88M5SYPGUR;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adm1nsys.ServerMasterWebTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ServerMasterWeb.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ServerMasterWeb";
+			};
+			name = Release;
+		};
+		2516A122304AF4FF000BBDAF /* Debug configuration for PBXNativeTarget "ServerMasterWebUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = arm.27.0.b6.uni;
+				DEVELOPMENT_TEAM = 88M5SYPGUR;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 2.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adm1nsys.ServerMasterWebUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = ServerMasterWeb;
+			};
+			name = Debug;
+		};
+		2516A123304AF4FF000BBDAF /* Release configuration for PBXNativeTarget "ServerMasterWebUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = arm.27.0.b6.uni;
+				DEVELOPMENT_TEAM = 88M5SYPGUR;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adm1nsys.ServerMasterWebUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = ServerMasterWeb;
+			};
+			name = Release;
+		};
+		2562BC653049BA49004C5018 /* Debug configuration for PBXNativeTarget "ServerMasterMonitorExtension" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = ServerMasterMonitor/ServerMasterMonitor.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = arm.27.0.b6.uni;
+				DEVELOPMENT_TEAM = 88M5SYPGUR;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ServerMasterMonitor/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ServerMasterMonitor;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adm1nsys.ServerMaster.ServerMasterMonitor;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		2562BC663049BA49004C5018 /* Release configuration for PBXNativeTarget "ServerMasterMonitorExtension" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = ServerMasterMonitor/ServerMasterMonitor.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = arm.27.0.b6.uni;
+				DEVELOPMENT_TEAM = 88M5SYPGUR;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ServerMasterMonitor/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ServerMasterMonitor;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.adm1nsys.ServerMaster.ServerMasterMonitor;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		25BF0DCF3041F9F200D437E4 /* Debug configuration for PBXProject "ServerMaster" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -369,6 +1100,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = ServerMaster/ServerMaster.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = arm.27.0.b6.uni;
@@ -384,7 +1116,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.adm1nsys.ServerMaster;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -403,6 +1135,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = ServerMaster/ServerMaster.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = arm.27.0.b6.uni;
@@ -418,7 +1151,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.adm1nsys.ServerMaster;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -436,11 +1169,11 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = arm.27.0.b6.uni;
 				DEVELOPMENT_TEAM = 88M5SYPGUR;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.adm1nsys.ServerMasterTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -457,11 +1190,11 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = arm.27.0.b6.uni;
 				DEVELOPMENT_TEAM = 88M5SYPGUR;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.adm1nsys.ServerMasterTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -477,10 +1210,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = arm.27.0.b6.uni;
 				DEVELOPMENT_TEAM = 88M5SYPGUR;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.2;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.adm1nsys.ServerMasterUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -496,10 +1230,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = arm.27.0.b6.uni;
 				DEVELOPMENT_TEAM = 88M5SYPGUR;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.2;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.adm1nsys.ServerMasterUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -514,6 +1249,46 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		2516A117304AF4FF000BBDAF /* Build configuration list for PBXNativeTarget "ServerMasterWeb Extension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2516A118304AF4FF000BBDAF /* Debug configuration for PBXNativeTarget "ServerMasterWeb Extension" */,
+				2516A119304AF4FF000BBDAF /* Release configuration for PBXNativeTarget "ServerMasterWeb Extension" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		2516A11B304AF4FF000BBDAF /* Build configuration list for PBXNativeTarget "ServerMasterWeb" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2516A11C304AF4FF000BBDAF /* Debug configuration for PBXNativeTarget "ServerMasterWeb" */,
+				2516A11D304AF4FF000BBDAF /* Release configuration for PBXNativeTarget "ServerMasterWeb" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		2516A11E304AF4FF000BBDAF /* Build configuration list for PBXNativeTarget "ServerMasterWebTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2516A11F304AF4FF000BBDAF /* Debug configuration for PBXNativeTarget "ServerMasterWebTests" */,
+				2516A120304AF4FF000BBDAF /* Release configuration for PBXNativeTarget "ServerMasterWebTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		2516A121304AF4FF000BBDAF /* Build configuration list for PBXNativeTarget "ServerMasterWebUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2516A122304AF4FF000BBDAF /* Debug configuration for PBXNativeTarget "ServerMasterWebUITests" */,
+				2516A123304AF4FF000BBDAF /* Release configuration for PBXNativeTarget "ServerMasterWebUITests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		2562BC643049BA49004C5018 /* Build configuration list for PBXNativeTarget "ServerMasterMonitorExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2562BC653049BA49004C5018 /* Debug configuration for PBXNativeTarget "ServerMasterMonitorExtension" */,
+				2562BC663049BA49004C5018 /* Release configuration for PBXNativeTarget "ServerMasterMonitorExtension" */,
+			);
+			defaultConfigurationName = Release;
+		};
 		25BF0DAD3041F9F100D437E4 /* Build configuration list for PBXProject "ServerMaster" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

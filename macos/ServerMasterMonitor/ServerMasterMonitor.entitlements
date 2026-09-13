@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Sandboxed, and not optional: macOS refuses to register an app extension
+	     that is not, and it refuses silently — pluginkit simply never lists it,
+	     which is what kept the widget from ever appearing. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Which means the app's own Application Support folder is out of reach.
+	     The group container is the way in: the app writes what is running there,
+	     this reads it. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>88M5SYPGUR.com.adm1nsys.ServerMaster</string>
+	</array>
+</dict>
+</plist>

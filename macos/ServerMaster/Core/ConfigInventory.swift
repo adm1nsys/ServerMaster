@@ -290,11 +290,7 @@ nonisolated enum ConfigInventory {
                                     message: clean(result.combined, temporary: temporary.path, as: file.title))
 
         case .apache:
-            let binary = ["/usr/sbin/httpd",
-                          "/opt/homebrew/opt/httpd/bin/httpd",
-                          "/usr/local/opt/httpd/bin/httpd"]
-                .first { FileManager.default.isExecutableFile(atPath: $0) }
-                ?? ShellEnvironment.shared.which("httpd")
+            let binary = ApacheInstallation.resolve()?.binary ?? ShellEnvironment.shared.which("httpd")
             guard let binary else {
                 return ValidationResult(ok: true, message: "", skipped: true)
             }

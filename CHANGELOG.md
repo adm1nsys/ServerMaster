@@ -8,7 +8,30 @@ snapshots before the first public push.
 
 ## Unreleased
 
-- Keep the root `lastversion.txt` compatibility file for older macOS builds.
+## macOS 2.0.0 — 2026-09-13
+
+- Import the macOS 2.0 application source snapshot into the monorepository.
+- Add the redesigned SwiftUI control surface with the updated sidebar, ambient
+  background, glass-style panels, and richer status cards.
+- Add the Control dashboard for running profiles, quick actions, health state,
+  copied addresses, and profile details.
+- Add database tooling for browsing databases and tables, editing data, running
+  SQL, importing dumps, and opening the bundled/admin web panel.
+- Add project/template helpers for common PHP/CMS workflows and starter files.
+- Add diagnostics, domain tracing, health checks, waiting messages, and richer
+  console/log views.
+- Add backups and snapshots support for local profile data.
+- Add Safari extension and desktop monitor/widget targets.
+- Integrate the ServerMaster CLI helper into the app bundle from the monorepo
+  `cli/` package.
+- Move macOS update checks to `updates/maclastversion.txt` and GitHub Release
+  pages instead of repository-root compatibility files.
+- Update the website and wiki links to the GitHub Pages root structure.
+- Set the macOS deployment target to macOS 14.0.
+- Build the macOS app and embedded CLI helper as Universal binaries for Apple
+  Silicon and Intel.
+- Add a GitHub Actions macOS release workflow that publishes durable GitHub
+  Release assets instead of relying on temporary Actions artifacts.
 
 ## CLI 1.0.0 — 2026-09-13
 

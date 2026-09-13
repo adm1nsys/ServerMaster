@@ -24,8 +24,8 @@ struct AboutView: View {
                 whereThingsLive
                 footer
             }
-            .padding(20)
-            .frame(maxWidth: 860, alignment: .leading)
+            .padding(36)
+//.frame(maxWidth: 860, alignment: .leading)
         }
         .frame(maxWidth: .infinity)
     }
@@ -55,9 +55,9 @@ struct AboutView: View {
                         Label("Guides", systemImage: "book")
                     }
                     Button("Website") { NSWorkspace.shared.open(AppLinks.site) }
-                        .buttonStyle(.link)
+                        .modifier(ChipStyle())
                     Button("Report a problem") { NSWorkspace.shared.open(AppLinks.issues) }
-                        .buttonStyle(.link)
+                        .modifier(ChipStyle())
                 }
                 .font(.callout)
                 .padding(.top, 4)
@@ -120,7 +120,11 @@ struct AboutView: View {
             Divider()
             scenario("cylinder.split.1x2",
                      "A PHP site with a database",
-                     "The “PHP site (Nginx + PHP-FPM)” engine plus the built-in MariaDB. That runs WordPress, Joomla, Drupal, Laravel and any other PHP CMS or framework.")
+                     "A PHP engine plus the built-in MariaDB. That runs WordPress, Joomla, Drupal, Laravel and any other PHP CMS or framework.")
+            Divider()
+            scenario("building.columns",
+                     "A project that ships its own .htaccess",
+                     "The “PHP site (Apache + PHP-FPM)” engine reads .htaccess the way the hosting will. Joomla, WordPress and Drupal all ship one, and their pretty URLs depend on it.")
             Divider()
             scenario("shippingbox",
                      "Your own Node.js server",
@@ -156,7 +160,28 @@ struct AboutView: View {
                     "Custom pages for 404, 403, 500 and the rest. Dotfiles such as .env are blocked and security headers are set — the way a real server does it.")
             Divider()
             feature("curlybraces", "Several PHP versions",
-                    "The version is set per profile. Sites on different PHP versions run at the same time.")
+                    "The version is set per profile, and a version that is missing can be installed from the app. Sites on different PHP versions run at the same time.")
+            Divider()
+            feature("building.columns", "Apache as well as Nginx",
+                    "Apache reads .htaccess, which is what a CMS expects and what the hosting will do. Nothing to install: the copy macOS ships is used, or Homebrew's where privacy rules get in the way.")
+            Divider()
+            feature("tablecells.badge.ellipsis", "Database without the terminal",
+                    "Browse and edit rows like a spreadsheet, run SQL, and change the shape of a database — tables, columns, indexes, accounts and privileges. A dump can be imported from a .sql file or straight out of a backup archive.")
+            Divider()
+            feature("clock.arrow.circlepath", "Snapshots and backups",
+                    "Take a snapshot of a profile — its settings, its files and its database — by hand or on a schedule, and roll back to it. Databases can be snapshotted on their own.")
+            Divider()
+            feature("stethoscope", "Diagnostics",
+                    "What is wrong when everything looks installed: disk space and health, a binary built for the wrong architecture, a half-written database directory, a folder macOS will not let Apache read. Each address can be traced from the name to the answer.")
+            Divider()
+            feature("doc.text.magnifyingglass", "Hidden files",
+                    "The dotfiles a project hides — .htaccess, .env, .user.ini — in one list, with an editor that has search, line numbers and syntax colouring. Renaming htaccess.txt to .htaccess is one click instead of a terminal.")
+            Divider()
+            feature("apple.terminal", "A command line tool",
+                    "`servermaster` does everything the window does, for a script, a Makefile or an agent — with an interactive screen of its own when it is run with no arguments.")
+            Divider()
+            feature("safari", "Safari extension and a widget",
+                    "See what is running and start or stop it without leaving the browser, or from the desktop.")
         }
     }
 
@@ -240,7 +265,7 @@ struct AboutView: View {
                     .textSelection(.enabled)
                 Spacer()
                 Button("Show in Finder") { model.revealSupportFolder() }
-                    .buttonStyle(.link)
+                    .modifier(ChipStyle())
             }
 
             Divider()
@@ -259,4 +284,15 @@ struct AboutView: View {
             Spacer()
         }
     }
+
+    private struct ChipStyle: ViewModifier {
+        func body(content: Content) -> some View {
+            if #available(macOS 26.0, *) {
+                content.buttonStyle(.glass).controlSize(.small).font(.caption)
+            } else {
+                content.buttonStyle(.bordered).controlSize(.small).font(.caption)
+            }
+        }
+    }
+
 }

@@ -250,14 +250,9 @@ nonisolated enum LaunchPlanBuilder {
     /// Apache ships with macOS, so the system copy is preferred and nothing needs
     /// installing. Homebrew's httpd is accepted when it is there.
     private static func requireApache() throws -> String {
-        let candidates = [
-            "/usr/sbin/httpd",
-            "/opt/homebrew/opt/httpd/bin/httpd",
-            "/usr/local/opt/httpd/bin/httpd"
-        ]
-        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
-            return path
-        }
+        // One decision for the binary, its modules and its ServerRoot — mixing
+        // installations loads the wrong modules and Apache refuses to start.
+        if let installation = ApacheInstallation.resolve() { return installation.binary }
         if let found = ShellEnvironment.shared.which("httpd") { return found }
         throw BuildError.toolNotFound("httpd")
     }

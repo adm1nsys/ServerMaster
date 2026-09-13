@@ -4,24 +4,39 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct ProfilesView: View {
 
     @Environment(AppModel.self) private var model
-    @State private var renamingID: UUID?
-    @FocusState private var renameFocused: Bool
     @State private var deleteCandidate: ServerProfile?
+    @State private var showNewProfile = false
 
     var body: some View {
         @Bindable var model = model
 
-        HSplitView {
-            list
+        VStack(spacing: 0) {
+            ScreenTitle(title: "Profiles",
+                        subtitle: "^[\(model.profiles.count) profile](inflect: true), and what each one serves") {
+                Button {
+                    showNewProfile = true
+                } label: {
+                    Label("New profile", systemImage: "plus")
+                }
+                .modifier(GlassStyle(prominent: true))
+            }
+            .padding(.horizontal, 36)
+            .padding(.top, 36)
+            .padding(.bottom, 14)
+
+            HSplitView {
+            glassPanel(list)
+                .padding(.trailing, 8)
                 .frame(minWidth: 200, idealWidth: 260, maxWidth: 320)
                 .frame(maxHeight: .infinity)
 
             Group {
-                    if let id = model.selectedProfileID,
+                if let id = model.selectedProfileID,
                    let profile = model.profile(with: id) {
                     ProfileEditorView(profile: profile)
                         .id(profile.id)
@@ -29,13 +44,22 @@ struct ProfilesView: View {
                     ContentUnavailableView("No profile selected",
                                            systemImage: "square.stack.3d.up",
                                            description: Text("Pick a profile on the left or create a new one."))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .modifier(FullHeightGlass())
                 }
             }
             // Without filling explicitly on both axes, both columns collapse into
             // a narrow strip in the middle of an empty window when no profile is selected.
             .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.leading, 8)
+            }
+            .padding(.horizontal, 36)
+            .padding(.bottom, 36)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(isPresented: $showNewProfile) {
+            NewProfileSheet()
+        }
         .confirmationDialog("Delete the profile “\(deleteCandidate?.name ?? "")”?",
                             isPresented: Binding(get: { deleteCandidate != nil },
                                                  set: { if !$0 { deleteCandidate = nil } })) {
@@ -55,17 +79,17 @@ struct ProfilesView: View {
                 ForEach(model.profiles) { profile in
                     profileRow(profile)
                         .tag(profile.id)
-                        .onTapGesture(count: 2) {
-                            model.selectedProfileID = profile.id
-                            renamingID = profile.id
-                            renameFocused = true
-                        }
                         .contextMenu {
-                            Button("Rename") {
-                                model.selectedProfileID = profile.id
-                                renamingID = profile.id
-                                renameFocused = true
+                            if model.isActive(profile.id) {
+                                Button("Restart") { Task { await model.restartServer(profile: profile) } }
+                                Button("Stop") { Task { await model.stopServer(profileID: profile.id) } }
+                                Button("Open in the browser") {
+                                    if let url = URL(string: profile.address) { NSWorkspace.shared.open(url) }
+                                }
+                            } else {
+                                Button("Start") { Task { await model.startServer(profile: profile) } }
                             }
+                            Divider()
                             Button("Make the default profile") { model.makeDefault(profile) }
                             Button("Duplicate") { model.duplicateProfile(profile) }
                             Divider()
@@ -78,35 +102,19 @@ struct ProfilesView: View {
                 }
             }
             .listStyle(.inset)
+            .alternatingRowBackgrounds(.disabled)
+            .scrollContentBackground(.hidden)
 
-            Divider()
-
+            // No plus here. Creating a profile is the button beside the screen
+            // title; two of them on one screen is two answers to the same
+            // question, and the one down here was the less findable of the two.
             HStack(spacing: 6) {
-                Menu {
-                    ForEach(ProfilePreset.all) { preset in
-                        Button {
-                            create(preset)
-                        } label: {
-                            Label(preset.title, systemImage: preset.symbol)
-                        }
-                    }
-                    Divider()
-                    Button("Empty profile") { create(nil) }
-                } label: {
-                    Image(systemName: "plus")
-                } primaryAction: {
-                    // A plain click still gives the commonest case rather than a
-                    // menu: most people are serving a folder of files.
-                    create(ProfilePreset.all.first)
-                }
-                .menuStyle(.borderlessButton)
-                .frame(width: 34)
-                .help("New profile — hold to choose what you are serving")
-
                 Button {
                     if let profile = model.selectedProfile { deleteCandidate = profile }
                 } label: {
-                    Image(systemName: "minus")
+                    // A fixed box, or the glyphs decide the widths and the two
+                    // buttons come out different sizes.
+                    Image(systemName: "minus").frame(width: 16, height: 14)
                 }
                 .disabled(model.selectedProfile == nil)
                 .help("Delete profile")
@@ -114,7 +122,7 @@ struct ProfilesView: View {
                 Button {
                     if let profile = model.selectedProfile { model.duplicateProfile(profile) }
                 } label: {
-                    Image(systemName: "doc.on.doc")
+                    Image(systemName: "doc.on.doc").frame(width: 16, height: 14)
                 }
                 .disabled(model.selectedProfile == nil)
                 .help("Duplicate")
@@ -124,9 +132,45 @@ struct ProfilesView: View {
                 Text("\(model.profiles.count)")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            .buttonStyle(.borderless)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .modifier(ChipStyle())
+            .padding(.horizontal, 4)
+            .padding(.top, 8)
+        }
+        .padding(15)
+    }
+
+    /// The list on glass over the moving background.
+    @ViewBuilder
+    private func glassPanel(_ content: some View) -> some View {
+        if #available(macOS 26.0, *) {
+            content.glassEffect(.regular, in: .rect(cornerRadius: 12))
+        } else {
+            content
+        }
+    }
+
+    private struct GlassStyle: ViewModifier {
+        var prominent = false
+        func body(content: Content) -> some View {
+            if #available(macOS 26.0, *) {
+                if prominent {
+                    content.buttonStyle(.glassProminent)
+                } else {
+                    content.buttonStyle(.glass)
+                }
+            } else {
+                content.buttonStyle(.bordered)
+            }
+        }
+    }
+
+    private struct ChipStyle: ViewModifier {
+        func body(content: Content) -> some View {
+            if #available(macOS 26.0, *) {
+                content.buttonStyle(.glass).controlSize(.small)
+            } else {
+                content.buttonStyle(.borderless)
+            }
         }
     }
 
@@ -137,21 +181,7 @@ struct ProfilesView: View {
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
-                    if renamingID == profile.id {
-                        TextField("", text: Binding(
-                            get: { model.profile(with: profile.id)?.name ?? "" },
-                            set: { newName in
-                                guard var updated = model.profile(with: profile.id) else { return }
-                                updated.name = newName
-                                model.updateProfile(updated)
-                            }))
-                        .textFieldStyle(.roundedBorder)
-                        .focused($renameFocused)
-                        .onSubmit { finishRenaming() }
-                        .onExitCommand { finishRenaming() }
-                    } else {
-                        Text(profile.name).lineLimit(1)
-                    }
+                    Text(profile.name).lineLimit(1)
                     if model.settings.defaultProfileID == profile.id {
                         Image(systemName: "star.fill")
                             .font(.caption2)
@@ -164,43 +194,29 @@ struct ProfilesView: View {
             }
             Spacer()
             if model.isActive(profile.id) {
+                Button {
+                    Task { await model.restartServer(profile: profile) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .modifier(ChipStyle())
+                .help("Restart")
+
+                Button {
+                    Task { await model.stopServer(profileID: profile.id) }
+                } label: {
+                    Image(systemName: "stop.fill")
+                }
+                .modifier(ChipStyle())
+                .help("Stop")
+
                 StatusDot(state: model.state(of: profile.id))
             }
         }
         .padding(.vertical, 2)
     }
 
-    private func finishRenaming() {
-        // An empty name must not be left — put something meaningful back.
-        if let id = renamingID, var profile = model.profile(with: id),
-           profile.name.trimmingCharacters(in: .whitespaces).isEmpty {
-            profile.name = String(localized: "Untitled")
-            model.updateProfile(profile)
-        }
-        renamingID = nil
-        renameFocused = false
-        model.flushPendingSaves()
-    }
 
-    /// Creates a profile from a preset, or an empty one when none is given.
-    private func create(_ preset: ProfilePreset?) {
-        let number = model.profiles.count + 1
-        var profile: ServerProfile
-        if let preset {
-            profile = preset.makeProfile(name: preset.title, port: suggestPort())
-            // Two profiles from the same preset would otherwise share a name.
-            if model.profiles.contains(where: { $0.name == profile.name }) {
-                profile.name = "\(preset.title) \(String(number))"
-            }
-        } else {
-            profile = ServerProfile()
-            profile.name = "Profile \(String(number))"
-            profile.port = suggestPort()
-        }
-        model.addProfile(profile)
-        renamingID = profile.id
-        renameFocused = true
-    }
 
     private func suggestPort() -> Int {
         let used = Set(model.profiles.map(\.port))

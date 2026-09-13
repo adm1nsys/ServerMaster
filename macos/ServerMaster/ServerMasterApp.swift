@@ -53,11 +53,27 @@ struct ServerMasterApp: App {
             .animation(.easeInOut(duration: 0.25), value: model.isBootstrapping)
             .animation(.easeInOut(duration: 0.2), value: model.isShuttingDown)
             .task {
+                // Before anything is drawn: an imported translation has to be
+                // in place before the first string is looked up.
+                TranslationOverride.install()
                 AppDelegate.model = model
                 await model.bootstrap()
             }
         }
+        // The title bar stays. Hiding it was tried and reverted: without it the
+        // window keeps the same strip at the top, only now it is empty and dark
+        // on every screen instead of carrying the title.
         .defaultSize(width: 1120, height: 720)
+
+        // Next to Control Center: the state of every profile without switching
+        // windows, and start/stop/restart without opening the app at all.
+        MenuBarExtra {
+            MenuBarView()
+                .environment(model)
+        } label: {
+            MenuBarLabel(model: model)
+        }
+        .menuBarExtraStyle(.window)
         .commands {
             CommandGroup(replacing: .newItem) { }
 

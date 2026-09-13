@@ -16,8 +16,9 @@ Legacy paths used by existing macOS releases will remain available until those
 clients are no longer supported. Release manifests will point to immutable
 assets on GitHub Releases rather than binaries committed to the repository.
 
-The macOS application reads `updates/maclastversion.txt`. The root-level
-`lastversion.txt` is retained only for compatibility with older compiled builds.
+The macOS application reads `updates/maclastversion.txt`. The old root-level
+`lastversion.txt` compatibility file is no longer part of the current release
+flow.
 The command-line tool reads `updates/clilastversion.txt`.
 
 Plain text version files are intentional here: old clients can read them

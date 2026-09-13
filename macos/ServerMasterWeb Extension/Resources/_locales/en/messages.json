@@ -1,0 +1,10 @@
+{
+    "extension_name": {
+        "message": "ServerMaster",
+        "description": "Name of the extension."
+    },
+    "extension_description": {
+        "message": "See which of your local servers are running, open them, and start or stop them without leaving Safari.",
+        "description": "Description of the extension."
+    }
+}

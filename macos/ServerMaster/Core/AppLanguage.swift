@@ -44,6 +44,7 @@ nonisolated enum AppLanguage {
     /// every other entry needs its `.lproj` present in the bundle to show up.
     static let supported: [LanguageEntry] = [
         LanguageEntry(code: "en", nativeName: "English", englishName: "English", isSource: true),
+        LanguageEntry(code: "uk", nativeName: "Українська", englishName: "Ukrainian"),
         LanguageEntry(code: "de", nativeName: "Deutsch", englishName: "German"),
         LanguageEntry(code: "fr", nativeName: "Français", englishName: "French"),
         LanguageEntry(code: "da", nativeName: "Dansk", englishName: "Danish"),

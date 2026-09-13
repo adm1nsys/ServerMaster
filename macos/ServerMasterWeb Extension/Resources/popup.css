@@ -1,0 +1,114 @@
+/* The popup is a panel Safari sizes to its content, so everything here is laid
+   out to a fixed width and left to grow downwards. */
+
+:root {
+    color-scheme: light dark;
+    --ground: #ffffff;
+    --sunk: #f4f4f5;
+    --ink: #18181b;
+    --quiet: #71717a;
+    --edge: #e4e4e7;
+    --running: #16a34a;
+    --stopped: #a1a1aa;
+    --accent: #3b82f6;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --ground: #1c1c1e;
+        --sunk: #2c2c2e;
+        --ink: #f4f4f5;
+        --quiet: #a1a1aa;
+        --edge: #3a3a3c;
+        --running: #4ade80;
+        --stopped: #71717a;
+    }
+}
+
+body {
+    width: 320px;
+    margin: 0;
+    padding: 12px 14px 10px;
+    background: var(--ground);
+    color: var(--ink);
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
+header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+h1 { margin: 0; font-size: 14px; font-weight: 600; }
+
+#summary { color: var(--quiet); font-size: 12px; }
+
+ul { margin: 0; padding: 0; list-style: none; }
+
+li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    border-radius: 7px;
+}
+
+li + li { margin-top: 2px; }
+li:hover { background: var(--sunk); }
+
+.dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--stopped);
+}
+
+.dot.on { background: var(--running); }
+
+.name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.detail { display: block; color: var(--quiet); font-size: 11px; }
+
+button {
+    font: inherit;
+    font-size: 12px;
+    color: var(--ink);
+    background: var(--sunk);
+    border: 1px solid var(--edge);
+    border-radius: 6px;
+    padding: 3px 9px;
+    cursor: pointer;
+}
+
+button:hover { border-color: var(--quiet); }
+button:disabled { opacity: 0.4; cursor: default; }
+
+/* The action on a row is only shown for the row being pointed at: three
+   buttons on every line turns a short list into a wall of controls. */
+li .actions { display: none; gap: 4px; }
+li:hover .actions, li:focus-within .actions { display: flex; }
+
+.notice {
+    margin: 6px 2px;
+    color: var(--quiet);
+}
+
+.notice.bad { color: #dc2626; }
+
+footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--edge);
+}

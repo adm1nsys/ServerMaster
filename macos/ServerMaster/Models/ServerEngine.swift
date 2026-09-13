@@ -57,8 +57,11 @@ nonisolated enum ServerEngine: String, Codable, CaseIterable, Identifiable, Send
         case .phpBuiltIn:              return "curlybraces"
         case .nginx:                   return "server.rack"
         case .phpFpm:                  return "cylinder.split.1x2"
-        case .apache:                  return "feather"
-        case .apachePHP:               return "feather.circle"
+        // Apache's own mark is a feather, and "feather" is not an SF Symbol —
+        // it rendered as nothing at all, so both Apache engines had no icon.
+        // `SymbolTests` now checks every name in this list actually resolves.
+        case .apache:                  return "building.columns"
+        case .apachePHP:               return "building.columns.circle"
         case .caddy:                   return "lock.shield"
         case .custom:                  return "terminal"
         }

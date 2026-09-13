@@ -212,7 +212,7 @@ struct DatabaseBrowserSheet: View {
         if let editing, editing.row == row, editing.column == column {
             TextField("", text: $editText)
                 .font(.system(.caption, design: .monospaced))
-                .textFieldStyle(.roundedBorder)
+                .glassField()
                 .frame(minWidth: 90)
                 .onSubmit { Task { await commitEdit() } }
                 .onExitCommand { self.editing = nil }

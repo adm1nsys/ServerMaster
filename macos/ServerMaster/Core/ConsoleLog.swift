@@ -64,6 +64,12 @@ final class ConsoleLog {
 
     func system(_ text: String) { append(text, stream: .system) }
 
+    /// The last lines as plain text. Used where a log has to be reported rather
+    /// than displayed — a command line message, or an error the UI shows once.
+    func tail(_ count: Int) -> String {
+        lines.suffix(count).map(\.text).joined(separator: "\n")
+    }
+
     func clear() {
         lines.removeAll()
         revision &+= 1
