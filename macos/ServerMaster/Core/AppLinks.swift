@@ -13,7 +13,7 @@ import AppKit
 
 nonisolated enum AppLinks {
 
-    static let site = URL(string: "https://adm1nsys.github.io/ServerMaster/web/")!
+    static let site = URL(string: "https://adm1nsys.github.io/ServerMaster/")!
     static let repository = URL(string: "https://github.com/adm1nsys/ServerMaster")!
     static let issues = URL(string: "https://github.com/adm1nsys/ServerMaster/issues")!
 
@@ -35,7 +35,7 @@ nonisolated enum AppLinks {
         case errors       = "errors"
 
         var url: URL {
-            let base = "https://adm1nsys.github.io/ServerMaster/web/wiki.html"
+            let base = "https://adm1nsys.github.io/ServerMaster/wiki.html"
             return URL(string: rawValue.isEmpty ? base : base + "#" + rawValue)!
         }
     }
