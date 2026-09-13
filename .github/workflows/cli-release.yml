@@ -68,6 +68,7 @@ jobs:
             - Release checksum for download verification.
 
             Notes:
+            - This release is marked as a pre-release while CLI packaging and future Linux targets are being stabilized.
             - This build is unsigned and not notarized.
             - Linux glibc and Linux musl builds are planned for the same CLI release line after platform-specific code is isolated.`
 
@@ -81,12 +82,42 @@ jobs:
                 name: `ServerMaster CLI v${version}`,
                 body,
                 draft: false,
-                prerelease: false,
+                prerelease: true,
                 make_latest: 'false'
               })
             } catch (error) {
               if (error.status !== 422) throw error
               release = await github.rest.repos.getReleaseByTag({ owner, repo, tag })
+              release = await github.rest.repos.updateRelease({
+                owner,
+                repo,
+                release_id: release.data.id,
+                name: `ServerMaster CLI v${version}`,
+                body,
+                draft: false,
+                prerelease: true,
+                make_latest: 'false'
+              })
+            }
+
+            const managedAssetNames = new Set([
+              'servermaster',
+              'servermaster-macos-universal.zip',
+              'SHA256SUMS.txt'
+            ])
+            const existingAssets = await github.paginate(github.rest.repos.listReleaseAssets, {
+              owner,
+              repo,
+              release_id: release.data.id,
+              per_page: 100
+            })
+            for (const asset of existingAssets) {
+              if (!managedAssetNames.has(asset.name)) continue
+              await github.rest.repos.deleteReleaseAsset({
+                owner,
+                repo,
+                asset_id: asset.id
+              })
             }
 
             for (const file of [
