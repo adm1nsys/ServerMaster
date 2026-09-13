@@ -1,0 +1,108 @@
+name: CLI release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'CLI version to release'
+        required: true
+        default: '1.0.0'
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cli-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: xcode-27
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build universal release CLI
+        run: swift build -c release --package-path cli --arch arm64 --arch x86_64
+
+      - name: Verify universal executable
+        run: |
+          lipo -verify_arch arm64 cli/.build/out/Products/Release/servermaster
+          lipo -verify_arch x86_64 cli/.build/out/Products/Release/servermaster
+          lipo -archs cli/.build/out/Products/Release/servermaster
+
+      - name: Check CLI version
+        run: |
+          EXPECTED="${{ inputs.version }}"
+          ACTUAL="$(cli/.build/out/Products/Release/servermaster version | head -n 1 | awk '{print $2}')"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Package CLI
+        run: |
+          mkdir -p "$RUNNER_TEMP/servermaster-cli"
+          cp cli/.build/out/Products/Release/servermaster "$RUNNER_TEMP/servermaster-cli/servermaster"
+          chmod 755 "$RUNNER_TEMP/servermaster-cli/servermaster"
+          ditto -c -k "$RUNNER_TEMP/servermaster-cli" "$RUNNER_TEMP/servermaster-macos-universal.zip"
+          shasum -a 256 "$RUNNER_TEMP/servermaster-macos-universal.zip" > "$RUNNER_TEMP/SHA256SUMS.txt"
+
+      - name: Publish GitHub Release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs')
+            const path = require('path')
+
+            const version = '${{ inputs.version }}'
+            const tag = `cli-v${version}`
+            const owner = context.repo.owner
+            const repo = context.repo.repo
+            const body = `ServerMaster CLI v${version} brings the ServerMaster control flow to the terminal.
+
+            What is included:
+            - Interactive terminal control screen with fixed navigation between sections.
+            - Settings screen with CLI version, update channel, automatic update status, site/wiki links, and local paths.
+            - CLI update commands: \`update check\`, \`update install --yes\`, and \`update auto on|off|status\`.
+            - macOS universal binary for Apple Silicon and Intel Macs.
+            - Release checksum for download verification.
+
+            Notes:
+            - This build is unsigned and not notarized.
+            - Linux glibc and Linux musl builds are planned for the same CLI release line after platform-specific code is isolated.`
+
+            let release
+            try {
+              release = await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tag,
+                target_commitish: context.sha,
+                name: `ServerMaster CLI v${version}`,
+                body,
+                draft: false,
+                prerelease: false,
+                make_latest: 'false'
+              })
+            } catch (error) {
+              if (error.status !== 422) throw error
+              release = await github.rest.repos.getReleaseByTag({ owner, repo, tag })
+            }
+
+            for (const file of [
+              `${process.env.RUNNER_TEMP}/servermaster-macos-universal.zip`,
+              `${process.env.RUNNER_TEMP}/SHA256SUMS.txt`
+            ]) {
+              const data = fs.readFileSync(file)
+              await github.rest.repos.uploadReleaseAsset({
+                owner,
+                repo,
+                release_id: release.data.id,
+                name: path.basename(file),
+                data,
+                headers: {
+                  'content-type': 'application/octet-stream',
+                  'content-length': data.length
+                }
+              })
+            }
