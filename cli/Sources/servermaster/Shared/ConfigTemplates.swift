@@ -1,0 +1,532 @@
+//
+//  ConfigTemplates.swift
+//  ServerMaster
+//
+//  Generation of starter configs for nginx, Apache and Caddy.
+//
+//  Important: paths must always be quoted. The application's working directory
+//  lives in “Application Support” — which has a space — and without quotes nginx
+//  fails with “invalid number of arguments” and Caddy with “wrong argument count”.
+//
+
+import Foundation
+
+nonisolated enum ConfigTemplates {
+
+    /// A path as an argument to a config directive.
+    static func quote(_ path: String) -> String {
+        "\"" + path.replacingOccurrences(of: "\\", with: "\\\\")
+                   .replacingOccurrences(of: "\"", with: "\\\"") + "\""
+    }
+
+    /// A path or value as a single-quoted PHP literal.
+    static func phpQuote(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "\\", with: "\\\\")
+                   .replacingOccurrences(of: "'", with: "\\'") + "'"
+    }
+
+    // MARK: - Nginx
+
+    static func nginx(for profile: ServerProfile, prefix: String, phpFpmPort: Int? = nil) -> String {
+        let root = AppPaths.expand(profile.rootPath)
+        let preset = ConfigPreset.named(profile.configPreset, for: profile.engine)
+        let https = profile.httpsEnabled && profile.engine.supportsHTTPS
+        let index = profile.indexFile.isEmpty ? "index.html" : profile.indexFile
+        let presetBlock = preset.nginxBlock(index: index)
+
+        var tls = ""
+        if https {
+            tls = """
+                    ssl_certificate     \(quote(AppPaths.expand(profile.certificatePath)));
+                    ssl_certificate_key \(quote(AppPaths.expand(profile.privateKeyPath)));
+                    ssl_protocols       TLSv1.2 TLSv1.3;
+
+            """
+        }
+
+        // The PHP handling block: nginx passes .php to php-fpm over FastCGI.
+        var phpBlock = ""
+        if let phpFpmPort {
+            phpBlock = """
+
+                    location ~ [^/]\\.php(/|$) {
+                        fastcgi_split_path_info ^(.+?\\.php)(/.*)$;
+                        if (!-f $document_root$fastcgi_script_name) { return 404; }
+                        fastcgi_pass 127.0.0.1:\(phpFpmPort);
+                        fastcgi_index index.php;
+                        include \(quote(fastcgiParamsPath()));
+                        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                        fastcgi_param PATH_INFO $fastcgi_path_info;
+                        fastcgi_read_timeout \(max(60, profile.phpMaxExecutionTime))s;
+                        fastcgi_buffers 16 16k;
+                        fastcgi_buffer_size 32k;
+                    }
+            """
+        }
+
+        var location = """
+                        autoindex \(profile.directoryListing ? "on" : "off");
+        """
+        if phpFpmPort != nil {
+            // Pretty URLs of any CMS: a non-existent path goes to index.php.
+            location += "\n                try_files $uri $uri/ /index.php?$args;"
+        } else if profile.spaFallback {
+            location += "\n                try_files $uri $uri/ /\(index);"
+        }
+        if profile.enableCORS {
+            location += "\n                add_header Access-Control-Allow-Origin *;"
+        }
+        if profile.cacheSeconds >= 0 {
+            location += "\n                expires \(profile.cacheSeconds)s;"
+        } else {
+            location += "\n                add_header Cache-Control \"no-store\";"
+        }
+        if profile.securityHeaders {
+            location += """
+
+                        add_header X-Content-Type-Options nosniff;
+                        add_header X-Frame-Options SAMEORIGIN;
+                        add_header Referrer-Policy strict-origin-when-cross-origin;
+                        add_header X-XSS-Protection "0";
+                        add_header Permissions-Policy "geolocation=(), camera=(), microphone=()";
+            """
+        }
+        if profile.hstsEnabled && https {
+            location += "\n                add_header Strict-Transport-Security \"max-age=31536000\";"
+        }
+
+        // Files starting with a dot: .env, .git and anything else that must not be served.
+        var dotfiles = ""
+        if profile.hideDotfiles {
+            dotfiles = """
+
+                    location ~ /\\. {
+                        deny all;
+                        access_log off;
+                    }
+            """
+        }
+
+        // Custom error pages live next to the engine's working directory.
+        var errorPages = ""
+        if profile.customErrorPages {
+            let mapped = ErrorPages.codes.map {
+                "        error_page \($0.code) \(ErrorPages.urlPrefix)/\($0.code).html;"
+            }.joined(separator: "\n")
+            errorPages = """
+
+            \(mapped)
+
+                    location ^~ \(ErrorPages.urlPrefix)/ {
+                        root \(quote(prefix));
+                        internal;
+                    }
+            """
+        }
+
+        return """
+        # Generated by ServerMaster for the “\(profile.name)” profile.
+        # This file is rewritten on every start — edit a copy and point the profile at it.
+        # daemon off is passed with the -g flag; do not repeat it here.
+        worker_processes 1;
+        pid \(quote(prefix + "/nginx.pid"));
+        error_log \(quote(prefix + "/logs/error.log")) warn;
+
+        events {
+            worker_connections 512;
+        }
+
+        http {
+            include       \(quote(mimeTypesPath()));
+            default_type  application/octet-stream;
+            access_log    \(quote(prefix + "/logs/access.log"));
+            sendfile      on;
+            gzip          \(profile.enableGzip ? "on" : "off");
+            gzip_types    text/plain text/css application/json application/javascript text/xml application/xml image/svg+xml;
+            client_body_temp_path \(quote(prefix + "/client_temp"));
+            proxy_temp_path       \(quote(prefix + "/proxy_temp"));
+            fastcgi_temp_path     \(quote(prefix + "/fastcgi_temp"));
+            uwsgi_temp_path       \(quote(prefix + "/uwsgi_temp"));
+            scgi_temp_path        \(quote(prefix + "/scgi_temp"));
+
+            server {
+                listen \(profile.host):\(String(profile.port))\(https ? " ssl" : "");
+                server_name localhost;
+        \(tls)
+                root  \(quote(root));
+                index \(phpFpmPort != nil ? "index.php " + index : index);
+                client_max_body_size \(profile.phpUploadMaxFilesize);
+
+                location / {
+        \(location)
+                }
+        \(phpBlock)
+        \(presetBlock)
+        \(dotfiles)
+        \(errorPages)
+            }
+        }
+        """
+    }
+
+    // MARK: - Apache
+
+    /// macOS ships Apache 2.4 in /usr/sbin, and every module we need is already on
+    /// disk — the system config simply does not load them. Loading them explicitly
+    /// means Apache needs no installation at all.
+    ///
+    /// Two things bite here and both are handled below:
+    ///  * without its own DefaultRuntimeDir, Apache puts the proxy mutex in
+    ///    /var/run and refuses to start without root;
+    ///  * the Mutex directive does not accept a quoted path, so it cannot be used
+    ///    at all when the runtime folder lives under “Application Support”.
+    static func apache(for profile: ServerProfile, prefix: String, phpFpmPort: Int? = nil) -> String {
+        let root = AppPaths.expand(profile.rootPath)
+        let https = profile.httpsEnabled && profile.engine.supportsHTTPS
+        let index = profile.indexFile.isEmpty ? "index.html" : profile.indexFile
+        let apache = ApacheInstallation.resolve()
+        let modules = apache?.modulesDirectory ?? apacheModulesPath()
+
+        func load(_ name: String, _ file: String) -> String {
+            let path = modules + "/" + file
+            guard FileManager.default.fileExists(atPath: path) else { return "" }
+            return "LoadModule \(name) \(quote(path))\n"
+        }
+
+        var loads = ""
+        loads += load("mpm_prefork_module", "mod_mpm_prefork.so")
+        loads += load("unixd_module", "mod_unixd.so")
+        loads += load("authz_core_module", "mod_authz_core.so")
+        loads += load("authz_host_module", "mod_authz_host.so")
+        loads += load("dir_module", "mod_dir.so")
+        loads += load("mime_module", "mod_mime.so")
+        loads += load("log_config_module", "mod_log_config.so")
+        loads += load("alias_module", "mod_alias.so")
+        loads += load("autoindex_module", "mod_autoindex.so")
+        loads += load("rewrite_module", "mod_rewrite.so")
+        loads += load("headers_module", "mod_headers.so")
+        loads += load("filter_module", "mod_filter.so")
+        if profile.enableGzip { loads += load("deflate_module", "mod_deflate.so") }
+        if https { loads += load("ssl_module", "mod_ssl.so") }
+        if phpFpmPort != nil {
+            loads += load("proxy_module", "mod_proxy.so")
+            loads += load("proxy_fcgi_module", "mod_proxy_fcgi.so")
+        }
+
+        var tls = ""
+        if https {
+            tls = """
+            SSLEngine on
+            SSLCertificateFile    \(quote(AppPaths.expand(profile.certificatePath)))
+            SSLCertificateKeyFile \(quote(AppPaths.expand(profile.privateKeyPath)))
+            SSLProtocol -all +TLSv1.2 +TLSv1.3
+
+            """
+        }
+
+        // AllowOverride All is the whole point of this engine. Without it Apache
+        // ignores .htaccess silently — no error, the rules simply never apply.
+        var directory = """
+            <Directory \(quote(root))>
+                Options FollowSymLinks\(profile.directoryListing ? " Indexes" : "")
+                AllowOverride All
+                Require all granted
+        """
+        if phpFpmPort != nil {
+            // The Apache equivalent of nginx try_files: a path that matches no file
+            // goes to index.php, so CMS pretty URLs work even without a .htaccess.
+            directory += "\n        FallbackResource /index.php"
+        } else if profile.spaFallback {
+            directory += "\n        FallbackResource /\(index)"
+        }
+        // The preset's own directives go inside the Directory block, where a
+        // rewrite has the context it needs.
+        let presetText = ConfigPreset.named(profile.configPreset, for: profile.engine)
+            .apacheBlock(index: index)
+        if !presetText.isEmpty {
+            directory += "\n" + presetText.split(separator: "\n")
+                .map { "    " + $0 }
+                .joined(separator: "\n")
+        }
+        directory += "\n    </Directory>"
+
+        var headers = ""
+        if profile.enableCORS {
+            headers += "\n    Header always set Access-Control-Allow-Origin \"*\""
+        }
+        if profile.cacheSeconds >= 0 {
+            headers += "\n    Header set Cache-Control \"max-age=\(String(profile.cacheSeconds))\""
+        } else {
+            headers += "\n    Header set Cache-Control \"no-store\""
+        }
+        if profile.securityHeaders {
+            headers += """
+
+                Header always set X-Content-Type-Options nosniff
+                Header always set X-Frame-Options SAMEORIGIN
+                Header always set Referrer-Policy strict-origin-when-cross-origin
+                Header always set Permissions-Policy "geolocation=(), camera=(), microphone=()"
+            """
+        }
+        if profile.hstsEnabled && https {
+            headers += "\n    Header always set Strict-Transport-Security \"max-age=31536000\""
+        }
+
+        var dotfiles = ""
+        if profile.hideDotfiles {
+            dotfiles = """
+
+                <FilesMatch "^\\.">
+                    Require all denied
+                </FilesMatch>
+            """
+        }
+
+        var php = ""
+        if let phpFpmPort {
+            php = """
+
+                <FilesMatch "\\.php$">
+                    SetHandler "proxy:fcgi://127.0.0.1:\(String(phpFpmPort))"
+                </FilesMatch>
+                ProxyTimeout \(String(max(60, profile.phpMaxExecutionTime)))
+            """
+        }
+
+        var errorPages = ""
+        if profile.customErrorPages {
+            let alias = "    Alias \(ErrorPages.urlPrefix)/ \(quote(prefix + "/" + ErrorPages.directoryName + "/"))"
+            // Apache refuses ErrorDocument for a status it has no entry for and
+            // fails the whole config. Verified with httpd -t across every code we
+            // generate: 418 is the only one it rejects. The page is still written,
+            // it simply is not wired up — nothing here ever returns 418 anyway.
+            let mapped = ErrorPages.codes
+                .filter { !apacheUnsupportedCodes.contains($0.code) }
+                .map {
+                    "    ErrorDocument \(String($0.code)) \(ErrorPages.urlPrefix)/\(String($0.code)).html"
+                }
+                .joined(separator: "\n")
+            errorPages = """
+
+            \(alias)
+                <Directory \(quote(prefix + "/" + ErrorPages.directoryName))>
+                    Require all granted
+                </Directory>
+            \(mapped)
+            """
+        }
+
+        var gzip = ""
+        if profile.enableGzip {
+            gzip = """
+
+                AddOutputFilterByType DEFLATE text/plain text/css text/xml \\
+                    application/json application/javascript application/xml image/svg+xml
+            """
+        }
+
+        return """
+        # Generated by ServerMaster for the “\(profile.name)” profile.
+        # This file is rewritten on every start — edit a copy and point the profile at it.
+
+        ServerRoot \(quote(apache?.serverRoot ?? apacheServerRoot()))
+        ServerName localhost
+        Listen \(profile.host):\(String(profile.port))
+        PidFile \(quote(prefix + "/httpd.pid"))
+
+        # Apache would otherwise create its mutexes in /var/run, which needs root.
+        DefaultRuntimeDir \(quote(prefix))
+
+        \(loads)
+        TypesConfig \(quote(apache?.mimeTypesPath ?? apacheMimeTypesPath()))
+        DocumentRoot \(quote(root))
+        DirectoryIndex \(phpFpmPort != nil ? "index.php " + index : index)
+        ErrorLog \(quote(prefix + "/logs/error.log"))
+        CustomLog \(quote(prefix + "/logs/access.log")) common
+        LimitRequestBody 0
+        \(tls)
+        \(directory)
+        \(headers)
+        \(dotfiles)
+        \(php)
+        \(gzip)
+        \(errorPages)
+        """
+    }
+
+    /// Status codes Apache's ErrorDocument does not accept.
+    private static let apacheUnsupportedCodes: Set<Int> = [418]
+
+    /// Where the Apache modules live: the system copy first, Homebrew as a fallback.
+    private static func apacheModulesPath() -> String {
+        let candidates = [
+            "/usr/libexec/apache2",
+            "/opt/homebrew/opt/httpd/lib/httpd/modules",
+            "/usr/local/opt/httpd/lib/httpd/modules"
+        ]
+        for path in candidates where FileManager.default.fileExists(atPath: path) {
+            return path
+        }
+        return candidates[0]
+    }
+
+    /// ServerRoot must match the Apache the modules belong to.
+    private static func apacheServerRoot() -> String {
+        if FileManager.default.fileExists(atPath: "/usr/libexec/apache2") { return "/usr" }
+        for path in ["/opt/homebrew/opt/httpd", "/usr/local/opt/httpd"]
+        where FileManager.default.fileExists(atPath: path) {
+            return path
+        }
+        return "/usr"
+    }
+
+    private static func apacheMimeTypesPath() -> String {
+        let candidates = [
+            "/etc/apache2/mime.types",
+            "/opt/homebrew/etc/httpd/mime.types",
+            "/usr/local/etc/httpd/mime.types"
+        ]
+        for path in candidates where FileManager.default.fileExists(atPath: path) {
+            return path
+        }
+        return candidates[0]
+    }
+
+    // MARK: - Caddy
+
+    static func caddyfile(for profile: ServerProfile, errorDirectory: String? = nil) -> String {
+        let root = AppPaths.expand(profile.rootPath)
+        let https = profile.httpsEnabled && profile.engine.supportsHTTPS
+        let index = profile.indexFile.isEmpty ? "index.html" : profile.indexFile
+
+        // The scheme is stated explicitly: without it Caddy decides to bring up TLS
+        // and answers a plain http request with “HTTP request to an HTTPS server”.
+        let scheme = https ? "https" : "http"
+
+        var lines: [String] = []
+        lines.append("# Generated by ServerMaster for the “\(profile.name)” profile.")
+        lines.append("{")
+        lines.append("\tadmin off")
+        lines.append("\tauto_https off")
+        lines.append("}")
+        lines.append("")
+        lines.append("\(scheme)://\(profile.host):\(String(profile.port)) {")
+        lines.append("\troot * \(quote(root))")
+        if https {
+            lines.append("\ttls \(quote(AppPaths.expand(profile.certificatePath))) \(quote(AppPaths.expand(profile.privateKeyPath)))")
+        }
+        if profile.enableGzip { lines.append("\tencode gzip zstd") }
+        if profile.enableCORS { lines.append("\theader Access-Control-Allow-Origin *") }
+        if profile.cacheSeconds >= 0 {
+            lines.append("\theader Cache-Control \"max-age=\(profile.cacheSeconds)\"")
+        } else {
+            lines.append("\theader Cache-Control \"no-store\"")
+        }
+        if profile.basicAuthEnabled && !profile.basicAuthUser.isEmpty {
+            lines.append("\t# basic_auth needs a bcrypt password hash:")
+            lines.append("\t#   caddy hash-password --plaintext '<password>'")
+            lines.append("\t# basic_auth { \(profile.basicAuthUser) <hash> }")
+        }
+        if profile.securityHeaders {
+            lines.append("\theader X-Content-Type-Options nosniff")
+            lines.append("\theader X-Frame-Options SAMEORIGIN")
+            lines.append("\theader Referrer-Policy strict-origin-when-cross-origin")
+            lines.append("\theader Permissions-Policy \"geolocation=(), camera=(), microphone=()\"")
+        }
+        if profile.hstsEnabled && https {
+            lines.append("\theader Strict-Transport-Security \"max-age=31536000\"")
+        }
+        if profile.hideDotfiles {
+            lines.append("\t@dotfiles path */.*")
+            // respond returns 403 as an ordinary response and never reaches handle_errors;
+            // error does reach it, so the user sees our page.
+            lines.append("\terror @dotfiles 403")
+        }
+        if profile.spaFallback {
+            lines.append("\ttry_files {path} /\(index)")
+        }
+        // Before file_server, which is the handler that ends the chain.
+        let presetText = ConfigPreset.named(profile.configPreset, for: profile.engine)
+            .caddyBlock(index: index)
+        if !presetText.isEmpty {
+            lines += presetText.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        }
+        lines.append("\tfile_server\(profile.directoryListing ? " browse" : "")")
+        if profile.customErrorPages, let errorDirectory {
+            lines.append("\thandle_errors {")
+            lines.append("\t\troot * \(quote(errorDirectory))")
+            lines.append("\t\ttry_files /{err.status_code}.html /error.html")
+            lines.append("\t\tfile_server")
+            lines.append("\t}")
+        }
+        lines.append("\tlog {")
+        lines.append("\t\toutput stdout")
+        lines.append("\t\tformat console")
+        lines.append("\t}")
+        lines.append("}")
+        return lines.joined(separator: "\n")
+    }
+
+    // MARK: - PHP-FPM
+
+    /// A php-fpm pool for one site: its own port, its own log, its own limits.
+    static func phpFPM(for profile: ServerProfile, prefix: String, port: Int) -> String {
+        let errors = profile.phpDisplayErrors ? "On" : "Off"
+        return """
+        ; Generated by ServerMaster for the “\(profile.name)” profile.
+        [global]
+        pid = \(prefix)/php-fpm.pid
+        error_log = \(prefix)/logs/php-fpm.log
+        daemonize = no
+
+        [www]
+        listen = 127.0.0.1:\(String(port))
+        listen.allowed_clients = 127.0.0.1
+        pm = dynamic
+        pm.max_children = 10
+        pm.start_servers = 2
+        pm.min_spare_servers = 1
+        pm.max_spare_servers = 3
+        ; Worker output goes to the log — otherwise PHP errors are lost silently.
+        catch_workers_output = yes
+        decorate_workers_output = no
+
+        php_admin_value[error_log] = \(prefix)/logs/php-error.log
+        php_admin_flag[log_errors] = on
+        php_flag[display_errors] = \(errors)
+        php_admin_value[memory_limit] = \(profile.phpMemoryLimit)
+        php_admin_value[upload_max_filesize] = \(profile.phpUploadMaxFilesize)
+        php_admin_value[post_max_size] = \(profile.phpUploadMaxFilesize)
+        php_admin_value[max_execution_time] = \(profile.phpMaxExecutionTime)
+        php_admin_value[max_input_time] = \(profile.phpMaxExecutionTime)
+        php_admin_value[max_input_vars] = 5000
+        """
+    }
+
+    /// nginx needs fastcgi_params to pass variables into PHP.
+    private static func fastcgiParamsPath() -> String {
+        let candidates = [
+            "/opt/homebrew/etc/nginx/fastcgi_params",
+            "/usr/local/etc/nginx/fastcgi_params",
+            "/etc/nginx/fastcgi_params"
+        ]
+        for path in candidates where FileManager.default.fileExists(atPath: path) {
+            return path
+        }
+        return candidates[0]
+    }
+
+    /// nginx needs mime.types; look for it next to the installed binary.
+    private static func mimeTypesPath() -> String {
+        let candidates = [
+            "/opt/homebrew/etc/nginx/mime.types",
+            "/usr/local/etc/nginx/mime.types",
+            "/etc/nginx/mime.types",
+            "/usr/share/nginx/mime.types"
+        ]
+        for path in candidates where FileManager.default.fileExists(atPath: path) {
+            return path
+        }
+        return candidates[0]
+    }
+}

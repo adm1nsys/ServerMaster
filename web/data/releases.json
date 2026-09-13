@@ -146,13 +146,49 @@
       "id": "cli",
       "label": "CLI · macOS & Linux",
       "name": "ServerMaster CLI",
-      "kind": "One shared Swift codebase",
-      "description": "Local server management from the command line, built for the system you use. Native builds for macOS and Linux are planned.",
-      "status": "planned",
-      "statusLabel": "In development",
-      "currentRelease": null,
-      "plannedTargets": ["macOS", "Linux · glibc", "Linux · musl"],
-      "releases": []
+      "kind": "Command-line tool",
+      "description": "Terminal control for ServerMaster profiles, services, update checks, and local automation workflows.",
+      "status": "available",
+      "statusLabel": "macOS available · Linux planned",
+      "currentRelease": "cli-v1.0.0",
+      "plannedTargets": [
+        "Linux · glibc",
+        "Linux · musl"
+      ],
+      "releases": [
+        {
+          "id": "cli-v1.0.0",
+          "version": "1.0.0",
+          "date": "2026-09-13",
+          "requirements": "macOS 14 or later",
+          "architecture": "Apple Silicon + Intel",
+          "build": "arm.27.0.b6.cli",
+          "format": "Universal CLI · ZIP",
+          "sizeBytes": null,
+          "signed": false,
+          "notesUrl": "https://github.com/adm1nsys/ServerMaster/releases/tag/cli-v1.0.0",
+          "assets": [
+            {
+              "kind": "application",
+              "label": "Download CLI",
+              "filename": "servermaster-macos-universal.zip",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/cli-v1.0.0/servermaster-macos-universal.zip"
+            },
+            {
+              "kind": "checksums",
+              "label": "SHA256 checksums",
+              "filename": "SHA256SUMS.txt",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/cli-v1.0.0/SHA256SUMS.txt"
+            },
+            {
+              "kind": "source",
+              "label": "Source tag",
+              "filename": "cli-v1.0.0",
+              "url": "https://github.com/adm1nsys/ServerMaster/tree/cli-v1.0.0"
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "windows",
@@ -163,7 +199,9 @@
       "status": "planned",
       "statusLabel": "Planned",
       "currentRelease": null,
-      "plannedTargets": ["Windows"],
+      "plannedTargets": [
+        "Windows"
+      ],
       "releases": []
     }
   ]

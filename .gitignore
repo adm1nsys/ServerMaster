@@ -18,7 +18,9 @@ xcuserdata/
 
 # Swift Package Manager
 .build/
+**/.build/
 .swiftpm/
+**/.swiftpm/
 
 # Visual Studio and .NET
 .vs/

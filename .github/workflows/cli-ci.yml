@@ -1,0 +1,74 @@
+name: CLI build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cli/**'
+      - 'updates/clilastversion.txt'
+      - '.github/workflows/cli-ci.yml'
+  pull_request:
+    paths:
+      - 'cli/**'
+      - 'updates/clilastversion.txt'
+      - '.github/workflows/cli-ci.yml'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Optional tag or commit to build, for example cli-v1.0.0'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    runs-on: xcode-27
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Build universal release CLI
+        run: swift build -c release --package-path cli --arch arm64 --arch x86_64
+
+      - name: Check CLI identity
+        run: cli/.build/out/Products/Release/servermaster version
+
+      - name: Check update metadata
+        run: |
+          SERVERMASTER_CLI_VERSION_URL="file://$PWD/updates/clilastversion.txt" \
+            cli/.build/out/Products/Release/servermaster update check
+
+      - name: Verify universal executable
+        run: |
+          lipo -verify_arch arm64 cli/.build/out/Products/Release/servermaster
+          lipo -verify_arch x86_64 cli/.build/out/Products/Release/servermaster
+          lipo -archs cli/.build/out/Products/Release/servermaster
+
+      - name: Package CLI
+        run: |
+          mkdir -p "$RUNNER_TEMP/servermaster-cli"
+          cp cli/.build/out/Products/Release/servermaster "$RUNNER_TEMP/servermaster-cli/servermaster"
+          chmod 755 "$RUNNER_TEMP/servermaster-cli/servermaster"
+          ditto -c -k "$RUNNER_TEMP/servermaster-cli" "$RUNNER_TEMP/servermaster-macos-universal.zip"
+          shasum -a 256 "$RUNNER_TEMP/servermaster-macos-universal.zip" > "$RUNNER_TEMP/SHA256SUMS.txt"
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: servermaster-macos-universal
+          path: |
+            ${{ runner.temp }}/servermaster-macos-universal.zip
+            ${{ runner.temp }}/SHA256SUMS.txt
+          if-no-files-found: error
