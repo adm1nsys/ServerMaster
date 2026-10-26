@@ -1,0 +1,62 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Application
+    x:Class="ServerMaster.Windows.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ServerMaster.Windows"
+    xmlns:views="using:ServerMaster.Windows.Views">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <Color x:Key="ServerMasterAccentColor">#FF6B8B</Color>
+            <SolidColorBrush x:Key="ServerMasterAccentBrush" Color="{StaticResource ServerMasterAccentColor}" />
+            <SolidColorBrush x:Key="ServerMasterCardStrokeBrush" Color="#2FFFFFFF" />
+            <SolidColorBrush x:Key="ServerMasterMutedTextBrush" Color="#C7CBD8" />
+            <!-- Windows has no Liquid Glass; in-app acrylic (a blur of what is behind it, here the
+                 moving background) stands in wherever the Mac uses glass: cards and the sidebar. -->
+            <AcrylicBrush x:Key="ServerMasterPanelBrush" TintColor="#FFFFFF" TintOpacity="0.08" TintLuminosityOpacity="0" FallbackColor="#703E4E78" />
+            <SolidColorBrush x:Key="ServerMasterPanelSubtleBrush" Color="#4A18213D" />
+            <SolidColorBrush x:Key="ServerMasterSidebarBrush" Color="#B71B1E42" />
+            <AcrylicBrush x:Key="NavigationViewDefaultPaneBackground" TintColor="#0E1126" TintOpacity="0.35" TintLuminosityOpacity="0" FallbackColor="#B71B1E42" />
+            <SolidColorBrush x:Key="NavigationViewTopPaneBackground" Color="#B71B1E42" />
+
+            <views:EnabledOpacityConverter x:Key="EnabledOpacity" />
+
+            <!-- A denser sidebar like macOS: every section fits at the 600-pixel minimum height. -->
+            <x:Double x:Key="NavigationViewItemOnLeftMinHeight">30</x:Double>
+
+            <!-- Accent buttons (server Start/Stop, dialog defaults) use the Mac app's red, not the Windows accent. -->
+            <SolidColorBrush x:Key="AccentButtonBackground" Color="#E9484E" />
+            <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="#F25D63" />
+            <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="#CF3D43" />
+            <SolidColorBrush x:Key="AccentButtonForeground" Color="White" />
+            <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="White" />
+            <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="#E6FFFFFF" />
+            <SolidColorBrush x:Key="AccentButtonBorderBrush" Color="#26FFFFFF" />
+            <SolidColorBrush x:Key="AccentButtonBorderBrushPointerOver" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="AccentButtonBorderBrushPressed" Color="Transparent" />
+
+            <Style x:Key="PanelBorderStyle" TargetType="Border">
+                <Setter Property="CornerRadius" Value="12" />
+                <Setter Property="Background" Value="{StaticResource ServerMasterPanelBrush}" />
+                <Setter Property="BorderBrush" Value="{StaticResource ServerMasterCardStrokeBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+            </Style>
+
+            <Style x:Key="MetricBorderStyle" TargetType="Border" BasedOn="{StaticResource PanelBorderStyle}">
+                <Setter Property="Padding" Value="14,10" />
+                <Setter Property="MinWidth" Value="156" />
+            </Style>
+
+            <Style x:Key="QuietIconButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="MinWidth" Value="34" />
+                <Setter Property="MinHeight" Value="34" />
+                <Setter Property="Padding" Value="8" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

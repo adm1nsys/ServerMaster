@@ -93,8 +93,15 @@ nonisolated enum PrivilegedLauncher {
     }
 
     /// Stopping is simply removing the sentinel. The watchdog does the rest as root.
-    static func requestStop(_ session: PrivilegedSession) {
-        try? FileManager.default.removeItem(atPath: session.sentinelPath)
+    @discardableResult
+    static func requestStop(_ session: PrivilegedSession) -> Bool {
+        guard FileManager.default.fileExists(atPath: session.sentinelPath) else { return true }
+        do {
+            try FileManager.default.removeItem(atPath: session.sentinelPath)
+            return true
+        } catch {
+            return false
+        }
     }
 
     /// Root-owned servers left over from a previous run of the application.
@@ -181,6 +188,9 @@ nonisolated enum PrivilegedLauncher {
         # Watchdog: the server lives as long as the sentinel exists.
         while kill -0 "$SERVER" 2>/dev/null; do
             if [ ! -e \(q(sentinelPath)) ]; then
+                # PHP workers can own the listening socket after the parent exits.
+                CHILDREN=$(/usr/bin/pgrep -P "$SERVER" 2>/dev/null || true)
+                for CHILD in $CHILDREN; do kill -TERM "$CHILD" 2>/dev/null; done
                 kill -TERM "$SERVER" 2>/dev/null
                 i=0
                 while kill -0 "$SERVER" 2>/dev/null && [ "$i" -lt 20 ]; do
@@ -188,6 +198,7 @@ nonisolated enum PrivilegedLauncher {
                     i=$((i + 1))
                 done
                 kill -KILL "$SERVER" 2>/dev/null
+                for CHILD in $CHILDREN; do kill -KILL "$CHILD" 2>/dev/null; done
                 break
             fi
             sleep 0.4

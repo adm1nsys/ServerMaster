@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "ServerMaster (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "ServerMaster (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

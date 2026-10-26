@@ -449,10 +449,27 @@ final class ServerController {
             state = .stopping
             log.system(String(localized: "Stopping the server (PID \(String(session.serverPID)))…"))
             // Remove the sentinel: the root watchdog will stop the process, no password needed.
-            PrivilegedLauncher.requestStop(session)
+            guard PrivilegedLauncher.requestStop(session) else {
+                let message = String(localized: "Could not request the administrator server to stop. Check the runtime folder permissions.")
+                log.append(message, stream: .stderr)
+                state = .running
+                return
+            }
             for _ in 0..<40 {
                 if !PrivilegedLauncher.isAlive(pid: session.serverPID) { break }
                 try? await Task.sleep(nanoseconds: 150_000_000)
+            }
+            if PrivilegedLauncher.isAlive(pid: session.serverPID) {
+                let message = String(localized: "The administrator server is still running. Stop it again or inspect the port before restarting.")
+                log.append(message, stream: .stderr)
+                state = .running
+                return
+            }
+            if let profile = activeProfile, !PortScanner.isPortFree(profile.port, host: profile.host) {
+                let message = String(localized: "The server exited but its port is still occupied. Inspect Ports before restarting.")
+                log.append(message, stream: .stderr)
+                state = .failed(message)
+                return
             }
             cleanupPrivileged()
             detectedURLs = []
@@ -492,6 +509,7 @@ final class ServerController {
 
     func restart(profile: ServerProfile, settings: AppSettings) async {
         await stop(settings: settings)
+        guard state == .stopped else { return }
         try? await Task.sleep(nanoseconds: 400_000_000)
         await start(profile: profile, settings: settings)
     }

@@ -1,0 +1,79 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/ServerMaster.Windows/Services/CrashRecovery.cs" Link="CrashRecovery.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/LogRetention.cs" Link="LogRetention.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/SettingsBehavior.cs" Link="SettingsBehavior.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/SingleInstance.cs" Link="SingleInstance.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/Localization.cs" Link="Localization.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/TranslationPacks.cs" Link="TranslationPacks.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Models/ProfileIcons.cs" Link="ProfileIcons.cs" />
+    <EmbeddedResource Include="../../../macos/ServerMaster/uk.lproj/Localizable.strings" LogicalName="ServerMaster.Strings.uk" />
+    <EmbeddedResource Include="../../src/ServerMaster.Windows/Resources/uk.windows.strings" LogicalName="ServerMaster.Strings.Windows.uk" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/WindowsEnvironmentDiagnostics.cs" Link="WindowsEnvironmentDiagnostics.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/AppDataDiagnostics.cs" Link="AppDataDiagnostics.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/DatabaseDiagnostics.cs" Link="DatabaseDiagnostics.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/DomainTrace.cs" Link="DomainTrace.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/SiteHealthCheck.cs" Link="SiteHealthCheck.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Models/SiteHealthResult.cs" Link="SiteHealthResult.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/NodeRuntime.cs" Link="NodeRuntime.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/OwnedProcesses.cs" Link="OwnedProcesses.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/WindowsElevation.cs" Link="WindowsElevation.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/ElevatedServerHost.cs" Link="ElevatedServerHost.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/ElevatedServerClient.cs" Link="ElevatedServerClient.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/TerminalSession.cs" Link="TerminalSession.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/ConsoleInterrupt.cs" Link="ConsoleInterrupt.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/DatabaseService.cs" Link="DatabaseService.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/DatabaseSchemaService.cs" Link="DatabaseSchemaService.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/DatabaseAccountService.cs" Link="DatabaseAccountService.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/PortReserver.cs" Link="PortReserver.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/DatabaseRowService.cs" Link="DatabaseRowService.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/NativeDirectory.cs" Link="NativeDirectory.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Models/DatabaseEntry.cs" Link="DatabaseEntry.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Models/DatabaseResult.cs" Link="DatabaseResult.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/ServerReadiness.cs" Link="ServerReadiness.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/ServerController.cs" Link="ServerController.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Models/AppSettings.cs" Link="AppSettings.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Models/BackupEntry.cs" Link="BackupEntry.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/SiteFiles.cs" Link="SiteFiles.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/FileSyntax.cs" Link="FileSyntax.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/ProfileSnapshots.cs" Link="ProfileSnapshots.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Models/FileEntry.cs" Link="FileEntry.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/AdminerService.cs" Link="AdminerService.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/PhpMyAdminRuntime.cs" Link="PhpMyAdminRuntime.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/LocalCertificates.cs" Link="LocalCertificates.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/HttpsProxy.cs" Link="HttpsProxy.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/ProfileRequirements.cs" Link="ProfileRequirements.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/TemplateDownloadService.cs" Link="TemplateDownloadService.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/TemplateRecipeService.cs" Link="TemplateRecipeService.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/ShowcaseStore.cs" Link="ShowcaseStore.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/UserTemplateStore.cs" Link="UserTemplateStore.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/ProfileConfigInventory.cs" Link="ProfileConfigInventory.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/SitePermissions.cs" Link="SitePermissions.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/ProfilePortSuggestions.cs" Link="ProfilePortSuggestions.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Models/ProfileConfigFile.cs" Link="ProfileConfigFile.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/DatabaseCredentialStore.cs" Link="DatabaseCredentialStore.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Models/StarterTemplate.cs" Link="StarterTemplate.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/PhpSiteCompatibility.cs" Link="PhpSiteCompatibility.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/ProfileDiagnostics.cs" Link="ProfileDiagnostics.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/SystemDiagnostics.cs" Link="SystemDiagnostics.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/WindowsPortScanner.cs" Link="WindowsPortScanner.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Models/PortEntry.cs" Link="PortEntry.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/PhpRuntime.cs" Link="PhpRuntime.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/VcRuntime.cs" Link="VcRuntime.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/DependencyManager.cs" Link="DependencyManager.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/ShellEnvironment.cs" Link="ShellEnvironment.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Services/LaunchPlan.cs" Link="LaunchPlan.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Models/Dependency.cs" Link="Dependency.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Models/DependencyStatus.cs" Link="DependencyStatus.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Models/ServerProfile.cs" Link="ServerProfile.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Models/ProfileTemplate.cs" Link="ProfileTemplate.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Models/ServerState.cs" Link="ServerState.cs" />
+    <Compile Include="../../src/ServerMaster.Windows/Models/EnvVar.cs" Link="EnvVar.cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,1783 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="ServerMaster.Windows.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:views="using:ServerMaster.Windows.Views"
+    mc:Ignorable="d"
+    Title="ServerMaster">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid x:Name="Root">
+        <Grid.Resources>
+            <DataTemplate x:Key="DiagnosticRow">
+                <Grid ColumnSpacing="10" Padding="0,8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="20" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <FontIcon Glyph="{Binding Glyph}" Foreground="{Binding Tint}" FontSize="16" VerticalAlignment="Top" Margin="0,3,0,0" />
+                    <StackPanel Grid.Column="1" Spacing="5">
+                        <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock Grid.Column="1" Text="{Binding Group}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </Grid>
+                        <TextBlock Text="{Binding Status}" FontSize="12" Foreground="{Binding Tint}" />
+                        <TextBlock Text="{Binding Detail}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                        <TextBlock Text="{Binding Remedy}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                    </StackPanel>
+                </Grid>
+            </DataTemplate>
+        </Grid.Resources>
+        <!-- Apple Music style moving colour behind everything, like the Mac AmbientBackground. -->
+        <views:AmbientBackground x:Name="Ambient" />
+        <NavigationView
+            x:Name="Shell"
+            Visibility="{Binding ShellVisibility}"
+            Background="Transparent"
+            PaneDisplayMode="Left"
+            IsBackButtonVisible="Collapsed"
+            IsSettingsVisible="False"
+            IsPaneToggleButtonVisible="False"
+            OpenPaneLength="224"
+            SelectionChanged="Shell_SelectionChanged">
+
+            <NavigationView.MenuItems>
+                <NavigationViewItemHeader Content="Server" />
+                <NavigationViewItem Content="Control" Tag="Control">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE768;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Console" Tag="Console">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE756;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Database" Tag="Database">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE80F;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Ports" Tag="Ports">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE968;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Files" Tag="Files">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8A5;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+
+                <NavigationViewItemHeader Content="Configuration" />
+                <NavigationViewItem Content="Profiles" Tag="Profiles">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8FD;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Dependencies" Tag="Dependencies">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D5;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Backups" Tag="Backups">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE81C;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Diagnostics" Tag="Diagnostics">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D9;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Settings" Tag="Settings">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE713;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="About" Tag="About">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE946;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+
+            <NavigationView.PaneFooter>
+                <!-- Compact like the Mac sidebar footer: Guides, status and Quit as three small rows,
+                     so every section stays visible at the minimum window height. -->
+                <StackPanel Padding="10,6,10,10" Spacing="2" BorderBrush="{StaticResource ServerMasterCardStrokeBrush}" BorderThickness="0,1,0,0">
+                    <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" BorderThickness="0" Padding="8,4" Command="{Binding OpenUrlCommand}" CommandParameter="https://adm1nsys.github.io/ServerMaster/wiki.html" AutomationProperties.Name="Guides">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE82D;" FontSize="12" />
+                            <TextBlock Text="Guides" FontSize="12" />
+                        </StackPanel>
+                    </Button>
+                    <Grid ColumnSpacing="8" Padding="8,4" ToolTipService.ToolTip="{Binding ActiveStatusSubtitle}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Ellipse Width="8" Height="8" Fill="{Binding ActiveStatusBrush}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding ActiveStatusTitle}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="{Binding ActiveStatusSubtitle}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    </Grid>
+                    <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Background="Transparent" BorderThickness="0" Padding="8,4" Command="{Binding QuitCommand}" AutomationProperties.Name="Quit">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE7E8;" FontSize="12" />
+                            <TextBlock Text="Quit" FontSize="12" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </NavigationView.PaneFooter>
+
+            <Grid Padding="36,30,36,28">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Spacing="8" Margin="0,0,0,18">
+                    <Border Visibility="{Binding UpdateBannerVisibility}" Padding="14,10" CornerRadius="8"
+                            Background="{StaticResource ServerMasterPanelSubtleBrush}">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xE896;" FontSize="20" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding UpdateBannerTitle}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding UpdateBannerMessage}" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <Button Grid.Column="2" Content="{Binding UpdateBannerActionText}" Click="OpenAvailableUpdate_Click" Style="{ThemeResource AccentButtonStyle}" VerticalAlignment="Center" />
+                            <Button Grid.Column="3" Content="Later" Click="DismissAvailableUpdate_Click" VerticalAlignment="Center" />
+                            <Button Grid.Column="4" Click="DismissAvailableUpdate_Click" VerticalAlignment="Center" ToolTipService.ToolTip="Hide until the next version" AutomationProperties.Name="Hide update">
+                                <FontIcon Glyph="&#xE711;" FontSize="12" />
+                            </Button>
+                        </Grid>
+                    </Border>
+                    <InfoBar
+                        IsOpen="{Binding IsBannerOpen, Mode=TwoWay}"
+                        Message="{Binding BannerText}"
+                        Severity="{Binding BannerSeverity}"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Top" />
+                </StackPanel>
+
+                <ScrollViewer Grid.Row="1" Visibility="{Binding ControlVisibility}">
+                    <StackPanel Spacing="22" HorizontalAlignment="Stretch">
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="{Binding SectionTitle}" FontSize="32" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding ControlSubtitle}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Top">
+                                <Button Command="{Binding StopAllCommand}" Visibility="{Binding StopAllVisibility}" AutomationProperties.Name="Stop all">
+                                    <StackPanel Orientation="Horizontal" Spacing="7">
+                                        <FontIcon Glyph="&#xE71A;" FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                        <TextBlock Text="Stop all" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Command="{Binding ShowConsoleCommand}" AutomationProperties.Name="Console">
+                                    <StackPanel Orientation="Horizontal" Spacing="7">
+                                        <FontIcon Glyph="&#xE756;" FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                        <TextBlock Text="Console" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Border Style="{StaticResource MetricBorderStyle}">
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE945;" Foreground="{Binding ActiveStatusBrush}" FontSize="20" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" Spacing="1">
+                                        <TextBlock Text="{Binding ActiveCount}" FontSize="20" FontFamily="Cascadia Mono, Consolas" FontWeight="SemiBold" />
+                                        <TextBlock Text="running" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource MetricBorderStyle}">
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE8FD;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontSize="20" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" Spacing="1">
+                                        <TextBlock Text="{Binding Profiles.Count}" FontSize="20" FontFamily="Cascadia Mono, Consolas" FontWeight="SemiBold" />
+                                        <TextBlock Text="profiles" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                            <Border Style="{StaticResource MetricBorderStyle}">
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE916;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontSize="20" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" Spacing="1">
+                                        <TextBlock Text="{Binding LongestUptime}" FontSize="20" FontFamily="Cascadia Mono, Consolas" FontWeight="SemiBold" />
+                                        <TextBlock Text="longest run" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button Command="{Binding OpenAllProfilesCommand}" IsEnabled="{Binding CanOpenAllProfiles}" AutomationProperties.Name="Open all">
+                                <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE774;" FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Opacity="{Binding CanOpenAllProfiles, Converter={StaticResource EnabledOpacity}}" /><TextBlock Text="Open all" /></StackPanel>
+                            </Button>
+                            <Button Command="{Binding CopyAddressesCommand}" IsEnabled="{Binding CanCopyAddresses}" AutomationProperties.Name="Copy addresses">
+                                <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE8C8;" FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Opacity="{Binding CanCopyAddresses, Converter={StaticResource EnabledOpacity}}" /><TextBlock Text="Copy addresses" /></StackPanel>
+                            </Button>
+                            <Button Command="{Binding HealthCheckCommand}" IsEnabled="{Binding CanHealthCheck}" AutomationProperties.Name="Health check">
+                                <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE95E;" FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Opacity="{Binding CanHealthCheck, Converter={StaticResource EnabledOpacity}}" /><TextBlock Text="Health check" /></StackPanel>
+                            </Button>
+                            <Button Click="NewProfile_Click" AutomationProperties.Name="New profile">
+                                <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE710;" FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" /><TextBlock Text="New profile" /></StackPanel>
+                            </Button>
+                        </StackPanel>
+
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="15" Visibility="{Binding HealthPanelVisibility}">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Health check" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <ProgressRing Grid.Column="1" IsActive="True" Width="18" Height="18" Visibility="{Binding HealthProgressVisibility}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding HealthLastRun}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <Button Grid.Column="3" Content="Clear" Command="{Binding ClearHealthCheckCommand}" IsEnabled="{Binding CanClearHealthCheck}" />
+                                </Grid>
+                                <TextBlock Text="{Binding HealthSummary}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ItemsControl ItemsSource="{Binding HealthResults}">
+                                    <ItemsControl.ItemTemplate><DataTemplate>
+                                        <Grid ColumnSpacing="10" Padding="0,4">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="20" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                            <FontIcon Glyph="{Binding Glyph}" Foreground="{Binding Tint}" FontSize="16" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Address}" FontFamily="Cascadia Mono, Consolas" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTipService.ToolTip="{Binding Address}" />
+                                            <TextBlock Grid.Column="3" Text="{Binding Summary}" Foreground="{Binding Tint}" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTipService.ToolTip="{Binding Summary}" />
+                                        </Grid>
+                                    </DataTemplate></ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="8">
+                            <StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="10" Padding="15" Visibility="{Binding ControlProfilesEmptyVisibility}">
+                                <TextBlock Text="No profiles yet." VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <Button Content="Create" Click="NewProfile_Click" />
+                            </StackPanel>
+                            <ListView x:Name="ControlProfileList" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile, Mode=TwoWay}" SelectionChanged="Profiles_SelectionChanged" Background="Transparent" BorderThickness="0" SelectionMode="Single">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid ColumnSpacing="12" Padding="8,9" RightTapped="ControlProfile_RightTapped">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Ellipse Width="9" Height="9" Fill="{Binding StateTint}" VerticalAlignment="Center" />
+                                            <StackPanel Grid.Column="1" Spacing="3">
+                                                <Grid ColumnSpacing="5">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                    <FontIcon Grid.Column="1" Glyph="{Binding DefaultGlyph}" FontSize="12" Foreground="#E7BD57" ToolTipService.ToolTip="Default profile" />
+                                                    <FontIcon Grid.Column="2" Glyph="{Binding AdministratorGlyph}" FontSize="12" ToolTipService.ToolTip="Starts with administrator rights" />
+                                                </Grid>
+                                                <Grid ColumnSpacing="6">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding EngineTitle}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="1" Text="-" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                                    <TextBlock Grid.Column="2" Text="{Binding Address}" TextTrimming="CharacterEllipsis" Style="{ThemeResource CaptionTextBlockStyle}" FontFamily="Cascadia Mono, Consolas" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                </Grid>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding TransitionText}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                <TextBlock Text="{Binding Uptime}" FontFamily="Cascadia Mono, Consolas" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8">
+                                                <ProgressRing Width="18" Height="18" IsActive="{Binding IsBusy}" />
+                                                <Button MinWidth="34" Click="ProfileOpen_Click" Visibility="{Binding RunningVisibility}" ToolTipService.ToolTip="Open site" AutomationProperties.Name="Open site">
+                                                    <FontIcon Glyph="&#xE774;" FontSize="13" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                                </Button>
+                                                <Button MinWidth="34" Click="ProfileLogs_Click" ToolTipService.ToolTip="Show log" AutomationProperties.Name="Show log">
+                                                    <FontIcon Glyph="&#xE8E4;" FontSize="13" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                                </Button>
+                                                <Button MinWidth="34" Click="ProfileRestart_Click" Visibility="{Binding RunningVisibility}" ToolTipService.ToolTip="Restart" AutomationProperties.Name="Restart server">
+                                                    <FontIcon Glyph="&#xE72C;" FontSize="13" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                                </Button>
+                                                <Button MinWidth="96" Click="ProfilePrimary_Click" IsEnabled="{Binding CanToggle}" Style="{ThemeResource AccentButtonStyle}" AutomationProperties.Name="{Binding PrimaryActionText}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="{Binding PrimaryActionGlyph}" FontSize="11" /><TextBlock Text="{Binding PrimaryActionText}" /></StackPanel>
+                                                </Button>
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="15" Visibility="{Binding SelectedProfileIssueVisibility}">
+                            <StackPanel Spacing="12">
+                                <StackPanel Spacing="8" Visibility="{Binding SelectedProfileFailureVisibility}">
+                                    <TextBlock Text="The last start failed" FontWeight="SemiBold" Foreground="#E66A72" />
+                                    <TextBlock Text="{Binding SelectedProfileIssue}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                    <Button Content="What does this mean?" HorizontalAlignment="Left" Command="{Binding OpenUrlCommand}" CommandParameter="{Binding SelectedProfileGuideUrl}" />
+                                </StackPanel>
+                                <StackPanel Spacing="8" Visibility="{Binding SelectedProfilePreflightVisibility}">
+                                    <TextBlock Text="Worth checking before start" FontWeight="SemiBold" Foreground="#E7BD57" />
+                                    <ItemsControl ItemsSource="{Binding SelectedProfilePreflightIssues}"><ItemsControl.ItemTemplate><DataTemplate>
+                                        <TextBlock Text="{Binding}" TextWrapping="Wrap" IsTextSelectionEnabled="True" Margin="0,3" />
+                                    </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Content="To dependencies" Command="{Binding ShowDependenciesCommand}" />
+                                        <Button Content="Configure" Command="{Binding ShowProfilesCommand}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="15" Visibility="{Binding SelectedProfileDetailsVisibility}">
+                            <StackPanel Spacing="8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Ellipse Width="9" Height="9" Fill="{Binding SelectedProfileStateBrush}" VerticalAlignment="Center" />
+                                        <FontIcon Glyph="{Binding SelectedProfile.Symbol}" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontSize="15" />
+                                        <TextBlock Text="{Binding SelectedProfileName}" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Command="{Binding ShowProfilesCommand}" Content="Configure" />
+                                </Grid>
+
+                                <Grid ColumnSpacing="12" Padding="0,6">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="110" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Engine" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedProfileEngine}" />
+                                </Grid>
+                                <Grid ColumnSpacing="12" Padding="0,6">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="110" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Address" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedProfileAddress}" FontFamily="Cascadia Mono, Consolas" IsTextSelectionEnabled="True" />
+                                </Grid>
+                                <Grid ColumnSpacing="12" Padding="0,6" Visibility="{Binding SelectedProfileUrlsVisibility}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="110" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Available at" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <ItemsControl Grid.Column="1" ItemsSource="{Binding SelectedProfileUrls}"><ItemsControl.ItemTemplate><DataTemplate>
+                                        <Grid ColumnSpacing="8" Padding="0,2">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding}" FontFamily="Cascadia Mono, Consolas" TextWrapping="Wrap" IsTextSelectionEnabled="True" VerticalAlignment="Center" />
+                                            <Button Grid.Column="1" Content="Open" Click="DetectedUrlOpen_Click" />
+                                            <Button Grid.Column="2" Click="DetectedUrlCopy_Click" ToolTipService.ToolTip="Copy address" AutomationProperties.Name="Copy address"><SymbolIcon Symbol="Copy" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" /></Button>
+                                        </Grid>
+                                    </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                </Grid>
+                                <Grid ColumnSpacing="12" Padding="0,6" Visibility="{Binding SelectedProfileRootVisibility}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="110" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Root" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedProfileRoot}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                    <Button Grid.Column="2" Command="{Binding OpenSelectedRootCommand}" ToolTipService.ToolTip="Show in Explorer" AutomationProperties.Name="Show root folder"><SymbolIcon Symbol="Folder" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" /></Button>
+                                </Grid>
+                                <Grid ColumnSpacing="12" Padding="0,6" Visibility="{Binding SelectedProfilePidVisibility}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="110" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="PID" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedProfilePid}" FontFamily="Cascadia Mono, Consolas" IsTextSelectionEnabled="True" />
+                                </Grid>
+                                <Grid ColumnSpacing="12" Padding="0,6" Visibility="{Binding SelectedProfileCommandVisibility}">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="110" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Command" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedProfileCommand}" FontFamily="Cascadia Mono, Consolas" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                    <Button Grid.Column="2" Command="{Binding CopyDatabaseValueCommand}" CommandParameter="{Binding SelectedProfileCommand}" ToolTipService.ToolTip="Copy command" AutomationProperties.Name="Copy command"><SymbolIcon Symbol="Copy" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" /></Button>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer Grid.Row="1" Visibility="{Binding ProfilesVisibility}">
+                    <StackPanel Spacing="22" MaxWidth="1120" HorizontalAlignment="Center">
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Profiles" FontSize="32" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding SelectedProfileSummary}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Top">
+                                <Button Click="NewProfile_Click" Content="New" />
+                                <Button Command="{Binding DuplicateProfileCommand}" Content="Duplicate" />
+                                <Button Command="{Binding DeleteProfileCommand}" Content="Delete" />
+                                <Button Command="{Binding SaveProfilesCommand}" Content="Save" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid ColumnSpacing="18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="280" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Spacing="14">
+                                <!-- No template picker here: New opens the template gallery (as on macOS);
+                                     a second picker here made you choose the template twice. -->
+
+                                <Border Style="{StaticResource PanelBorderStyle}" Padding="8">
+                                    <ListView ItemsSource="{Binding Profiles}" SelectionChanged="Profiles_SelectionChanged" Background="Transparent" BorderThickness="0" SelectionMode="Single">
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Padding="8,9" ColumnSpacing="10">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <FontIcon Glyph="{Binding Symbol}" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                    <StackPanel Grid.Column="1" Spacing="2">
+                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding Address}" Style="{ThemeResource CaptionTextBlockStyle}" FontFamily="Cascadia Mono, Consolas" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                </Border>
+                            </StackPanel>
+
+                            <Border Grid.Column="1" Style="{StaticResource PanelBorderStyle}" Padding="18" Visibility="{Binding ProfilesEditorVisibility}">
+                                <StackPanel Spacing="16" DataContext="{Binding SelectedProfile}">
+                                    <StackPanel Spacing="10">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                            <Button Click="RenameProfile_Click" ToolTipService.ToolTip="Rename and change icon" AutomationProperties.Name="Rename and change icon">
+                                                <FontIcon Glyph="{Binding Symbol}" FontSize="20" />
+                                            </Button>
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="22" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                            <Button Grid.Column="2" Content="Rename..." Click="RenameProfile_Click" VerticalAlignment="Center" />
+                                        </Grid>
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="Default" Visibility="{Binding DataContext.SelectedProfileDefaultVisibility, ElementName=Root}" VerticalAlignment="Center" />
+                                            <Button Content="Make default" Visibility="{Binding DataContext.SelectedProfileMakeDefaultVisibility, ElementName=Root}"
+                                                    Command="{Binding DataContext.MakeDefaultProfileCommand, ElementName=Root}" />
+                                            <Button Content="{Binding PrimaryActionText}" Command="{Binding DataContext.StartStopProfileCommand, ElementName=Root}" CommandParameter="{Binding}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding DataContext.SelectedProfileSetupMessage, ElementName=Root}" TextWrapping="Wrap" />
+                                    <Button Content="Install missing software" Command="{Binding DataContext.PrepareProfileCommand, ElementName=Root}" Visibility="{Binding DataContext.SelectedProfilePrepareVisibility, ElementName=Root}" HorizontalAlignment="Left" />
+
+                                    <Border Padding="12" Background="{StaticResource ServerMasterPanelSubtleBrush}" CornerRadius="8">
+                                        <StackPanel Spacing="10">
+                                            <TextBlock Text="General" FontSize="17" FontWeight="SemiBold" />
+                                            <Grid>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="Engine" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                                <Button Grid.Column="1" Content="Guide" Command="{Binding DataContext.OpenUrlCommand, ElementName=Root}"
+                                                        CommandParameter="{Binding DataContext.SelectedProfileGuideUrl, ElementName=Root}" />
+                                            </Grid>
+                                            <ComboBox
+                                                ItemsSource="{Binding DataContext.EngineOptions, ElementName=Root}"
+                                                SelectedItem="{Binding DataContext.SelectedProfileEngineOption, ElementName=Root, Mode=TwoWay}"
+                                                DisplayMemberPath="Title"
+                                                HorizontalAlignment="Stretch" />
+                                        <StackPanel Spacing="6">
+                                            <TextBlock Text="Host" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            <Grid ColumnSpacing="8">
+                                                <!-- Shares the width, so a narrow window never squeezes the host field to nothing. -->
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="3*" /><ColumnDefinition Width="2*" MaxWidth="220" /></Grid.ColumnDefinitions>
+                                                <TextBox Text="{Binding Host, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TextChanged="ProfileHost_TextChanged" MinWidth="120" />
+                                                <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" PlaceholderText="Choose host" SelectionChanged="ProfileHostPreset_SelectionChanged">
+                                                    <ComboBoxItem Content="127.0.0.1 (this PC)" Tag="127.0.0.1" />
+                                                    <ComboBoxItem Content="0.0.0.0 (network)" Tag="0.0.0.0" />
+                                                    <ComboBoxItem Content="localhost" Tag="localhost" />
+                                                </ComboBox>
+                                            </Grid>
+                                        </StackPanel>
+                                        <StackPanel Spacing="4">
+                                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                                                <NumberBox Header="Port" Value="{Binding Port, Mode=TwoWay}" ValueChanged="ProfilePort_ValueChanged" Minimum="1" Maximum="65535" SpinButtonPlacementMode="Inline" Width="180" />
+                                                <Button Content="Choose port" Click="ChooseProfilePort_Click" VerticalAlignment="Bottom" />
+                                                <TextBlock x:Name="ProfilePortStatus" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                            </StackPanel>
+                                            <TextBlock x:Name="ProfilePortNote" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                        <CheckBox Content="Start with administrator rights" IsChecked="{Binding RunAsAdministrator, Mode=TwoWay}" />
+                                        <TextBlock Text="Windows will request permission for this profile only. Other profiles stay at normal rights."
+                                                   TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <CheckBox Content="Open browser on start" IsChecked="{Binding OpenBrowserOnStart, Mode=TwoWay}" />
+                                        <TextBox Header="Extra arguments" Text="{Binding ExtraArguments, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <StackPanel Spacing="4">
+                                                <TextBlock Text="Computed address" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                <TextBlock Text="{Binding Address}" FontFamily="Cascadia Mono, Consolas" />
+                                        </StackPanel>
+                                        <ComboBox Header="Profile color" ItemsSource="{Binding DataContext.ProfileColors, ElementName=Root}"
+                                                  SelectedItem="{Binding DataContext.SelectedProfileColor, ElementName=Root, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                                        <Rectangle Width="16" Height="16" RadiusX="3" RadiusY="3" Fill="{Binding Brush}" />
+                                                        <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Padding="12" Background="{StaticResource ServerMasterPanelSubtleBrush}" CornerRadius="8" Visibility="{Binding DataContext.SelectedProfileRootVisibility, ElementName=Root}">
+                                        <StackPanel Spacing="10">
+                                            <TextBlock Text="Directories" FontSize="17" FontWeight="SemiBold" />
+                                            <StackPanel Spacing="6">
+                                                <TextBlock Text="Root folder" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                <Grid ColumnSpacing="8">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBox Text="{Binding RootPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <Button Grid.Column="1" Style="{StaticResource QuietIconButtonStyle}" Click="PickRoot_Click" AutomationProperties.Name="Choose root folder">
+                                                        <FontIcon Glyph="&#xE8DA;" FontSize="13" />
+                                                    </Button>
+                                                </Grid>
+                                            </StackPanel>
+                                            <StackPanel Spacing="6">
+                                                <TextBlock Text="Working directory" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                <Grid ColumnSpacing="8">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBox Text="{Binding WorkingDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Empty means root folder" />
+                                                    <Button Grid.Column="1" Style="{StaticResource QuietIconButtonStyle}" Click="PickWorkingDirectory_Click" AutomationProperties.Name="Choose working directory">
+                                                        <FontIcon Glyph="&#xE8DA;" FontSize="13" />
+                                                    </Button>
+                                                </Grid>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Padding="12" Background="{StaticResource ServerMasterPanelSubtleBrush}" CornerRadius="8" Visibility="{Binding DataContext.SelectedProfileNodeVisibility, ElementName=Root}">
+                                        <StackPanel Spacing="10">
+                                            <TextBlock Text="Node.js" FontSize="17" FontWeight="SemiBold" />
+                                        <Grid ColumnSpacing="14" Visibility="{Binding DataContext.SelectedProfileNodeVisibility, ElementName=Root}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Spacing="6">
+                                                <TextBlock Text="Entry file" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                <TextBox Text="{Binding NodeEntryFile, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel>
+                                        </Grid>
+                                        <TextBlock Text="The port and host are passed to the process through the PORT and HOST variables." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Padding="12" Background="{StaticResource ServerMasterPanelSubtleBrush}" CornerRadius="8" Visibility="{Binding DataContext.SelectedProfileCustomVisibility, ElementName=Root}">
+                                        <StackPanel Spacing="10">
+                                            <TextBlock Text="Command" FontSize="17" FontWeight="SemiBold" />
+                                        <Grid ColumnSpacing="14" Visibility="{Binding DataContext.SelectedProfileCustomVisibility, ElementName=Root}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Spacing="6">
+                                                <TextBlock Text="Executable" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                <TextBox Text="{Binding CustomCommand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="For custom command engine" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Spacing="6">
+                                                <TextBlock Text="Arguments" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                <TextBox Text="{Binding CustomArguments, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel>
+                                        </Grid>
+                                        <StackPanel Spacing="6" Visibility="{Binding DataContext.SelectedProfileCustomVisibility, ElementName=Root}">
+                                            <TextBlock Text="Working directory" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox Text="{Binding WorkingDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Optional" />
+                                                <Button Grid.Column="1" Style="{StaticResource QuietIconButtonStyle}" Click="PickWorkingDirectory_Click" AutomationProperties.Name="Choose working directory">
+                                                    <FontIcon Glyph="&#xE8DA;" FontSize="13" />
+                                                </Button>
+                                            </Grid>
+                                        </StackPanel>
+                                        <TextBlock Text="Arguments are parsed with quotes in mind. The PORT variable is available to the process." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Padding="12" Background="{StaticResource ServerMasterPanelSubtleBrush}" CornerRadius="8">
+                                        <StackPanel Spacing="10">
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="Configuration files" FontWeight="SemiBold" FontSize="17" />
+                                                <Button Grid.Column="1" Click="RefreshProfileConfigFiles_Click" ToolTipService.ToolTip="Refresh configuration files" AutomationProperties.Name="Refresh configuration files">
+                                                    <SymbolIcon Symbol="Refresh" />
+                                                </Button>
+                                            </Grid>
+                                            <TextBlock Text="No configuration files found" Visibility="{Binding DataContext.ProfileConfigFilesEmptyVisibility, ElementName=Root}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            <TextBlock Text="{Binding DataContext.ProfileConfigFilesProblem, ElementName=Root}" Visibility="{Binding DataContext.ProfileConfigFilesProblemVisibility, ElementName=Root}" TextWrapping="Wrap" />
+                                            <ItemsControl ItemsSource="{Binding DataContext.ProfileConfigFiles, ElementName=Root}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid ColumnSpacing="8" Padding="0,5">
+                                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                            <StackPanel Spacing="2">
+                                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                                <TextBlock Text="{Binding Kind}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" />
+                                                                <TextBlock Text="{Binding Note}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+                                                            </StackPanel>
+                                                            <Button Grid.Column="1" Content="Open" Click="OpenProfileConfigFile_Click" VerticalAlignment="Center" />
+                                                            <Button Grid.Column="2" Content="Edit" Click="EditProfileConfigFile_Click" IsEnabled="{Binding CanEdit}" VerticalAlignment="Center" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <StackPanel Spacing="10">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <FontIcon Glyph="&#xE8A5;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                    <TextBlock Text="Starter files" FontWeight="SemiBold" />
+                                                </StackPanel>
+                                                <ItemsControl ItemsSource="{Binding DataContext.StarterTemplates, ElementName=Root}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Grid ColumnSpacing="10" Margin="0,0,0,8">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <StackPanel Spacing="2">
+                                                                    <TextBlock Text="{Binding LocalizedTitle}" FontWeight="SemiBold" />
+                                                                    <TextBlock Text="{Binding Summary}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                                                </StackPanel>
+                                                                <Button Grid.Column="1" Click="CreateStarter_Click" AutomationProperties.Name="Create">
+                                                                    <StackPanel Orientation="Horizontal" Spacing="7">
+                                                                        <FontIcon Glyph="&#xE710;" FontSize="12" />
+                                                                        <TextBlock Text="Create" />
+                                                                    </StackPanel>
+                                                                </Button>
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Padding="12" Background="{StaticResource ServerMasterPanelSubtleBrush}" CornerRadius="8" Visibility="{Binding DataContext.SelectedProfileHttpsVisibility, ElementName=Root}">
+                                        <StackPanel Spacing="10">
+                                            <TextBlock Text="HTTPS" FontSize="17" FontWeight="SemiBold" />
+                                            <CheckBox Content="HTTPS" IsChecked="{Binding HttpsEnabled, Mode=TwoWay}" IsEnabled="{Binding SupportsHttps}" Checked="ProfileHttps_Changed" Unchecked="ProfileHttps_Changed" />
+                                            <Button Content="Certificates..." Click="Certificates_Click" IsEnabled="{Binding SupportsHttps}" HorizontalAlignment="Left" />
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <TextBox Header="Certificate (PEM)" Text="{Binding CertificatePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TextChanged="ProfileCertificatePath_TextChanged" />
+                                                <Button Grid.Column="1" Content="Browse..." Tag="certificate" Click="ChooseProfileCertificateFile_Click" VerticalAlignment="Bottom" />
+                                            </Grid>
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <TextBox Header="Private key (PEM)" Text="{Binding PrivateKeyPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TextChanged="ProfilePrivateKeyPath_TextChanged" />
+                                                <Button Grid.Column="1" Content="Browse..." Tag="key" Click="ChooseProfileCertificateFile_Click" VerticalAlignment="Bottom" />
+                                            </Grid>
+                                            <TextBlock x:Name="ProfileCertificateStatus" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            <Button x:Name="MakeTrustedCertificateButton" Content="Make a trusted certificate" Click="MakeTrustedCertificate_Click" HorizontalAlignment="Left" Visibility="Collapsed" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Padding="12" Background="{StaticResource ServerMasterPanelSubtleBrush}" CornerRadius="8" Visibility="{Binding DataContext.SelectedProfileRootVisibility, ElementName=Root}">
+                                        <StackPanel Spacing="10">
+                                            <TextBlock Text="File permissions" FontSize="17" FontWeight="SemiBold" />
+                                                <TextBlock Text="Checks site access and folders used by CMS uploads, caches and logs." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <Button Content="Check" Click="CheckProfilePermissions_Click" />
+                                                    <Button Content="Open folder" Click="OpenProfilePermissionsFolder_Click" />
+                                                </StackPanel>
+                                                <TextBlock x:Name="PermissionStatus" Text="Not checked" TextWrapping="Wrap" />
+                                                <TextBlock x:Name="PermissionProblems" TextWrapping="Wrap" FontFamily="Cascadia Mono, Consolas" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Padding="12" Background="{StaticResource ServerMasterPanelSubtleBrush}" CornerRadius="8" Visibility="{Binding DataContext.SelectedProfilePhpVisibility, ElementName=Root}">
+                                        <StackPanel Spacing="10">
+                                            <TextBlock Text="PHP" FontSize="17" FontWeight="SemiBold" />
+                                        <ComboBox Header="PHP version" Visibility="{Binding DataContext.SelectedProfilePhpVisibility, ElementName=Root}" ItemsSource="{Binding DataContext.PhpVersionOptions, ElementName=Root}"
+                                                  DisplayMemberPath="Title" SelectedItem="{Binding DataContext.SelectedProfilePhpOption, ElementName=Root, Mode=TwoWay}" HorizontalAlignment="Stretch" />
+                                        <StackPanel Spacing="7">
+                                            <TextBlock Text="{Binding DataContext.SelectedProfilePhpStatus, ElementName=Root}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            <Button Content="Install missing PHP software" Command="{Binding DataContext.PrepareProfileCommand, ElementName=Root}"
+                                                    Visibility="{Binding DataContext.SelectedProfilePhpInstallVisibility, ElementName=Root}" HorizontalAlignment="Left" />
+                                        </StackPanel>
+                                        <Grid ColumnSpacing="14" Visibility="{Binding DataContext.SelectedProfilePhpVisibility, ElementName=Root}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Header="PHP memory limit" Text="{Binding PhpMemoryLimit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            <TextBox Grid.Column="1" Header="Upload max filesize" Text="{Binding PhpUploadMaxFilesize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            <NumberBox Grid.Column="2" Header="Max execution time" Value="{Binding PhpMaxExecutionTime, Mode=TwoWay}" Minimum="1" Maximum="86400" />
+                                        </Grid>
+                                        <CheckBox Content="Show PHP errors" Visibility="{Binding DataContext.SelectedProfilePhpVisibility, ElementName=Root}" IsChecked="{Binding PhpDisplayErrors, Mode=TwoWay}" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Padding="12" Background="{StaticResource ServerMasterPanelSubtleBrush}" CornerRadius="8">
+                                        <StackPanel Spacing="10">
+                                            <TextBlock Text="Database" FontSize="17" FontWeight="SemiBold" />
+                                        <Grid ColumnSpacing="14">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Spacing="6">
+                                                <TextBlock Text="Database name" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                <TextBox Text="{Binding DatabaseName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Optional CMS database" />
+                                            </StackPanel>
+                                        </Grid>
+                                            <CheckBox Content="This profile requires MariaDB" IsChecked="{Binding NeedsDatabase, Mode=TwoWay}" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Padding="12" Background="{StaticResource ServerMasterPanelSubtleBrush}" CornerRadius="8" Visibility="{Binding DataContext.SelectedProfileStaticVisibility, ElementName=Root}">
+                                        <StackPanel Spacing="10">
+                                            <TextBlock Text="Serving files" FontSize="17" FontWeight="SemiBold" />
+                                            <ComboBox Header="Shape" SelectedValue="{Binding ConfigPreset, Mode=TwoWay}" SelectedValuePath="Tag">
+                                                <ComboBoxItem Content="Files as they are" Tag="standard" />
+                                                <ComboBoxItem Content="Single-page app" Tag="spa" />
+                                            </ComboBox>
+                                            <StackPanel Orientation="Horizontal" Spacing="18">
+                                            <CheckBox Content="CORS" IsChecked="{Binding EnableCors, Mode=TwoWay}" />
+                                            <CheckBox Content="Gzip" IsChecked="{Binding EnableGzip, Mode=TwoWay}" />
+                                            <CheckBox Content="Directory listing" IsChecked="{Binding DirectoryListing, Mode=TwoWay}" />
+                                            </StackPanel>
+                                            <CheckBox Content="SPA fallback" IsChecked="{Binding SpaFallback, Mode=TwoWay}" />
+                                            <NumberBox Header="Cache seconds (-1 disables cache)" Value="{Binding CacheSeconds, Mode=TwoWay}" Minimum="-1" Maximum="31536000" SpinButtonPlacementMode="Compact" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Padding="12" Background="{StaticResource ServerMasterPanelSubtleBrush}" CornerRadius="8">
+                                        <StackPanel Spacing="10">
+                                            <TextBlock Text="Protection" FontSize="17" FontWeight="SemiBold" />
+                                        <Border x:Name="NetworkExposureWarning" Visibility="Collapsed" Padding="10" CornerRadius="6" Background="{ThemeResource SystemFillColorCautionBackgroundBrush}">
+                                            <StackPanel Spacing="6">
+                                                <TextBlock Text="The address is set to 0.0.0.0 — anyone on the same network can reach the server." TextWrapping="Wrap" />
+                                                <Button Content="This PC only" Click="ProfileHostLocalOnly_Click" />
+                                            </StackPanel>
+                                        </Border>
+                                        <TextBlock Text="A local server is usually visible only to this PC, so protection is not critical. It matters once you open access to the network or show the setup to colleagues." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <StackPanel Spacing="8" Visibility="{Binding DataContext.SelectedProfileStaticVisibility, ElementName=Root}">
+                                            <CheckBox Content="Block dotfiles (.env, .git and similar)" IsChecked="{Binding HideDotfiles, Mode=TwoWay}" />
+                                                <CheckBox Content="Basic authentication" IsChecked="{Binding BasicAuthEnabled, Mode=TwoWay}" />
+                                                <Grid ColumnSpacing="12">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                    <TextBox Header="Login" Text="{Binding BasicAuthUser, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding BasicAuthEnabled}" />
+                                                    <PasswordBox x:Name="BasicAuthPasswordBox" Grid.Column="1" Header="Password" IsEnabled="{Binding BasicAuthEnabled}" DataContextChanged="BasicAuthPassword_DataContextChanged" PasswordChanged="BasicAuthPassword_Changed" />
+                                                </Grid>
+                                                <TextBlock Text="The password is stored in the local profile file. Do not use a production password." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                                <CheckBox Content="Security response headers" IsChecked="{Binding SecurityHeaders}" IsEnabled="False" />
+                                                <CheckBox Content="HSTS - HTTPS only" IsChecked="{Binding HstsEnabled}" IsEnabled="False" />
+                                                <TextBlock Text="This engine cannot set custom response headers. A configurable web server is required." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                <TextBlock Text="http-server hides dotfiles from listings but cannot block direct requests to them. Do not put secrets in a public site folder." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{Binding DataContext.SelectedProfileStaticVisibility, ElementName=Root}" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Padding="12" Background="{StaticResource ServerMasterPanelSubtleBrush}" CornerRadius="8">
+                                        <StackPanel Spacing="10">
+                                            <TextBlock Text="Error pages" FontSize="17" FontWeight="SemiBold" />
+                                                <CheckBox Content="Custom pages for every error code" IsChecked="{Binding CustomErrorPages}" IsEnabled="False" />
+                                                <TextBlock Text="This engine serves its built-in error pages. Custom pages need a configurable web server." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Padding="12" Background="{StaticResource ServerMasterPanelSubtleBrush}" CornerRadius="8">
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                            <StackPanel Spacing="3">
+                                                <TextBlock Text="Environment variables" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding EnvironmentSummary}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Content="Edit..." Click="EditEnvironment_Click" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Padding="12" Background="{StaticResource ServerMasterPanelSubtleBrush}" CornerRadius="8">
+                                        <StackPanel Spacing="10">
+                                            <TextBlock Text="Notes" FontSize="17" FontWeight="SemiBold" />
+                                        <TextBox Text="{Binding Notes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70" PlaceholderText="Notes for this profile" />
+                                        </StackPanel>
+                                    </Border>
+
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="1" Style="{StaticResource PanelBorderStyle}" Padding="28" Visibility="{Binding ProfilesEmptyVisibility}">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" MaxWidth="360">
+                                    <FontIcon Glyph="&#xE710;" FontSize="30" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Text="No profile selected" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                    <TextBlock Text="Create a profile or choose one from the list to configure it." TextAlignment="Center" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <Button Content="New profile" Click="NewProfile_Click" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <views:SiteFilesView Grid.Row="1" Visibility="{Binding FilesVisibility}" />
+
+                <ScrollViewer Grid.Row="1" Visibility="{Binding BackupsVisibility}" VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="16">
+                        <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel Spacing="4"><TextBlock Text="Backups" FontSize="32" FontWeight="SemiBold" /><TextBlock Text="Take a snapshot before you break something" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel><Button Grid.Column="1" Command="{Binding CreateAllBackupsCommand}" IsEnabled="{Binding CanSnapshotProfiles}" Content="Snapshot every profile" VerticalAlignment="Top" /></Grid>
+                        <ProgressBar IsIndeterminate="True" Height="4" Visibility="{Binding BackupWorkVisibility}" AutomationProperties.Name="Working on snapshots" />
+                        <InfoBar IsOpen="True" IsClosable="False" Severity="Error" Message="{Binding BackupProblem}" Visibility="{Binding BackupProblemVisibility}" />
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Automatic snapshot profiles" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding ScheduledBackupProfilesSummary}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Choose profiles..." Click="ChooseScheduledProfiles_Click" IsEnabled="{Binding CanCreateBackups}" VerticalAlignment="Center" />
+                        </Grid>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18"><StackPanel Spacing="10"><TextBlock Text="Schedule" FontSize="18" FontWeight="SemiBold" /><CheckBox Content="Take snapshots automatically" IsChecked="{Binding BackupsEnabled, Mode=TwoWay}" /><Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="90" /><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="90" /></Grid.ColumnDefinitions><TextBlock Text="Every" VerticalAlignment="Center" /><NumberBox Grid.Column="1" Value="{Binding BackupEvery, Mode=TwoWay}" Minimum="1" Maximum="999" IsEnabled="{Binding BackupsEnabled}" /><ComboBox Grid.Column="2" SelectedValuePath="Tag" SelectedValue="{Binding BackupUnit, Mode=TwoWay}" IsEnabled="{Binding BackupsEnabled}"><ComboBoxItem Content="minutes" Tag="minutes" /><ComboBoxItem Content="hours" Tag="hours" /><ComboBoxItem Content="days" Tag="days" /><ComboBoxItem Content="weeks" Tag="weeks" /><ComboBoxItem Content="months" Tag="months" /><ComboBoxItem Content="years" Tag="years" /></ComboBox><TextBlock Grid.Column="4" Text="Keep" VerticalAlignment="Center" /><NumberBox Grid.Column="5" Value="{Binding BackupsToKeep, Mode=TwoWay}" Minimum="1" Maximum="999" IsEnabled="{Binding BackupsEnabled}" /></Grid><CheckBox Content="Include a profile's database when it has one" IsChecked="{Binding BackupIncludesDatabase, Mode=TwoWay}" IsEnabled="{Binding BackupsEnabled}" /><Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel><TextBlock Text="{Binding BackupDestination}" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding LastBackupText}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel><Button Grid.Column="1" Content="Choose..." Click="ChooseBackupDestination_Click" /><Button Grid.Column="2" Content="Show" Command="{Binding OpenBackupsFolderCommand}" /></Grid></StackPanel></Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Profiles" FontSize="18" FontWeight="SemiBold" />
+                                <TextBlock Text="No profiles yet." Visibility="{Binding BackupProfilesEmptyVisibility}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ListView ItemsSource="{Binding BackupProfiles}" IsEnabled="{Binding CanCreateBackups}" SelectionMode="None" Background="Transparent" BorderThickness="0">
+                                    <ListView.ItemTemplate><DataTemplate>
+                                        <Grid Padding="4,7" ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="2*" /><ColumnDefinition Width="180" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Details}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="2" Text="{Binding History}" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                            <Button Grid.Column="3" Content="Snapshot" Click="Snapshot_Click" />
+                                        </Grid>
+                                    </DataTemplate></ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Databases" FontSize="18" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding BackupDatabaseMessage}" TextWrapping="Wrap" Visibility="{Binding BackupDatabaseMessageVisibility}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ListView ItemsSource="{Binding BackupDatabases}" IsEnabled="{Binding CanSnapshotDatabase}" SelectionMode="None" Background="Transparent" BorderThickness="0">
+                                    <ListView.ItemTemplate><DataTemplate>
+                                        <Grid Padding="4,7" ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="120" /><ColumnDefinition Width="180" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Name}" FontFamily="Cascadia Mono, Consolas" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Details}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="2" Text="{Binding History}" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                            <Button Grid.Column="3" Content="Snapshot" Click="DatabaseSnapshot_Click" />
+                                        </Grid>
+                                    </DataTemplate></ListView.ItemTemplate>
+                                </ListView>
+                                <CheckBox Content="Snapshot every database on the schedule too" IsChecked="{Binding BackupAllDatabases, Mode=TwoWay}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18">
+                            <StackPanel Spacing="10">
+                                <Grid><TextBlock Text="Snapshots" FontSize="18" FontWeight="SemiBold" /><Button HorizontalAlignment="Right" Command="{Binding OpenBackupsFolderCommand}" ToolTipService.ToolTip="Open backup folder" AutomationProperties.Name="Open backup folder"><SymbolIcon Symbol="Folder" /></Button></Grid>
+                                <TextBlock Text="Nothing has been saved yet." Visibility="{Binding BackupEntriesEmptyVisibility}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ListView ItemsSource="{Binding BackupEntries}" IsEnabled="{Binding CanCreateBackups}" SelectionMode="None" Background="Transparent" BorderThickness="0">
+                                    <ListView.ItemTemplate><DataTemplate>
+                                        <Grid Padding="8,10" ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="140" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                            <StackPanel><TextBlock Text="{Binding Name}" FontWeight="SemiBold" /><TextBlock Text="{Binding ContentsLabel}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
+                                            <TextBlock Grid.Column="1" Text="{Binding CreatedAt}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            <Button Grid.Column="2" Content="Restore..." Click="RestoreSnapshot_Click" IsEnabled="{Binding CanRestore}" />
+                                            <Button Grid.Column="3" Click="ShowSnapshotFolder_Click" ToolTipService.ToolTip="Show snapshot folder" AutomationProperties.Name="Show snapshot folder"><SymbolIcon Symbol="Folder" /></Button>
+                                            <Button Grid.Column="4" Click="DeleteSnapshot_Click" ToolTipService.ToolTip="Delete snapshot" AutomationProperties.Name="Delete snapshot"><SymbolIcon Symbol="Delete" /></Button>
+                                        </Grid>
+                                    </DataTemplate></ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+
+                <ScrollViewer Grid.Row="1" Visibility="{Binding SettingsVisibility}" VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="16">
+                        <StackPanel Spacing="4"><TextBlock Text="App settings" FontSize="32" FontWeight="SemiBold" /><TextBlock Text="Defaults, console, ports and environment" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18"><StackPanel Spacing="12"><TextBlock Text="Appearance" FontSize="18" FontWeight="SemiBold" /><CheckBox Content="Moving background" IsChecked="{Binding BackgroundEnabled, Mode=TwoWay}" /><TextBlock Text="A mesh of colour behind every screen. Running profiles can tint the window with their accent colour." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" /><Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition Width="*" /><ColumnDefinition Width="90" /></Grid.ColumnDefinitions><TextBlock Text="Colour" VerticalAlignment="Center" /><Slider Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding BackgroundHue, Mode=TwoWay}" /><TextBlock Grid.Column="2" Text="Hue" VerticalAlignment="Center" /></Grid><Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition Width="*" /><ColumnDefinition Width="90" /></Grid.ColumnDefinitions><TextBlock Text="Speed" VerticalAlignment="Center" /><Slider Grid.Column="1" Minimum="0" Maximum="3" Value="{Binding BackgroundSpeed, Mode=TwoWay}" /><TextBlock Grid.Column="2" Text="Animation" VerticalAlignment="Center" /></Grid><Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition Width="*" /><ColumnDefinition Width="90" /></Grid.ColumnDefinitions><TextBlock Text="Colour amount" VerticalAlignment="Center" /><Slider Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding BackgroundSaturation, Mode=TwoWay}" /><TextBlock Grid.Column="2" Text="Saturation" VerticalAlignment="Center" /></Grid><CheckBox Content="Take the colour from running servers" IsChecked="{Binding BackgroundFollowsServers, Mode=TwoWay}" /><Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition Width="220" /></Grid.ColumnDefinitions><TextBlock Text="Sidebar" VerticalAlignment="Center" /><ComboBox Grid.Column="1" SelectedValuePath="Tag" SelectedValue="{Binding SidebarStyle, Mode=TwoWay}"><ComboBoxItem Content="Standard" Tag="standard" /><ComboBoxItem Content="Updated" Tag="modern" /></ComboBox></Grid></StackPanel></Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18"><StackPanel Spacing="10"><TextBlock Text="Profiles" FontSize="18" FontWeight="SemiBold" /><Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="Default profile" VerticalAlignment="Center" /><ComboBox Grid.Column="1" ItemsSource="{Binding Profiles}" SelectedItem="{Binding DefaultProfile, Mode=TwoWay}" DisplayMemberPath="Name" /></Grid><CheckBox Content="Start the default profile when the app launches" IsChecked="{Binding AutostartDefaultProfile, Mode=TwoWay}" /><CheckBox Content="Open the last used section" IsChecked="{Binding RestoreLastSection, Mode=TwoWay}" /></StackPanel></Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18"><StackPanel Spacing="10"><TextBlock Text="Starting and stopping" FontSize="18" FontWeight="SemiBold" /><CheckBox Content="Open the browser after start (all profiles)" IsChecked="{Binding OpenBrowserOnStart, Mode=TwoWay}" /><CheckBox Content="Keep running in the notification area when the window is closed" IsChecked="{Binding KeepRunningInNotificationArea, Mode=TwoWay}" ToolTipService.ToolTip="Servers keep running while ServerMaster stays in the notification area. Quit always stops them and releases their ports." /><CheckBox Content="Ask for confirmation before stopping" IsChecked="{Binding ConfirmBeforeStop, Mode=TwoWay}" /><CheckBox Content="Restart automatically after a crash" IsChecked="{Binding RestartOnCrash, Mode=TwoWay}" /><CheckBox Content="Check whether the port is free before starting" IsChecked="{Binding CheckPortBeforeStart, Mode=TwoWay}" /><CheckBox Content="Free the port automatically if it is taken" IsChecked="{Binding KillPortOccupantOnStart, Mode=TwoWay}" IsEnabled="{Binding CheckPortBeforeStart}" /><TextBlock Text="The app will end whichever process holds the port. Be careful with system services." Visibility="{Binding KillPortWarningVisibility}" FontSize="12" Foreground="{ThemeResource SystemFillColorCautionBrush}" TextWrapping="Wrap" /></StackPanel></Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18"><StackPanel Spacing="10"><TextBlock Text="Console" FontSize="18" FontWeight="SemiBold" /><CheckBox Content="Scroll to new output" IsChecked="{Binding AutoScrollConsole, Mode=TwoWay}" /><CheckBox Content="Write server logs to disk" IsChecked="{Binding WriteLogsToFile, Mode=TwoWay}" /><Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><NumberBox Header="Console buffer lines" Value="{Binding ConsoleBufferLines, Mode=TwoWay}" Minimum="100" Maximum="50000" /><NumberBox Grid.Column="1" Header="Font size" Value="{Binding ConsoleFontSize, Mode=TwoWay}" Minimum="9" Maximum="24" /><NumberBox Grid.Column="2" Header="Log retention days" Value="{Binding LogRetentionDays, Mode=TwoWay}" Minimum="0" Maximum="365" /></Grid><ComboBox Header="Default terminal" SelectedValuePath="Tag" SelectedValue="{Binding DefaultTerminalShell, Mode=TwoWay}" Width="220" HorizontalAlignment="Left"><ComboBoxItem Content="PowerShell" Tag="PowerShell" /><ComboBoxItem Content="Command Prompt" Tag="CMD" /></ComboBox><StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Open logs folder" Click="OpenLogsFolder_Click" /><Button Content="Clear old logs" Click="ClearOldLogs_Click" /></StackPanel></StackPanel></Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18"><StackPanel Spacing="10"><TextBlock Text="Ports" FontSize="18" FontWeight="SemiBold" /><CheckBox Content="Refresh the ports screen automatically" IsChecked="{Binding PortsAutoRefresh, Mode=TwoWay}" /><CheckBox Content="Include UDP sockets" IsChecked="{Binding PortsIncludeUdp, Mode=TwoWay}" /><CheckBox Content="Show system processes" IsChecked="{Binding PortsShowSystemProcesses, Mode=TwoWay}" /><CheckBox Content="Ask before terminating a process" IsChecked="{Binding ConfirmBeforeKill, Mode=TwoWay}" /><CheckBox Content="Enable port reservations (experimental)" IsChecked="{Binding PortReservationsEnabled, Mode=TwoWay}" /><TextBlock Text="A reservation holds the TCP port until you release it or quit ServerMaster. A profile cannot start on that port meanwhile." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="180" /></Grid.ColumnDefinitions><TextBlock Text="Refresh interval, seconds" VerticalAlignment="Center" /><NumberBox Grid.Column="1" Value="{Binding PortsRefreshInterval, Mode=TwoWay}" Minimum="1" Maximum="60" /></Grid></StackPanel></Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18"><StackPanel Spacing="10"><TextBlock Text="Environment" FontSize="18" FontWeight="SemiBold" /><TextBlock Text="Extra PATH directories are searched before the system PATH." Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBox Text="{Binding NewPathEntry, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="C:\Tools\bin" /><Button Grid.Column="1" Command="{Binding AddPathEntryCommand}" Content="Add" /></Grid><ListView ItemsSource="{Binding ExtraPathEntries}" SelectionMode="None" MaxHeight="150"><ListView.ItemTemplate><DataTemplate><Grid Padding="4"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="{Binding}" FontFamily="Cascadia Mono, Consolas" /><Button Grid.Column="1" Command="{Binding DataContext.RemovePathEntryCommand, ElementName=Root}" CommandParameter="{Binding}" AutomationProperties.Name="Remove"><SymbolIcon Symbol="Delete" /></Button></Grid></DataTemplate></ListView.ItemTemplate></ListView><CheckBox Content="Check dependencies when the app launches" IsChecked="{Binding CheckDependenciesOnLaunch, Mode=TwoWay}" /></StackPanel></Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Database admin panel" FontSize="18" FontWeight="SemiBold" />
+                                <ComboBox Header="Panel" ItemsSource="{Binding DatabaseAdminTools}" DisplayMemberPath="Title" SelectedValuePath="Id" SelectedValue="{Binding DatabaseAdminTool, Mode=TwoWay}" Width="280" HorizontalAlignment="Left" />
+                                <TextBlock Text="{Binding DatabaseAdminToolSubtitle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                <TextBlock Text="Missing panels and compatible PHP can be installed automatically when you open the panel or from Dependencies." Foreground="{ThemeResource TextFillColorTertiaryBrush}" TextWrapping="Wrap" />
+                                <NumberBox Header="Port" Value="{Binding DatabaseAdminPort, Mode=TwoWay}" Minimum="1" Maximum="65535" Width="180" HorizontalAlignment="Left" />
+                                <TextBlock Text="The panel listens only on 127.0.0.1 and signs in with a separate ServerMaster database account." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18"><StackPanel Spacing="10"><TextBlock Text="Certificates" FontSize="18" FontWeight="SemiBold" /><NumberBox Header="Default validity, days" Value="{Binding CertificateDefaultDays, Mode=TwoWay}" Minimum="1" Maximum="3650" /><TextBox Header="Default domains" Text="{Binding CertificateDefaultDomains, Mode=TwoWay}" /><Button Content="Open certificate folder" HorizontalAlignment="Left" Click="OpenCertificateFolder_Click" /></StackPanel></Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18"><StackPanel Spacing="10"><TextBlock Text="Interface language" FontSize="18" FontWeight="SemiBold" /><ComboBox Header="Language" ItemsSource="{Binding LanguageOptions}" DisplayMemberPath="Value" SelectedValuePath="Key" SelectedValue="{Binding InterfaceLanguage, Mode=TwoWay}" Width="280" HorizontalAlignment="Left" /><TextBlock Text="{Binding LanguageNotice}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <StackPanel Orientation="Horizontal" Spacing="8" Visibility="{Binding TranslationMismatchVisibility}">
+                                    <FontIcon Glyph="&#xE7BA;" FontSize="14" Foreground="{ThemeResource SystemFillColorCautionBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="{Binding TranslationMismatchText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="Strings added since then show in English, and any that changed meaning may read wrong. Export a fresh pack and move your wording into it." FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <ItemsControl ItemsSource="{Binding TranslationPacksInstalled}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid ColumnSpacing="8" Padding="0,2">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <FontIcon Glyph="&#xE73E;" FontSize="14" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="2" Text="{Binding Summary}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                                <Button Grid.Column="3" Content="Remove" Command="{Binding DataContext.RemoveTranslationPackCommand, ElementName=Root}" CommandParameter="{Binding}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Export translation..." Click="ExportTranslation_Click" /><Button Content="Import translation..." Click="ImportTranslation_Click" /></StackPanel>
+                                <TextBlock Text="An exported pack is a plain text file: one line per string, the English key on the left and the translation on the right. Edit it in any editor and import it back — an imported pack takes precedence over the built-in one, and anything left out falls back to it." FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" /></StackPanel></Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Updates" FontSize="18" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <CheckBox Content="Update automatically" IsChecked="False" IsEnabled="False" />
+                                    <Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="4" Padding="6,2"><TextBlock Text="SOON" FontSize="11" FontWeight="SemiBold" /></Border>
+                                </StackPanel>
+                                <TextBlock Text="For now ServerMaster only checks whether a newer Windows version exists and opens its release page. Nothing is downloaded or run automatically." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding InstalledAppVersionText}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Repository" VerticalAlignment="Center" />
+                                    <TextBox Grid.Column="1" Text="{Binding UpdateRepository, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="owner/repository or a GitHub link" FontFamily="Cascadia Mono, Consolas" />
+                                </Grid>
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="150" /><ColumnDefinition Width="*" /><ColumnDefinition Width="120" /><ColumnDefinition Width="180" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Version file" VerticalAlignment="Center" />
+                                    <TextBox Grid.Column="1" Text="{Binding UpdateVersionFile, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="updates/windows.txt" FontFamily="Cascadia Mono, Consolas" />
+                                    <TextBlock Grid.Column="2" Text="Builds folder" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                    <TextBox Grid.Column="3" Text="{Binding UpdateBuildsFolder, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="windows" FontFamily="Cascadia Mono, Consolas" />
+                                </Grid>
+                                <TextBlock Text="{Binding UpdateVersionSource}" Visibility="{Binding UpdateConfigurationVisibility}" FontFamily="Cascadia Mono, Consolas" FontSize="12" Foreground="{ThemeResource TextFillColorTertiaryBrush}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="Enter the repository as owner/repository and a version-file path." Visibility="{Binding UpdateConfigurationProblemVisibility}" Foreground="{ThemeResource SystemFillColorCautionBrush}" TextWrapping="Wrap" />
+                                <CheckBox Content="Check for updates when ServerMaster starts" IsChecked="{Binding CheckUpdatesOnLaunch, Mode=TwoWay}" IsEnabled="{Binding UpdateConfigured}" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Check now" Click="CheckUpdates_Click" IsEnabled="{Binding CanCheckForUpdates}" />
+                                    <Button Content="Open repository" Click="OpenUpdateRepository_Click" IsEnabled="{Binding UpdateConfigured}" />
+                                    <Button Content="Open release" Click="OpenUpdateRelease_Click" Visibility="{Binding UpdateReleaseVisibility}" />
+                                    <ProgressRing Width="22" Height="22" IsActive="True" Visibility="{Binding UpdateCheckingVisibility}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding UpdateStatus}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <Image Source="ms-appx:///Assets/AppLogo.png" Width="72" Height="72" VerticalAlignment="Top" />
+                                <StackPanel Grid.Column="1" Spacing="4">
+                                    <TextBlock Text="About" FontSize="18" FontWeight="SemiBold" />
+                                    <TextBlock Text="ServerMaster" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding AboutVersionLine}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsTextSelectionEnabled="True" />
+                                    <TextBlock Text="{Binding AboutRequirementsLine}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Button Grid.Column="2" Content="Copy details" Command="{Binding CopyAboutDetailsCommand}" VerticalAlignment="Top" />
+                            </Grid>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18"><StackPanel Spacing="10"><TextBlock Text="Data" FontSize="18" FontWeight="SemiBold" /><TextBlock Text="Profiles, settings, logs, certificates, database data and snapshots are stored in your user data folders." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" /><TextBlock Text="{Binding DataFolderPath}" FontFamily="Cascadia Mono, Consolas" IsTextSelectionEnabled="True" TextWrapping="Wrap" /><Button Content="Open data folder" Click="OpenDataFolder_Click" HorizontalAlignment="Left" /><Button Content="Reset settings" Click="ResetSettings_Click" IsEnabled="{Binding CanResetSettings}" HorizontalAlignment="Left" /></StackPanel></Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer Grid.Row="1" Visibility="{Binding AboutVisibility}">
+                    <StackPanel Spacing="18" HorizontalAlignment="Stretch" Padding="0,0,12,0">
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <Image Source="ms-appx:///Assets/AppLogo.png" Width="64" Height="64" VerticalAlignment="Top" />
+                            <StackPanel Grid.Column="1" Spacing="6">
+                                <TextBlock Text="ServerMaster" FontSize="28" FontWeight="SemiBold" />
+                                <TextBlock Text="A local web server on your PC: static files, PHP sites and a database in one window." FontSize="18" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding AboutVersionLine}" FontSize="12" Foreground="{ThemeResource TextFillColorTertiaryBrush}" IsTextSelectionEnabled="True" />
+                                <TextBlock Text="{Binding AboutRequirementsLine}" FontSize="12" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,0">
+                                    <Button Command="{Binding OpenUrlCommand}" CommandParameter="https://adm1nsys.github.io/ServerMaster/wiki.html" AutomationProperties.Name="Guides"><StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE82D;" FontSize="13" /><TextBlock Text="Guides" /></StackPanel></Button>
+                                    <Button Content="Website" Command="{Binding OpenUrlCommand}" CommandParameter="https://adm1nsys.github.io/ServerMaster/" />
+                                    <Button Content="Report a problem" Command="{Binding OpenUrlCommand}" CommandParameter="https://github.com/adm1nsys/ServerMaster/issues" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18">
+                            <StackPanel Spacing="10">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE768;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                    <TextBlock Text="Getting started" FontSize="18" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <Border Width="24" Height="24" CornerRadius="12" Background="{ThemeResource AccentFillColorTertiaryBrush}" VerticalAlignment="Top">
+                                        <TextBlock Text="1" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Create a profile" FontWeight="SemiBold" />
+                                        <TextBlock Text="The Profiles tab, the “New” button. A profile is one site: a folder, a port and an engine." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <Border Width="24" Height="24" CornerRadius="12" Background="{ThemeResource AccentFillColorTertiaryBrush}" VerticalAlignment="Top">
+                                        <TextBlock Text="2" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Point it at your site folder" FontWeight="SemiBold" />
+                                        <TextBlock Text="“Site root” is the folder with your files. If it contains index.php, pick the “PHP built-in server” engine." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <Border Width="24" Height="24" CornerRadius="12" Background="{ThemeResource AccentFillColorTertiaryBrush}" VerticalAlignment="Top">
+                                        <TextBlock Text="3" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Press Start" FontWeight="SemiBold" />
+                                        <TextBlock Text="On the Control tab. The address appears next to it — open it to see your site." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Command="{Binding ShowProfilesCommand}" AutomationProperties.Name="Open profiles"><StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE8F1;" FontSize="13" /><TextBlock Text="Open profiles" /></StackPanel></Button>
+                                    <Button Command="{Binding ShowDependenciesCommand}" AutomationProperties.Name="Check dependencies"><StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE9D5;" FontSize="13" /><TextBlock Text="Check dependencies" /></StackPanel></Button>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18">
+                            <StackPanel Spacing="10">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xF0E2;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                    <TextBlock Text="What you can run" FontSize="18" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE943;" FontSize="20" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="A static site" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="A folder with HTML, CSS and JavaScript. The http-server and Python engines both work — the choice hardly matters." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE1D3;" FontSize="20" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="A PHP site with a database" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="The PHP built-in server plus the managed MariaDB. That runs WordPress, Joomla, Drupal, Laravel and other PHP CMS or frameworks." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE7B8;" FontSize="20" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Your own Node.js server" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="The profile runs your server.js and passes the port and host through environment variables." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE756;" FontSize="20" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Any command of your own" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="The “Custom command” engine runs anything with your own arguments and environment." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE749;" FontSize="20" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Printing and publishing sites" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="The PrintShopCRM and Web-to-Print templates download, configure and start a print shop with its database in one step." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18">
+                            <StackPanel Spacing="10">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE9D5;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                    <TextBlock Text="What is included" FontSize="18" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE768;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Several servers at once" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="Profiles run in parallel, each with its own port, log and settings. Stop or restart them one at a time." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE1D3;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Database" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="MariaDB runs in its own folder on its own port. Create a database in one click, then browse and edit its contents as a table or with SQL." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE72E;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="HTTPS" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="Certificates are issued inside the app and can be trusted in Windows. Ports below 1024 need no administrator rights on Windows." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE968;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Ports" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="See every busy port and the process holding it. Free a port without leaving the app, or hold one with a reservation." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE756;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Terminal" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="CMD and PowerShell tabs in the profile folder, with history and Ctrl+C. Full-screen programs open in Windows Terminal." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE8A5;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Configuration files" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="Every file of a profile in one list: PHP settings, site configuration files and logs, with an editor that warns about changes made elsewhere." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE943;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Several PHP versions" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="The version is set per profile, and a version that is missing can be installed from the app. Sites on different PHP versions run at the same time." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE80A;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Database without the terminal" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="Browse and edit rows like a spreadsheet, run SQL, and change the shape of a database — tables, columns, indexes, accounts and privileges. A dump can be imported from a .sql file or straight out of a backup archive." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE81C;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Snapshots and backups" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="Take a snapshot of a profile — its settings, its files and its database — by hand or on a schedule, and roll back to it. Databases can be snapshotted on their own." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE9D9;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Diagnostics" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="What is wrong when everything looks installed: disk space, memory, a half-prepared database, firewall and proxy settings. Each address can be traced from the name to the answer." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE8F4;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Hidden files" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="The dotfiles a project hides — .htaccess, .env, .user.ini — in one list, with an editor that has search and replace. Renaming htaccess.txt to .htaccess is one click." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18">
+                            <StackPanel Spacing="10">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE895;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                    <TextBlock Text="If you used XAMPP or MAMP before" FontSize="18" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE73E;" FontSize="16" Foreground="#32B875" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="You can see why it failed" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="Each server has its own log, PHP errors are never lost, and a crash is explained in words instead of an exit code." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE73E;" FontSize="16" Foreground="#32B875" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Several PHP versions at once" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="The version belongs to the profile, not to the whole app. An old and a new project run side by side." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE73E;" FontSize="16" Foreground="#32B875" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Several servers at once" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="Every profile gets its own tab, port and engine, started and stopped on its own — instead of one Apache for everything." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid ColumnSpacing="12" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="26" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE73E;" FontSize="16" Foreground="#32B875" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="Leaves your system alone" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="The database runs in its own folder on its own port. Any MySQL, IIS or system services you already have are left untouched." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18">
+                            <StackPanel Spacing="10">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE8B7;" FontSize="16" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                    <TextBlock Text="Where things live" FontSize="18" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <TextBlock Text="Profiles, certificates, logs and database data live in the app folder. Removing the app leaves nothing behind — just delete that folder." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding AboutDataFolder}" FontFamily="Cascadia Mono, Consolas" FontSize="12" VerticalAlignment="Center" IsTextSelectionEnabled="True" TextTrimming="CharacterEllipsis" />
+                                    <Button Grid.Column="1" Content="Show in Explorer" Click="OpenDataFolder_Click" />
+                                </Grid>
+                                <Rectangle Height="1" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                <TextBlock Text="PHP, Node.js, Python, MariaDB and the other tools are installed from the Dependencies tab — through WinGet or verified downloads. It shows what you have, what is missing, and installs the rest." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Text="The app sends nothing about you anywhere. It goes online only for the update check, which you can turn off, and for downloads you start." FontSize="12" Foreground="{ThemeResource TextFillColorTertiaryBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer Grid.Row="1" Visibility="{Binding DatabaseVisibility}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="18" HorizontalAlignment="Stretch">
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel Spacing="5">
+                                <TextBlock Text="Database" FontSize="32" FontWeight="SemiBold" />
+                                <TextBlock Text="A separate MariaDB instance for local sites" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Button Content="Start" Command="{Binding StartDatabaseCommand}" IsEnabled="{Binding DatabaseCanStart}" Visibility="{Binding DatabaseStoppedVisibility}" />
+                                <Button Content="Stop" Command="{Binding StopDatabaseCommand}" IsEnabled="{Binding DatabaseCanStop}" Visibility="{Binding DatabaseRunningVisibility}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <ProgressBar IsIndeterminate="True" Height="3" Visibility="{Binding DatabaseProgressVisibility}" AutomationProperties.Name="Working on database" />
+                        <InfoBar IsOpen="True" IsClosable="False" Severity="Error" Message="{Binding DatabaseProblem}" Visibility="{Binding DatabaseProblemVisibility}" />
+
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="Connection" FontSize="18" FontWeight="SemiBold" />
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Ellipse Width="10" Height="10" Fill="{Binding DatabaseStatusBrush}" VerticalAlignment="Center" />
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="{Binding DatabaseStatusTitle}" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding DatabaseStatusVersion}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="{Binding DatabaseProcessLabel}" FontFamily="Cascadia Mono, Consolas" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18" Visibility="{Binding DatabaseRunningVisibility}">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="These are the details you enter in the installer of Joomla, WordPress or any other CMS." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="115" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="Host" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Grid.Column="1" Text="{Binding DatabaseHost}" FontFamily="Cascadia Mono, Consolas" /><TextBlock Grid.Column="2" /></Grid>
+                                <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="115" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="Port" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Grid.Column="1" Text="{Binding DatabasePort}" FontFamily="Cascadia Mono, Consolas" /><TextBlock Grid.Column="2" /></Grid>
+                                <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="115" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="Host and port" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Grid.Column="1" Text="{Binding DatabaseConnection}" FontFamily="Cascadia Mono, Consolas" /><Button Grid.Column="2" Content="Copy" Command="{Binding CopyDatabaseValueCommand}" CommandParameter="{Binding DatabaseConnection}" /></Grid>
+                                <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="115" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="Socket" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Grid.Column="1" Text="TCP only on Windows" FontFamily="Cascadia Mono, Consolas" /></Grid>
+                                <TextBlock Text="Port 3307 speaks the MySQL protocol, not HTTP. A browser cannot open it." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18">
+                            <StackPanel Spacing="10">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="Web admin panel" FontSize="18" FontWeight="SemiBold" /><TextBlock Grid.Column="1" Text="{Binding AdminPanelTitle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" /></Grid>
+                                <TextBlock Text="A web interface for this database on its own port. It signs in automatically when opened here." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Open panel" Command="{Binding OpenDatabaseAdminCommand}" />
+                                    <Button Content="Stop" Command="{Binding StopDatabaseAdminCommand}" Visibility="{Binding AdminerRunningVisibility}" />
+                                    <Button Content="Dependencies" Command="{Binding ShowDependenciesCommand}" />
+                                    <TextBlock Text="{Binding AdminerStatus}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                                <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="115" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="Address" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Grid.Column="1" Text="{Binding AdminerAddress}" FontFamily="Cascadia Mono, Consolas" /><Button Grid.Column="2" Content="Copy" Command="{Binding CopyDatabaseValueCommand}" CommandParameter="{Binding AdminerAddress}" /></Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18">
+                            <StackPanel Spacing="12">
+                                <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="Databases" FontSize="18" FontWeight="SemiBold" /><Button Grid.Column="1" Content="All snapshots" Command="{Binding ShowBackupsCommand}" /></Grid>
+                                <TextBlock Text="No databases yet. Create one for your site." Visibility="{Binding DatabaseEntriesEmptyVisibility}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ListView ItemsSource="{Binding DatabaseEntries}" SelectionMode="None" MaxHeight="230" Background="Transparent" BorderThickness="0">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Padding="0,7" ColumnSpacing="10">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="100" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Name}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1" Text="{Binding TablesLabel}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                                <Button Grid.Column="2" Content="Open" Command="{Binding DataContext.OpenDatabaseBrowserCommand, ElementName=Shell}" CommandParameter="{Binding}" />
+                                                <Button Grid.Column="3" Content="Structure" Command="{Binding DataContext.OpenDatabaseStructureCommand, ElementName=Shell}" CommandParameter="{Binding}" />
+                                                <Button Grid.Column="4" Content="Accounts" Command="{Binding DataContext.OpenDatabaseAccountsCommand, ElementName=Shell}" CommandParameter="{Binding}" />
+                                                <Button Grid.Column="5" Content="Snapshot" Command="{Binding DataContext.CreateDatabaseBackupCommand, ElementName=Shell}" CommandParameter="{Binding}" />
+                                                <Button Grid.Column="6" Content="Copy name" Command="{Binding DataContext.CopyDatabaseValueCommand, ElementName=Shell}" CommandParameter="{Binding Name}" />
+                                                <Button Grid.Column="7" Content="Credentials" Click="DatabaseCredentials_Click" />
+                                                <Button Grid.Column="8" Content="Delete" Command="{Binding DataContext.DeleteDatabaseCommand, ElementName=Shell}" CommandParameter="{Binding}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="2*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBox PlaceholderText="database name" Text="{Binding NewDatabaseName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox Grid.Column="1" PlaceholderText="user" Text="{Binding NewDatabaseUser, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <PasswordBox Grid.Column="2" PlaceholderText="password" Password="{Binding NewDatabasePassword, Mode=TwoWay}" />
+                                    <Button Grid.Column="3" Content="Create" Command="{Binding CreateDatabaseCommand}" IsEnabled="{Binding DatabaseCanStop}" />
+                                    <Button Grid.Column="4" Content="Import..." Click="ImportDatabase_Click" IsEnabled="{Binding DatabaseCanStop}" />
+                                </Grid>
+                                <TextBlock Text="Import a SQL dump or an archive containing one. Enter the target database name first. User and password are needed only when creating a new database." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                <TextBlock Text="The password is stored in the database and ends up in your site config. Fine for a local setup, not for production." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="Database log" FontSize="18" FontWeight="SemiBold" /><Button Grid.Column="1" Content="{Binding DatabaseLogToggleText}" Command="{Binding ToggleDatabaseLogCommand}" /><Button Grid.Column="2" Content="Clear" Command="{Binding ClearDatabaseLogCommand}" /></Grid>
+                                <TextBlock Text="Everything the database reports about itself, including why it crashed." Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                <Border Background="{StaticResource ServerMasterPanelSubtleBrush}" Padding="10" Height="{Binding DatabaseLogHeight}">
+                                    <ListView ItemsSource="{Binding DatabaseLogLines}" Background="Transparent" BorderThickness="0">
+                                        <ListView.ItemTemplate><DataTemplate><TextBlock Text="{Binding Text}" FontFamily="Cascadia Mono, Consolas" TextWrapping="Wrap" IsTextSelectionEnabled="True" /></DataTemplate></ListView.ItemTemplate>
+                                    </ListView>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="18" Visibility="{Binding DatabaseInstallVisibility}">
+                            <StackPanel Spacing="10"><TextBlock Text="MariaDB is not installed" FontSize="18" FontWeight="SemiBold" /><TextBlock Text="Install MariaDB from the dependency manager, then return here to start the local database." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><StackPanel Orientation="Horizontal" Spacing="8"><Button Content="Install" Command="{Binding InstallDatabaseCommand}" /><Button Content="Dependencies" Command="{Binding ShowDependenciesCommand}" /></StackPanel></StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <Grid Grid.Row="1" Visibility="{Binding PortsVisibility}" RowSpacing="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Ports" FontSize="32" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding PortsSummary}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Command="{Binding RefreshPortsCommand}" IsEnabled="{Binding CanRefreshPorts}" VerticalAlignment="Top" AutomationProperties.Name="Refresh ports">
+                            <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE72C;" FontSize="12" /><TextBlock Text="Refresh" /></StackPanel>
+                        </Button>
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBox Width="240" PlaceholderText="Port, process, PID" Text="{Binding PortSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <CheckBox Content="UDP" IsChecked="{Binding PortsIncludeUdp, Mode=TwoWay}" VerticalAlignment="Center" />
+                        <CheckBox Content="System" IsChecked="{Binding PortsShowSystemProcesses, Mode=TwoWay}" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Spacing="8" Visibility="{Binding PortReservationsVisibility}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Reservation" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <TextBox Width="90" PlaceholderText="port" Text="{Binding ReservePortText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Port to reserve" />
+                            <TextBox Width="220" PlaceholderText="why" Text="{Binding ReservePortNote, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Reservation note" />
+                            <Button Content="Reserve" Command="{Binding ReservePortCommand}" />
+                        </StackPanel>
+                        <ItemsControl ItemsSource="{Binding PortReservations}">
+                            <ItemsControl.ItemTemplate><DataTemplate><StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE72E;" FontSize="13" /><TextBlock Text="{Binding Display}" VerticalAlignment="Center" /><Button Content="Release" Command="{Binding DataContext.ReleasePortCommand, ElementName=Shell}" CommandParameter="{Binding}" /></StackPanel></DataTemplate></ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                    </StackPanel>
+                    <Border Grid.Row="1" Style="{StaticResource PanelBorderStyle}" Padding="10">
+                        <Grid>
+                        <ListView ItemsSource="{Binding PortEntries}" SelectionMode="None" Background="Transparent" BorderThickness="0">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Padding="8,10" ColumnSpacing="14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="80" />
+                                            <ColumnDefinition Width="60" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="180" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Port}" FontFamily="Cascadia Mono, Consolas" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Protocol}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <TextBlock Grid.Column="2" Text="{Binding DisplayAddress}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="3" Text="{Binding Description}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        <Button Grid.Column="4" Click="OpenPort_Click" IsEnabled="{Binding CanOpenInBrowser}" ToolTipService.ToolTip="Open in browser" AutomationProperties.Name="Open port">
+                                            <SymbolIcon Symbol="Globe" />
+                                        </Button>
+                                        <Button Grid.Column="5" Click="PortDetails_Click" ToolTipService.ToolTip="Process details" AutomationProperties.Name="Process details">
+                                            <FontIcon Glyph="&#xE946;" FontSize="15" />
+                                        </Button>
+                                        <Button Grid.Column="6" Click="TerminatePort_Click" IsEnabled="{Binding CanTerminate}" ToolTipService.ToolTip="Terminate process" AutomationProperties.Name="Terminate process">
+                                            <SymbolIcon Symbol="Delete" />
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <ProgressRing Width="28" Height="28" IsActive="True" Visibility="{Binding PortsProgressVisibility}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <InfoBar IsOpen="True" IsClosable="False" Severity="Error" Message="{Binding PortsProblem}" Visibility="{Binding PortsProblemVisibility}" VerticalAlignment="Top" Margin="8" />
+                        <StackPanel Visibility="{Binding PortsEmptyVisibility}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6">
+                            <TextBlock Text="No matching ports" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                            <TextBlock Text="Change the filters or refresh the list." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <Grid Grid.Row="1" Visibility="{Binding DependenciesVisibility}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="Dependencies" FontSize="32" FontWeight="SemiBold" />
+                            <TextBlock Text="What each configuration needs in order to start" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <ProgressBar IsIndeterminate="True" Height="3" Visibility="{Binding DependenciesProgressVisibility}" AutomationProperties.Name="Checking dependencies" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Command="{Binding CheckDependenciesCommand}" IsEnabled="{Binding CanCheckDependencies}" VerticalAlignment="Top" AutomationProperties.Name="Check all">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <FontIcon Glyph="&#xE9D9;" FontSize="12" />
+                                <TextBlock Text="Check all" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
+                    <Grid Grid.Row="1" RowSpacing="18" Margin="0,22,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="0" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="220" /></Grid.RowDefinitions>
+
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="10">
+                            <ListView ItemsSource="{Binding Dependencies}" Background="Transparent" BorderThickness="0">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Padding="8,10" ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <FontIcon Glyph="&#xE950;" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Top" Margin="0,4,0,0" />
+                                            <StackPanel Grid.Column="1" Spacing="3">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <TextBlock Text="{Binding Dependency.Title}" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding StatusText}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding Dependency.Summary}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding Version}" Style="{ThemeResource CaptionTextBlockStyle}" FontFamily="Cascadia Mono, Consolas" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding Path}" Style="{ThemeResource CaptionTextBlockStyle}" FontFamily="Cascadia Mono, Consolas" Foreground="{ThemeResource TextFillColorTertiaryBrush}" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding DisplayMessage}" Style="{ThemeResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding RemovalBlockedReason}" Style="{ThemeResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding AvailableVersion}" Style="{ThemeResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
+                                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                                    <Button Content="Check for update" Click="DependencyUpdateCheck_Click" IsEnabled="{Binding CanAct}" Visibility="{Binding UpdateCheckVisibility}" />
+                                                    <Button Content="Versions..." Click="DependencyVersions_Click" IsEnabled="{Binding CanAct}" Visibility="{Binding VersionSelectionVisibility}" />
+                                                    <Button Content="Update" Click="DependencyUpdate_Click" IsEnabled="{Binding CanAct}" Visibility="{Binding UpdateActionVisibility}" />
+                                                </StackPanel>
+                                                <ProgressBar Visibility="{Binding ActivityVisibility}" IsIndeterminate="{Binding IsIndeterminate}" Value="{Binding Progress}" Maximum="100" />
+                                                <InfoBar IsOpen="True" IsClosable="False" Severity="Error" Visibility="{Binding ErrorVisibility}" Message="{Binding Error}" />
+                                            </StackPanel>
+                                            <Button Grid.Column="2" Click="DependencyAction_Click" IsEnabled="{Binding CanAct}" MinWidth="88" Content="{Binding ActionText}" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Border>
+
+                        <Border Grid.Row="1" Grid.ColumnSpan="2" Style="{StaticResource PanelBorderStyle}" Padding="12">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE756;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Text="Install log" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <ListView Grid.Row="1" ItemsSource="{Binding DependencyLogLines}" Background="Transparent" BorderThickness="0" Margin="0,10,0,0">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Text}" FontFamily="Cascadia Mono, Consolas" FontSize="12" TextWrapping="Wrap" />
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+
+                <ScrollViewer Grid.Row="1" Visibility="{Binding DiagnosticsVisibility}" VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="16">
+                        <!-- Mac layout: title on the left, "Check again" at the top right. -->
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Diagnostics" FontSize="32" FontWeight="SemiBold" />
+                                <TextBlock Text="What is wrong when everything looks installed" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Command="{Binding RunDiagnosticsCommand}" IsEnabled="{Binding CanRunDiagnostics}" VerticalAlignment="Top" AutomationProperties.Name="Run diagnostics">
+                                <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE72C;" FontSize="12" /><TextBlock Text="Check again" /></StackPanel>
+                            </Button>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Command="{Binding CopyDiagnosticsCommand}" IsEnabled="{Binding CanCopyDiagnostics}" AutomationProperties.Name="Copy report">
+                                <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE8C8;" FontSize="12" /><TextBlock Text="Copy report" /></StackPanel>
+                            </Button>
+                            <Button Command="{Binding ShowDependenciesCommand}" AutomationProperties.Name="Dependencies">
+                                <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE9D9;" FontSize="12" /><TextBlock Text="Dependencies" /></StackPanel>
+                            </Button>
+                            <Button Command="{Binding ShowProfilesCommand}" AutomationProperties.Name="Profiles">
+                                <StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE8FD;" FontSize="12" /><TextBlock Text="Profiles" /></StackPanel>
+                            </Button>
+                        </StackPanel>
+                        <ProgressBar IsIndeterminate="True" Height="3" Visibility="{Binding DiagnosticsProgressVisibility}" />
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="15">
+                            <Grid ColumnSpacing="14">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <FontIcon Glyph="{Binding DiagnosticsGlyph}" Foreground="{Binding DiagnosticsTint}" FontSize="28" VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1" Spacing="4">
+                                    <TextBlock Text="{Binding DiagnosticsSummary}" FontSize="18" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding DiagnosticsCheckedAt}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="15">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Trace" FontSize="18" FontWeight="SemiBold" />
+                                <TextBlock Text="Follow an address from the name to the answer. Each profile is traced on its own — two of them on the same host fail in different places." FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                <TextBlock Text="No profiles yet." Visibility="{Binding TraceProfilesEmptyVisibility}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ItemsControl ItemsSource="{Binding Profiles}" IsEnabled="{Binding CanTrace}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid ColumnSpacing="12" Margin="0,4">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding Address}" FontFamily="Cascadia Mono, Consolas" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Content="Trace" Click="TraceProfile_Click" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="{Binding TraceSubject}" FontFamily="Consolas" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                <ProgressBar IsIndeterminate="True" Height="3" Visibility="{Binding TraceProgressVisibility}" />
+                                <ItemsControl ItemsSource="{Binding TraceSteps}" ItemTemplate="{StaticResource DiagnosticRow}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Padding="15" Visibility="{Binding DiagnosticProblemsVisibility}">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Needs attention" FontSize="18" FontWeight="SemiBold" />
+                                <ItemsControl ItemsSource="{Binding DiagnosticProblems}" ItemTemplate="{StaticResource DiagnosticRow}" />
+                            </StackPanel>
+                        </Border>
+                        <Expander Header="{Binding DiagnosticHealthyHeader}" AutomationProperties.Name="{Binding DiagnosticHealthyHeader}" IsExpanded="{Binding ShowHealthyDiagnostics, Mode=TwoWay}" IsEnabled="{Binding HasHealthyDiagnostics}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                            <ItemsControl ItemsSource="{Binding DiagnosticHealthy}" ItemTemplate="{StaticResource DiagnosticRow}" />
+                        </Expander>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <Grid Grid.Row="1" Visibility="{Binding ConsoleVisibility}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Spacing="8">
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled" VerticalScrollBarVisibility="Disabled">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <ItemsControl ItemsSource="{Binding ConsoleTabs}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="2" Margin="0,0,6,0">
+                                                <ToggleButton Click="ConsoleTab_Click" DoubleTapped="ConsoleTab_DoubleTapped" IsChecked="{Binding IsSelected, Mode=TwoWay}" AutomationProperties.Name="{Binding Title}">
+                                                    <ToggleButton.ContextFlyout>
+                                                        <MenuFlyout Opening="ConsoleTabMenu_Opening">
+                                                            <MenuFlyoutItem Text="Rename" Click="RenameConsoleTab_Click" />
+                                                            <MenuFlyoutItem Text="Restart shell" Click="RestartConsoleTab_Click" />
+                                                            <MenuFlyoutSeparator />
+                                                            <MenuFlyoutItem Text="Close" Click="CloseConsoleTab_Click" />
+                                                        </MenuFlyout>
+                                                    </ToggleButton.ContextFlyout>
+                                                    <StackPanel Orientation="Horizontal" Spacing="7">
+                                                        <Ellipse Width="8" Height="8" Fill="{Binding StateTint}" Visibility="{Binding StateVisibility}" VerticalAlignment="Center" />
+                                                        <FontIcon Glyph="{Binding Glyph}" FontSize="12" Visibility="{Binding CloseVisibility}" />
+                                                        <TextBlock Text="{Binding Title}" MaxWidth="180" TextTrimming="CharacterEllipsis" />
+                                                    </StackPanel>
+                                                </ToggleButton>
+                                                <Button Padding="6,4" Visibility="{Binding StopVisibility}" Command="{Binding DataContext.StartStopProfileCommand, ElementName=Root}" CommandParameter="{Binding Profile}" ToolTipService.ToolTip="Stop" AutomationProperties.Name="Stop">
+                                                    <FontIcon Glyph="&#xE71A;" FontSize="10" />
+                                                </Button>
+                                                <Button Padding="6,4" Visibility="{Binding CloseVisibility}" Command="{Binding DataContext.CloseConsoleTabCommand, ElementName=Root}" CommandParameter="{Binding}" ToolTipService.ToolTip="Close tab" AutomationProperties.Name="{Binding CloseName}">
+                                                    <FontIcon Glyph="&#xE711;" FontSize="10" />
+                                                </Button>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Click="NewTerminalTab_Click" ToolTipService.ToolTip="New terminal tab" AutomationProperties.Name="New terminal tab">
+                                    <FontIcon Glyph="&#xE710;" FontSize="12" />
+                                </Button>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </StackPanel>
+
+                    <Border Grid.Row="1" Style="{StaticResource PanelBorderStyle}" Padding="12,8" Margin="0,10,0,0">
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding ConsoleStatusText}" FontFamily="Cascadia Mono, Consolas" FontSize="12" VerticalAlignment="Center"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" IsTextSelectionEnabled="True" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Button Visibility="{Binding ConsoleServerActiveVisibility}" Command="{Binding StartStopProfileCommand}" CommandParameter="{Binding ConsoleProfile}" AutomationProperties.Name="Stop"><StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE71A;" FontSize="12" /><TextBlock Text="Stop" /></StackPanel></Button>
+                                <Button Visibility="{Binding ConsoleServerActiveVisibility}" Command="{Binding RestartProfileCommand}" CommandParameter="{Binding ConsoleProfile}" AutomationProperties.Name="Restart"><StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE72C;" FontSize="12" /><TextBlock Text="Restart" /></StackPanel></Button>
+                                <Button Style="{ThemeResource AccentButtonStyle}" Visibility="{Binding ConsoleServerStartVisibility}" Command="{Binding StartStopProfileCommand}" CommandParameter="{Binding ConsoleProfile}" AutomationProperties.Name="Start"><StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE768;" FontSize="12" /><TextBlock Text="Start" /></StackPanel></Button>
+                                <Button Visibility="{Binding ConsoleServerOpenVisibility}" Command="{Binding OpenProfileCommand}" CommandParameter="{Binding ConsoleProfile}" AutomationProperties.Name="Open"><StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE774;" FontSize="12" /><TextBlock Text="Open" /></StackPanel></Button>
+                                <Button Visibility="{Binding TerminalRunningVisibility}" Click="InterruptTerminal_Click" ToolTipService.ToolTip="Send Ctrl+C to the running command" AutomationProperties.Name="Interrupt"><StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE769;" FontSize="12" /><TextBlock Text="Interrupt" /></StackPanel></Button>
+                                <StackPanel Orientation="Horizontal" Spacing="6" Visibility="{Binding TerminalStoppedVisibility}" VerticalAlignment="Center">
+                                    <FontIcon Glyph="&#xE7BA;" FontSize="12" Foreground="Orange" />
+                                    <TextBlock Text="Shell stopped" FontSize="12" Foreground="Orange" />
+                                </StackPanel>
+                                <Button Visibility="{Binding ConsoleTerminalVisibility}" Click="RestartTerminal_Click" AutomationProperties.Name="Restart"><StackPanel Orientation="Horizontal" Spacing="7"><FontIcon Glyph="&#xE72C;" FontSize="12" /><TextBlock Text="Restart" /></StackPanel></Button>
+                            </StackPanel>
+                            <TextBox Grid.Column="2" Width="160" PlaceholderText="Filter" Text="{Binding ConsoleFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Visibility="{Binding ConsoleServerVisibility}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="3" Text="{Binding ConsoleLineCountText}" FontSize="11" Visibility="{Binding ConsoleServerVisibility}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <DropDownButton Grid.Column="4" Content="Actions" VerticalAlignment="Center">
+                                <DropDownButton.Flyout>
+                                    <MenuFlyout x:Name="ConsoleActionsMenu" Placement="BottomEdgeAlignedRight" Opening="ConsoleActionsMenu_Opening">
+                                        <MenuFlyoutItem Text="Clear" Click="ConsoleClear_Click" />
+                                        <MenuFlyoutItem Text="Copy all" Click="ConsoleCopyAll_Click" />
+                                        <MenuFlyoutItem Text="Save to file…" Click="ConsoleSave_Click" />
+                                        <MenuFlyoutSeparator />
+                                        <MenuFlyoutItem Text="Open external terminal" Click="ConsoleExternalTerminal_Click" />
+                                        <MenuFlyoutItem Text="Logs folder" Click="ConsoleLogsFolder_Click" />
+                                        <MenuFlyoutItem x:Name="ConsoleRevealLogItem" Text="Show the log file" Click="ConsoleRevealLog_Click" />
+                                        <MenuFlyoutSeparator x:Name="ConsoleTerminalSeparator" />
+                                        <MenuFlyoutItem x:Name="ConsoleProfileRootItem" Text="Go to the profile root" Click="ConsoleProfileRoot_Click" />
+                                        <MenuFlyoutItem x:Name="ConsoleRestartShellItem" Text="Restart shell" Click="RestartTerminal_Click" />
+                                        <MenuFlyoutItem x:Name="ConsoleRenameTabItem" Text="Rename tab" Click="RenameSelectedConsoleTab_Click" />
+                                        <MenuFlyoutItem x:Name="ConsoleNewTabItem" Text="New tab" Click="NewTerminalTab_Click" />
+                                    </MenuFlyout>
+                                </DropDownButton.Flyout>
+                            </DropDownButton>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Row="2" Style="{StaticResource PanelBorderStyle}" Padding="12" Margin="0,12,0,12" Visibility="{Binding ConsoleServerVisibility}">
+                        <ListView x:Name="ServerLogList" ItemsSource="{Binding ConsoleDisplayLines}" Background="Transparent" BorderThickness="0" FontSize="{Binding ConsoleFontSize}" ContainerContentChanging="ServerLogList_ContainerContentChanging" SelectionMode="Extended">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Text}" FontFamily="Cascadia Mono, Consolas" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Border>
+
+                    <Border Grid.Row="2" Grid.RowSpan="2" Style="{StaticResource PanelBorderStyle}" Padding="0" Margin="0,12,0,0" Visibility="{Binding ConsoleTerminalVisibility}">
+                        <TextBox x:Name="TerminalSurface" Text="{Binding SelectedConsoleTab.TerminalText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 FontFamily="Cascadia Mono, Consolas" FontSize="{Binding ConsoleFontSize}" AcceptsReturn="True"
+                                 TextWrapping="Wrap" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 Background="Transparent" BorderThickness="0" Padding="14"
+                                 PreviewKeyDown="TerminalSurface_KeyDown" TextChanged="TerminalSurface_TextChanged" />
+                    </Border>
+                </Grid>
+            </Grid>
+        </NavigationView>
+
+        <Grid Visibility="{Binding SplashVisibility}" Background="Transparent">
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center" Padding="36" CornerRadius="18"
+                    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <StackPanel Spacing="20" HorizontalAlignment="Center">
+                    <Image Source="ms-appx:///Assets/AppLogo.png" Width="104" Height="104" />
+                    <StackPanel Spacing="5">
+                        <TextBlock Text="ServerMaster" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                        <TextBlock Text="{Binding SplashVersionLine}" FontSize="12" HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <StackPanel Spacing="8">
+                        <ProgressBar Value="{Binding BootstrapProgress}" Maximum="100" Width="220" />
+                        <TextBlock Text="{Binding BootstrapStage}" FontSize="12" Height="16" HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Grid Visibility="{Binding ShutdownVisibility}" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="18" MaxWidth="380" Padding="16">
+                <Image Source="ms-appx:///Assets/AppLogo.png" Width="84" Height="84" />
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Shutting down" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                    <TextBlock Text="Stopping the servers so they do not linger in the system." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <ProgressBar Value="{Binding ShutdownProgress}" Maximum="100" Width="280" />
+                <Border Visibility="{Binding ShutdownItemsVisibility}" Padding="14" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <ItemsControl ItemsSource="{Binding ShutdownItems}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Width="320" ColumnSpacing="8" Padding="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="{Binding Glyph}" Foreground="{Binding Tint}" FontSize="14" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Detail}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" MaxWidth="160" TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
+                <StackPanel x:Name="ForceQuitPanel" Visibility="Collapsed" Spacing="8" HorizontalAlignment="Center">
+                    <TextBlock Text="The server is taking longer than usual to respond." FontSize="12" Foreground="Orange" TextAlignment="Center" TextWrapping="Wrap" />
+                    <Button Content="Force quit" HorizontalAlignment="Center" Click="ForceQuit_Click" />
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

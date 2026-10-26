@@ -67,3 +67,33 @@ macos/Tools/servermaster
 
 # Local Sites tooling
 .sites-runtime/
+
+# Windows (WinUI / MSIX) build output
+windows/**/buildbin/
+windows/**/buildobj/
+windows/**/AppPackages/
+windows/**/BundleArtifacts/
+windows/**/publish/
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+*.appinstaller
+*.binlog
+*.pdb
+*.pfx
+*.pubxml.user
+
+# Windows Explorer
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# AI agent handoffs and personal working notes (kept locally, not published)
+CLAUDE.md
+CODEX.md
+.claude/
+windows/PORT_PARITY.md
+DEMO_CHECKLIST.md
+DEMO_SCENARIO.md

@@ -683,6 +683,11 @@ final class AppModel {
             return
         }
         await controller.stop(settings: settings)
+        guard controller.state == .stopped else {
+            if case .failed(let message) = controller.state { notify(message, isError: true) }
+            publishStatus()
+            return
+        }
         RunRegistry.forget(profileID)
         runningOrder.removeAll { $0 == profileID }
         publishStatus()
@@ -690,6 +695,7 @@ final class AppModel {
 
     func restartServer(profile: ServerProfile) async {
         await stopServer(profileID: profile.id)
+        if let controller = servers[profile.id], controller.state != .stopped { return }
         try? await Task.sleep(nanoseconds: 400_000_000)
         await startServer(profile: profile)
     }
