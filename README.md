@@ -1,11 +1,18 @@
 # ServerMaster
 
-ServerMaster is a local web server manager for macOS. A cross-platform Swift
-command-line interface and native Windows interface are in development.
+ServerMaster is a local web server manager for macOS and Windows: static sites,
+PHP sites with a database, Node.js apps and your own commands, started, stopped
+and watched from one window. A command-line tool is available for macOS.
 
-The repository is being rebuilt from verified release snapshots. Source code,
-release history, build instructions, and downloadable applications will be
-added in separate, reviewable steps.
+**Website and downloads: [adm1nsys.github.io/ServerMaster](https://adm1nsys.github.io/ServerMaster/)**
+
+| Platform | Download |
+| --- | --- |
+| macOS 14 or later | [ServerMaster for macOS](https://github.com/adm1nsys/ServerMaster/releases/tag/macos-v2.0.0) |
+| Windows 10 1903 or later, x64 | [ServerMaster for Windows](https://github.com/adm1nsys/ServerMaster/releases/download/windows-v1.0.0/servermaster-windows-x64.zip) |
+| macOS command line | [ServerMaster CLI](https://github.com/adm1nsys/ServerMaster/releases/tag/cli-v1.0.0) |
+
+Guides are in the [wiki](https://adm1nsys.github.io/ServerMaster/wiki.html).
 
 ## Repository layout
 
@@ -22,9 +29,11 @@ added in separate, reviewable steps.
 
 ## Releases
 
-Source snapshots are identified by Git tags. Compiled applications and
-checksums are published as assets on the GitHub Releases page; build artifacts
-are not stored in the Git history.
+Every version is tagged (`macos-v…`, `windows-v…`, `cli-v…`). Compiled
+applications and checksums are published on the
+[GitHub Releases](https://github.com/adm1nsys/ServerMaster/releases) page and
+listed on the [website](https://adm1nsys.github.io/ServerMaster/#downloads);
+build artifacts are not stored in the Git history.
 
 ## Printing & Publishing templates
 

@@ -195,14 +195,45 @@
       "label": "Windows",
       "name": "ServerMaster for Windows",
       "kind": "Native application",
-      "description": "A native Windows interface is planned as part of the same ServerMaster project. Platform details will be published with its first release.",
-      "status": "planned",
-      "statusLabel": "Planned",
-      "currentRelease": null,
-      "plannedTargets": [
-        "Windows"
-      ],
-      "releases": []
+      "description": "Local server profiles, one-click Start and Stop, live logs, PHP versions side by side, MariaDB with Adminer, Printing & Publishing templates, backups and diagnostics.",
+      "status": "available",
+      "statusLabel": "Available now",
+      "currentRelease": "windows-v1.0.0",
+      "plannedTargets": [],
+      "releases": [
+        {
+          "id": "windows-v1.0.0",
+          "version": "1.0.0",
+          "date": "2026-10-25",
+          "requirements": "Windows 10 1903 or later",
+          "architecture": "x64",
+          "build": "win-x64",
+          "format": "Portable · ZIP",
+          "sizeBytes": 79119393,
+          "signed": false,
+          "notesUrl": "https://github.com/adm1nsys/ServerMaster/releases/tag/windows-v1.0.0",
+          "assets": [
+            {
+              "kind": "application",
+              "label": "Download app",
+              "filename": "servermaster-windows-x64.zip",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/windows-v1.0.0/servermaster-windows-x64.zip"
+            },
+            {
+              "kind": "checksums",
+              "label": "SHA256 checksums",
+              "filename": "SHA256SUMS.txt",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/windows-v1.0.0/SHA256SUMS.txt"
+            },
+            {
+              "kind": "source",
+              "label": "Source tag",
+              "filename": "windows-v1.0.0",
+              "url": "https://github.com/adm1nsys/ServerMaster/tree/windows-v1.0.0"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

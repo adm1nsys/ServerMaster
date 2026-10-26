@@ -184,7 +184,9 @@ function renderPlatform(platform) {
       links.append(safeLink("Release notes", release.notesUrl));
       extras.append(facts, links);
       table.append(extras);
-      if (release.signed === false) table.append(element("p", "finder-warning", "Unsigned & not notarized. See the release notes for macOS first-launch instructions."));
+      if (release.signed === false) table.append(element("p", "finder-warning", platform.id === "windows"
+        ? "Unsigned. On first launch Windows SmartScreen may ask to confirm: More info → Run anyway."
+        : "Unsigned & not notarized. See the release notes for macOS first-launch instructions."));
       });
   } else {
     const row = element("div", "finder-row finder-planned");
