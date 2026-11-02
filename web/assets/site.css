@@ -162,3 +162,7 @@ h2,h3,.brand,.engine-strip{letter-spacing:0}
 @media(max-width:800px){.theme-switcher{display:flex;flex-direction:column;align-items:stretch;width:min(100%,420px);gap:8px}.theme-buttons{display:grid;grid-template-columns:repeat(4,1fr)}.theme-dot{justify-content:center;padding-inline:8px}.engine-strip a{font-size:18px}}
 @media(max-width:540px){.theme-buttons{grid-template-columns:repeat(2,1fr)}.theme-dot{min-height:38px}.stack-red{display:none}}
 @media(prefers-reduced-motion:reduce){.theme-dot,.engine-strip a,.gallery-figure img,#download-panel{transition:none}.theme-blue .stack-main img,.theme-green .stack-main img,.theme-purple .stack-main img,.theme-red .stack-main img,.switching,.switching .comparison-lane,.switching.gallery-figure,.switching.finder-window,.segmented button[aria-pressed=true],.gallery-buttons button[aria-pressed=true]{animation:none}}
+/* Back to the adm1nsys projects list, shown only when the visitor came from there */
+.back-to-projects{margin-right:auto;gap:8px;white-space:nowrap}.back-to-projects[hidden]{display:none}
+@media(max-width:1000px){.nav:has(.back-to-projects:not([hidden])) .nav-links{display:none}}
+@media(max-width:540px){.nav:has(.back-to-projects:not([hidden])) .brand span{display:none}.nav>.button{white-space:nowrap}}

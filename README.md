@@ -1,4 +1,16 @@
-# ServerMaster
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset=".github/readme/banner-light.svg">
+  <img src=".github/readme/banner-dark.svg" alt="ServerMaster — Local web servers under control, in one window" width="100%">
+</picture>
+
+<p>
+  <a href="https://adm1nsys.github.io/ServerMaster/"><img src="https://img.shields.io/badge/Website-070707?style=for-the-badge&logo=safari&logoColor=white" alt="Website"></a>
+  <a href="https://github.com/adm1nsys/ServerMaster/releases/download/macos-v2.0.0/ServerMaster-v2.0.0.app.zip"><img src="https://img.shields.io/badge/macOS-070707?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS"></a>
+  <a href="https://github.com/adm1nsys/ServerMaster/releases/download/windows-v1.0.0/servermaster-windows-x64.zip"><img src="https://img.shields.io/badge/Windows-070707?style=for-the-badge" alt="Download for Windows"></a>
+  <a href="https://github.com/adm1nsys/ServerMaster/releases/download/cli-v1.0.0/servermaster-macos-universal.zip"><img src="https://img.shields.io/badge/CLI-070707?style=for-the-badge&logo=gnubash&logoColor=white" alt="Download the CLI"></a>
+  <a href="https://adm1nsys.github.io/ServerMaster/wiki.html"><img src="https://img.shields.io/badge/Wiki-070707?style=for-the-badge&logo=readthedocs&logoColor=white" alt="Wiki"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-070707?style=for-the-badge&labelColor=070707&color=434343" alt="MIT license"></a>
+</p>
 
 ServerMaster is a local web server manager for macOS and Windows: static sites,
 PHP sites with a database, Node.js apps and your own commands, started, stopped
