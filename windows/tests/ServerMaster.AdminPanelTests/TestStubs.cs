@@ -9,3 +9,8 @@ public static class AdminerService
 {
     public static void Stop() { }
 }
+
+public static class AppPaths
+{
+    public static string LocalSupport { get; } = Path.Combine(Path.GetTempPath(), "ServerMaster-admin-panel-tests");
+}
