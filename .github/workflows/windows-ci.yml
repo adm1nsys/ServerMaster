@@ -1,0 +1,56 @@
+name: Windows build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'windows/**'
+      - 'macos/ServerMaster/*.lproj/**'
+      - '.github/workflows/windows-ci.yml'
+  pull_request:
+    paths:
+      - 'windows/**'
+      - 'macos/ServerMaster/*.lproj/**'
+      - '.github/workflows/windows-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build the WinUI app (x64 and arm64)
+        run: |
+          dotnet build src/ServerMaster.Windows/ServerMaster.csproj -c Release -p:Platform=x64
+          dotnet build src/ServerMaster.Windows/ServerMaster.csproj -c Release -p:Platform=ARM64
+
+      # The headless regression checks from windows/README.md, offline only: nothing is downloaded or installed
+      - name: Smoke tests
+        run: dotnet run -c Release --project tests/ServerMaster.SmokeTests
+
+      - name: Log tests
+        run: dotnet run -c Release --project tests/ServerMaster.LogTests
+
+      - name: Update tests
+        run: dotnet run -c Release --project tests/ServerMaster.UpdateTests
+
+      - name: Admin panel tests
+        run: dotnet run -c Release --project tests/ServerMaster.AdminPanelTests
