@@ -230,7 +230,12 @@ async function loadReleases() {
     });
     document.querySelector("#platform-buttons").replaceChildren(...buttons);
     status.className = "sr-only";
-    buttons[0].click();
+    // Open the visitor's own platform first; the hero button says which one.
+    const ownId = /Windows/i.test(navigator.userAgent) ? "windows" : /Mac/i.test(navigator.userAgent) ? "macos" : null;
+    const own = data.platforms.findIndex(platform => platform.id === ownId);
+    const hero = document.querySelector("#hero-download span");
+    if (own >= 0 && hero) hero.textContent = "Download for " + data.platforms[own].label;
+    buttons[Math.max(own, 0)].click();
   } catch (error) {
     status.textContent = "The download list is temporarily unavailable. All published builds are available in the GitHub release archive below.";
     status.className = "catalog-error";

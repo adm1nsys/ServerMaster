@@ -166,3 +166,6 @@ h2,h3,.brand,.engine-strip{letter-spacing:0}
 .back-to-projects{margin-right:auto;gap:8px;white-space:nowrap}.back-to-projects[hidden]{display:none}
 @media(max-width:1000px){.nav:has(.back-to-projects:not([hidden])) .nav-links{display:none}}
 @media(max-width:540px){.nav:has(.back-to-projects:not([hidden])) .brand span{display:none}.nav>.button{white-space:nowrap}}
+
+/* the tilted screenshot stack must not widen the page on phones */
+@media(max-width:640px){.hero{overflow-x:clip}}

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>ServerMaster — adm1nsys</title>
+    <meta name="description" content="A local web server manager for macOS and Windows, plus a command-line tool: how it is built and what it does.">
+    <meta name="theme-color" content="#070707" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#f9f9f9" media="(prefers-color-scheme: light)">
+    <link rel="icon" href="/adm1nsys/assets/img/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/adm1nsys/fonts/fonts.css">
+    <link rel="stylesheet" href="/adm1nsys/assets/css/style.css">
+    <link rel="stylesheet" href="/adm1nsys/kit/project.css">
+    <style>
+      .app-head { display: flex; align-items: center; gap: 1rem; }
+      .app-head img { width: 64px; height: 64px; border-radius: 15px; flex: none; }
+      .app-head h1 { margin: 0; }
+      .hero-shot { margin: 0 0 clamp(.75rem, 3vw, 1.5rem); }
+      .shots { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(.75rem, 3vw, 1.5rem); margin: 0 0 clamp(2rem, 5vw, 3rem); }
+      .hero-shot img, .shots img { width: 100%; height: auto; display: block; border-radius: 10px; border: 1px solid var(--line-soft); }
+      .shots figure { margin: 0; }
+      .shots img { aspect-ratio: 1680 / 1056; object-fit: cover; object-position: top left; }
+      .hero-shot figcaption, .shots figcaption { margin-top: .5rem; font-size: .85rem; color: var(--muted); text-align: center; }
+      @media (max-width: 640px) { .shots { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <div class="backdrop backdrop-short" aria-hidden="true"></div>
+
+    <main class="wrap">
+      <header class="page-head">
+        <p class="eyebrow">macOS · Windows · CLI</p>
+        <div class="app-head">
+          <img src="../assets/icon.png" alt="" width="256" height="256">
+          <h1>ServerMaster</h1>
+        </div>
+        <p class="lead" data-i18n="lead"></p>
+        <div class="actions">
+          <a class="btn btn-primary" href="../" target="_blank" rel="noopener"><span data-i18n="siteBtn"></span> ↗</a>
+          <a class="btn" href="../wiki.html" target="_blank" rel="noopener">Wiki ↗</a>
+          <a class="btn btn-ghost" href="https://github.com/adm1nsys/ServerMaster" target="_blank" rel="noopener">GitHub ↗</a>
+        </div>
+        <p class="meta" data-i18n="meta"></p>
+      </header>
+
+      <figure class="hero-shot"><img src="../assets/control.webp" data-i18n-alt="shot0Alt" width="1920" height="1086"><figcaption data-i18n="shot0Cap"></figcaption></figure>
+      <div class="shots">
+        <figure><img src="../assets/database.webp" data-i18n-alt="shot1Alt" width="1680" height="1056" loading="lazy"><figcaption data-i18n="shot1Cap"></figcaption></figure>
+        <figure><img src="../assets/templates.webp" data-i18n-alt="shot2Alt" width="1680" height="1056" loading="lazy"><figcaption data-i18n="shot2Cap"></figcaption></figure>
+        <figure><img src="../assets/terminal.webp" data-i18n-alt="shot3Alt" width="1680" height="951" loading="lazy"><figcaption data-i18n="shot3Cap"></figcaption></figure>
+      </div>
+
+      <div class="folds">
+        <details class="card fold" open>
+          <summary><span data-i18n="whyTitle"></span><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
+          <div class="fold-body" data-i18n-html="whyBody"></div>
+        </details>
+
+        <details class="card fold">
+          <summary><span data-i18n="platformsTitle"></span><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
+          <div class="fold-body">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th></th><th data-i18n="thTech"></th><th data-i18n="thFolder"></th></tr></thead>
+                <tbody>
+                  <tr><td>macOS</td><td>Swift · SwiftUI · macOS 14+ · Apple Silicon &amp; Intel</td><td><a href="https://github.com/adm1nsys/ServerMaster/tree/main/macos" target="_blank" rel="noopener"><code>macos/</code></a></td></tr>
+                  <tr><td>Windows</td><td>C# · WinUI · .NET · Windows 10 1903+ x64</td><td><a href="https://github.com/adm1nsys/ServerMaster/tree/main/windows" target="_blank" rel="noopener"><code>windows/</code></a></td></tr>
+                  <tr><td>CLI</td><td data-i18n="cliTech"></td><td><a href="https://github.com/adm1nsys/ServerMaster/tree/main/cli" target="_blank" rel="noopener"><code>cli/</code></a></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div data-i18n-html="platformsBody"></div>
+          </div>
+        </details>
+
+        <details class="card fold">
+          <summary><span data-i18n="windowsTitle"></span><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
+          <div class="fold-body" data-i18n-html="windowsBody"></div>
+        </details>
+
+        <details class="card fold">
+          <summary><span data-i18n="printTitle"></span><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
+          <div class="fold-body" data-i18n-html="printBody"></div>
+        </details>
+
+        <details class="card fold">
+          <summary><span data-i18n="releaseTitle"></span><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
+          <div class="fold-body" data-i18n-html="releaseBody"></div>
+        </details>
+
+        <details class="card fold" id="versions" open>
+          <summary><span data-i18n="versionsTitle"></span><svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
+          <div class="fold-body" data-releases></div>
+        </details>
+      </div>
+    </main>
+
+    <script>
+      const REPO = 'https://github.com/adm1nsys/ServerMaster';
+      const file = (path, label = path) => `<a href="${REPO}/blob/main/${path}" target="_blank" rel="noopener"><code>${label}</code></a>`;
+      window.PROJECT = {
+        repo: 'adm1nsys/ServerMaster',
+        license: 'MIT',
+        langs: ['de', 'en'],
+        i18n: {
+          de: {
+            lead: 'Ein Manager für lokale Webserver auf macOS und Windows: statische Seiten, PHP-Seiten mit Datenbank, Node.js-Apps und eigene Befehle — gestartet, gestoppt und überwacht in einem Fenster. Dazu ein Kommandozeilen-Tool.',
+            siteBtn: 'Website des Projekts',
+            meta: 'Swift · SwiftUI · C# · WinUI · MIT',
+            shot0Alt: 'ServerMaster mit dem Control-Dashboard', shot0Cap: 'Control: laufende Profile, Status und schnelle Aktionen',
+            shot1Alt: 'Datenbank-Ansicht in ServerMaster', shot1Cap: 'Datenbanken: Tabellen ansehen, bearbeiten, SQL ausführen',
+            shot2Alt: 'Projektvorlagen in ServerMaster', shot2Cap: 'Vorlagen für typische PHP- und CMS-Projekte',
+            shot3Alt: 'Konsole und Logs in ServerMaster', shot3Cap: 'Konsole und Logs jedes Profils',
+            whyTitle: 'Worum es geht',
+            whyBody: `<p>Für eine lokale Website braucht man oft mehrere Dinge gleichzeitig: einen Webserver, PHP in der richtigen Version, eine Datenbank, vielleicht Node.js — und jedes wird anders gestartet. ServerMaster fasst das zu <strong>Profilen</strong> zusammen: ein Profil ist ein Projekt mit allem, was es zum Laufen braucht, und startet mit einem Klick.</p><ul><li>Control-Dashboard mit laufenden Profilen, Zustand, kopierbaren Adressen und Logs.</li><li>Datenbank-Werkzeuge: Tabellen durchsuchen und bearbeiten, SQL ausführen, Dumps importieren.</li><li>Vorlagen für gängige PHP- und CMS-Projekte, Diagnose und Backups.</li><li>Auf macOS zusätzlich eine Safari-Erweiterung und ein Widget für den Schreibtisch.</li></ul><p>Die <strong>Website des Projekts</strong> ist die Seite für Nutzer — mit Downloads und Wiki. Diese Seite hier erzählt, wie ServerMaster gebaut ist.</p>`,
+            platformsTitle: 'Drei Plattformen, ein Repository',
+            thTech: 'Technik', thFolder: 'Ordner', cliTech: 'Swift Package · macOS (Linux in Vorbereitung)',
+            platformsBody: `<p>Jede Plattform ist nativ geschrieben, statt eine gemeinsame Oberfläche zu teilen: SwiftUI auf dem Mac, WinUI unter Windows. Das Kommandozeilen-Tool ist ein Swift Package; die macOS-App bringt es gleich mit. Alles liegt in einem Repository, die Struktur beschreibt ${file('docs/README.md', 'docs/')}.</p>`,
+            windowsTitle: 'Windows: Laufzeiten sicher installieren',
+            windowsBody: `<p>Unter Windows richtet ServerMaster fehlende Software selbst ein. Ein PHP-Profil legt sich auf einen Zweig fest (8.2 bis 8.5); ServerMaster lädt den neuesten Patch dieses Zweigs aus dem offiziellen PHP-Release-Manifest und <strong>prüft die SHA-256-Prüfsumme</strong>, bevor es ihn installiert. Die Visual-C++-Laufzeit kommt direkt von Microsoft, ihre Authenticode-Signatur wird geprüft. Weitere Abhängigkeiten installiert der Windows Package Manager.</p><p>Die App läuft mit den Rechten des Nutzers; nur einzelne Schritte, die mehr brauchen, fragen über die Benutzerkontensteuerung nach.</p>`,
+            printTitle: 'Vorlagen für Druckereien',
+            printBody: `<p>Die Windows-Version hat eine eigene Vorlagengruppe <strong>Printing &amp; Publishing</strong>. Sie erledigt, was eine kleine Druckerei sonst von Hand einrichten müsste: Laufzeiten vorbereiten, Open-Source-Software laden, eine Datenbank anlegen und die Seite lokal starten.</p><ul><li><strong>Web-to-Print Showcase</strong> — ein fertiger Shop mit WordPress und WooCommerce: Druckprodukte mit Format, Papier, Auflage und Veredelung, Versand, Zahlung und Beispielbestellungen.</li><li><strong>Web-to-Print Store</strong> — WordPress mit WooCommerce und Printcart als Ausgangspunkt für einen eigenen Shop.</li><li><strong>Print Shop CRM</strong> — lädt PrintShopCRM, installiert die npm-Abhängigkeiten, legt SQLite-Daten an und startet den Node.js-Server.</li></ul>`,
+            releaseTitle: 'Releases',
+            releaseBody: `<p>Jede Plattform hat ihre eigenen Versionen und Tags (<code>macos-v…</code>, <code>windows-v…</code>, <code>cli-v…</code>). GitHub Actions baut die Mac-App und das Kommandozeilen-Tool als Universal-Binärdateien für Apple Silicon und Intel und veröffentlicht sie mit Prüfsummen als Release. Die Apps prüfen Updates über kleine Versionsdateien in ${file('updates', 'updates/')}. Was sich geändert hat, steht im ${file('CHANGELOG.md')}.</p>`,
+            versionsTitle: 'Versionen',
+            title: 'ServerMaster — adm1nsys'
+          },
+          en: {
+            lead: 'A local web server manager for macOS and Windows: static sites, PHP sites with a database, Node.js apps and your own commands — started, stopped and watched from one window. Plus a command-line tool.',
+            siteBtn: 'Project website',
+            meta: 'Swift · SwiftUI · C# · WinUI · MIT',
+            shot0Alt: 'ServerMaster with the Control dashboard', shot0Cap: 'Control: running profiles, status and quick actions',
+            shot1Alt: 'Database view in ServerMaster', shot1Cap: 'Databases: browse and edit tables, run SQL',
+            shot2Alt: 'Project templates in ServerMaster', shot2Cap: 'Templates for common PHP and CMS projects',
+            shot3Alt: 'Console and logs in ServerMaster', shot3Cap: 'Console and logs for every profile',
+            whyTitle: 'What it is about',
+            whyBody: `<p>A local website often needs several things at once: a web server, the right PHP version, a database, maybe Node.js — and each one starts differently. ServerMaster bundles them into <strong>profiles</strong>: a profile is a project with everything it needs to run, started with one click.</p><ul><li>A Control dashboard with running profiles, health, copyable addresses and logs.</li><li>Database tools: browse and edit tables, run SQL, import dumps.</li><li>Templates for common PHP and CMS projects, diagnostics and backups.</li><li>On macOS also a Safari extension and a desktop widget.</li></ul><p>The <strong>project website</strong> is the page for users — with downloads and the wiki. This page tells how ServerMaster is built.</p>`,
+            platformsTitle: 'Three platforms, one repository',
+            thTech: 'Technology', thFolder: 'Folder', cliTech: 'Swift package · macOS (Linux in preparation)',
+            platformsBody: `<p>Each platform is written natively instead of sharing one interface: SwiftUI on the Mac, WinUI on Windows. The command-line tool is a Swift package, and the macOS app ships with it built in. Everything lives in one repository; ${file('docs/README.md', 'docs/')} describes the layout.</p>`,
+            windowsTitle: 'Windows: installing runtimes safely',
+            windowsBody: `<p>On Windows, ServerMaster sets up missing software itself. A PHP profile pins a branch (8.2 to 8.5); ServerMaster downloads the latest patch of that branch from the official PHP release manifest and <strong>verifies its SHA-256 checksum</strong> before installing it. The Visual C++ runtime comes straight from Microsoft, and its Authenticode signature is checked. Other dependencies are installed with Windows Package Manager.</p><p>The app runs with the user's own rights; only single steps that need more ask through User Account Control.</p>`,
+            printTitle: 'Templates for print shops',
+            printBody: `<p>The Windows version has its own template group, <strong>Printing &amp; Publishing</strong>. It does what a small print shop would otherwise set up by hand: prepare runtimes, download open-source software, create a database and start the site locally.</p><ul><li><strong>Web-to-Print Showcase</strong> — a ready shop with WordPress and WooCommerce: print products with format, paper, run and finish, delivery, payment and sample orders.</li><li><strong>Web-to-Print Store</strong> — WordPress with WooCommerce and Printcart as a starting point for your own shop.</li><li><strong>Print Shop CRM</strong> — downloads PrintShopCRM, installs its npm dependencies, creates SQLite data and starts the Node.js server.</li></ul>`,
+            releaseTitle: 'Releases',
+            releaseBody: `<p>Each platform has its own versions and tags (<code>macos-v…</code>, <code>windows-v…</code>, <code>cli-v…</code>). GitHub Actions builds the Mac app and the command-line tool as universal binaries for Apple Silicon and Intel and publishes them with checksums as releases. The apps check for updates through small version files in ${file('updates', 'updates/')}. What changed is in the ${file('CHANGELOG.md')}.</p>`,
+            versionsTitle: 'Versions',
+            title: 'ServerMaster — adm1nsys'
+          }
+        }
+      };
+    </script>
+    <script src="/adm1nsys/kit/project.js"></script>
+  </body>
+</html>
