@@ -226,6 +226,35 @@ struct ProfileEditorView: View {
             portRow
 
             Toggle("Open the browser after start", isOn: $draft.openBrowserOnStart)
+
+            HStack(spacing: 10) {
+                Text("Profile color")
+                    .frame(minWidth: 110, idealWidth: 150, maxWidth: 170, alignment: .leading)
+
+                Picker("Profile color", selection: $draft.profileColor) {
+                    ForEach(ProfileColorOption.palette) { option in
+                        HStack(spacing: 7) {
+                            Circle()
+                                .fill(Color(hex: option.hex))
+                                .frame(width: 11, height: 11)
+                            Text(option.name)
+                        }
+                        .tag(option.hex)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 155)
+
+                Circle()
+                    .fill(Color(hex: draft.profileColor))
+                    .frame(width: 18, height: 18)
+                    .overlay(Circle().stroke(.quaternary))
+
+                Text("Used when the background follows running servers.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
         }
     }
 

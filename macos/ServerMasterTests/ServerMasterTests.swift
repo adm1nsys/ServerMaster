@@ -191,6 +191,38 @@ struct DecodingTests {
         #expect(profile.phpVersion == ServerProfile().phpVersion)
     }
 
+    @Test("Existing error-page accents migrate once into the profile colour")
+    func profileColourMigration() throws {
+        let old = ##"{"name":"Existing profile","errorPageAccent":"#A855F7"}"##
+        let profile = try JSONDecoder().decode(ServerProfile.self, from: Data(old.utf8))
+        #expect(profile.profileColor == "#A855F7")
+        #expect(profile.errorPageAccent == "#A855F7")
+    }
+
+    @Test("A Windows profile JSON opens without changing its portable fields")
+    func windowsProfileContract() throws {
+        let windows = ##"""
+        {
+          "id": "4A71941B-EA85-4CD8-B963-6FB1E35030E6",
+          "name": "Shared API",
+          "engine": "nodeScript",
+          "profileColor": "#14B8A6",
+          "host": "127.0.0.1",
+          "port": 9020,
+          "rootPath": "C:/Projects/shared-api",
+          "nodeEntryFile": "server.cjs",
+          "environment": [{ "id": "2CBDA5E2-32B7-4318-9BAA-361A253A1B69", "key": "MODE", "value": "demo" }],
+          "openBrowserOnStart": true
+        }
+        """##
+        let profile = try JSONDecoder().decode(ServerProfile.self, from: Data(windows.utf8))
+        #expect(profile.name == "Shared API")
+        #expect(profile.engine == .nodeScript)
+        #expect(profile.profileColor == "#14B8A6")
+        #expect(profile.nodeEntryFile == "server.cjs")
+        #expect(profile.environment == [EnvVar(id: UUID(uuidString: "2CBDA5E2-32B7-4318-9BAA-361A253A1B69")!, key: "MODE", value: "demo")])
+    }
+
     @Test("An unknown value falls back instead of losing the file")
     func unknownValue() throws {
         let json = #"{"databaseAdminTool":"nonsense","databaseAdminPort":9999}"#
@@ -265,6 +297,19 @@ struct ProfileTemplateTests {
         }
     }
 
+    @Test("The cross-platform templates keep their identifiers and launch defaults")
+    func crossPlatformTemplates() throws {
+        let templates = ProfileTemplate.builtIn
+        for id in ["node-api", "printshopcrm", "web-to-print-store", "web-to-print-showcase"] {
+            #expect(templates.contains(where: { $0.id == id }), "missing \(id)")
+        }
+
+        let api = try #require(templates.first(where: { $0.id == "node-api" }))
+        let profile = api.makeProfile(name: "API", port: 8080, root: NSTemporaryDirectory())
+        #expect(profile.engine == .nodeScript)
+        #expect(profile.nodeEntryFile == "server.cjs")
+    }
+
     @Test("A template that needs a database says so, and asks about it")
     func databases() {
         for template in ProfileTemplate.builtIn where template.needsDatabase {
@@ -330,6 +375,50 @@ struct TemplateStoreTests {
         #expect(copy.title == source.title)
         #expect(copy.settings == source.settings)
         #expect(copy.isUserDefined, "an imported template belongs to the user")
+    }
+
+    @Test("macOS exports the Node entry point Windows expects")
+    func windowsTemplateContract() throws {
+        let store = TemplateStore()
+        let source = try #require(ProfileTemplate.builtIn.first { $0.id == "node-api" })
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("sm-windows-contract-\(UUID().uuidString).smtemplate")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        try store.export([source], to: url)
+        let json = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [[String: Any]])
+        let file = try #require(json.first)
+        #expect(file["nodeEntryFile"] as? String == "server.cjs")
+    }
+
+    @Test("Windows template files preserve their Node entry point on macOS")
+    func importsWindowsTemplateContract() throws {
+        let store = TemplateStore()
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("sm-windows-import-\(UUID().uuidString).smtemplate")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try #"""
+        [{
+          "id": "windows-node-api",
+          "title": "Node.js JSON API",
+          "summary": "JSON endpoints without npm dependencies",
+          "symbol": "square.grid.2x2",
+          "category": "runtimes",
+          "guideAnchor": "index",
+          "rootHint": null,
+          "folderAdvice": "Choose the project folder.",
+          "needsDatabase": false,
+          "phpVersion": "",
+          "questions": ["folder", "name", "port", "entryFile"],
+          "settings": { "engine": "nodeScript" },
+          "isUserDefined": false,
+          "nodeEntryFile": "server.cjs"
+        }]
+        """#.write(to: url, atomically: true, encoding: .utf8)
+
+        let imported = try store.importTemplates(from: url)
+        #expect(imported.first?.settings.engine == .nodeScript)
+        #expect(imported.first?.settings.nodeEntryFile == "server.cjs")
     }
 
     @Test("A file that is not a template is refused, not half-read")
@@ -493,6 +582,9 @@ struct ProjectDownloadTests {
     func sources() {
         #expect(DownloadableProject.forTemplate("joomla5") != nil)
         #expect(DownloadableProject.forTemplate("joomla6") != nil)
+        #expect(DownloadableProject.forTemplate("printshopcrm")?.directArchiveURL != nil)
+        #expect(DownloadableProject.forTemplate("web-to-print-store")?.wrapperFolder == "wordpress")
+        #expect(DownloadableProject.forTemplate("web-to-print-showcase")?.wrapperFolder == "wordpress")
         #expect(DownloadableProject.forTemplate("wordpress") == nil)
         #expect(DownloadableProject.forTemplate("static") == nil)
     }

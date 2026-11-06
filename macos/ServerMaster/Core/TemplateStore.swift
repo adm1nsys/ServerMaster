@@ -119,7 +119,13 @@ final class TemplateStore {
             copy.isUserDefined = false
             return copy
         }
-        try encoder.encode(cleaned).write(to: url, options: .atomic)
+        // Windows keeps `nodeEntryFile` at the top level, while early macOS
+        // builds kept it inside `settings`. Carry it in both places. The extra
+        // key is harmless to older macOS clients and lets a .smtemplate travel
+        // between the two apps without quietly turning server.cjs into
+        // server.js.
+        let data = try portableTemplateData(from: encoder.encode(cleaned), exporting: true)
+        try data.write(to: url, options: .atomic)
     }
 
     /// Reads a file that holds either a single template or a list of them.
@@ -127,11 +133,14 @@ final class TemplateStore {
     func importTemplates(from url: URL) throws -> [ProfileTemplate] {
         guard let data = try? Data(contentsOf: url) else { throw TemplateError.unreadable }
         let decoder = JSONDecoder()
+        // Accept the Windows shape too: it stores nodeEntryFile next to
+        // `settings`, whereas macOS stores it in `settings`.
+        let portableData = try portableTemplateData(from: data, exporting: false)
 
         let incoming: [ProfileTemplate]
-        if let list = try? decoder.decode([ProfileTemplate].self, from: data) {
+        if let list = try? decoder.decode([ProfileTemplate].self, from: portableData) {
             incoming = list
-        } else if let single = try? decoder.decode(ProfileTemplate.self, from: data) {
+        } else if let single = try? decoder.decode(ProfileTemplate.self, from: portableData) {
             incoming = [single]
         } else {
             throw TemplateError.wrongContents
@@ -142,4 +151,34 @@ final class TemplateStore {
     }
 
     static let fileExtension = "smtemplate"
+
+    /// Normalise the one historic schema difference between the macOS and
+    /// Windows template files before decoding it into the current macOS model.
+    private func portableTemplateData(from data: Data, exporting: Bool) throws -> Data {
+        let object = try JSONSerialization.jsonObject(with: data)
+
+        func normalise(_ value: Any) -> Any {
+            guard var template = value as? [String: Any] else { return value }
+            var settings = template["settings"] as? [String: Any] ?? [:]
+            let nestedEntry = settings["nodeEntryFile"] as? String
+            let topLevelEntry = template["nodeEntryFile"] as? String
+
+            if exporting, let nestedEntry, !nestedEntry.isEmpty {
+                template["nodeEntryFile"] = nestedEntry
+            }
+            if !exporting, (nestedEntry?.isEmpty ?? true), let topLevelEntry, !topLevelEntry.isEmpty {
+                settings["nodeEntryFile"] = topLevelEntry
+                template["settings"] = settings
+            }
+            return template
+        }
+
+        let portable: Any
+        if let list = object as? [Any] {
+            portable = list.map(normalise)
+        } else {
+            portable = normalise(object)
+        }
+        return try JSONSerialization.data(withJSONObject: portable, options: [.prettyPrinted, .sortedKeys])
+    }
 }

@@ -32,6 +32,12 @@ nonisolated struct DownloadableProject: Sendable {
     var assetContains: [String]
     /// Where the project's own instructions live.
     var guide: AppLinks.Guide
+    /// Official archive for projects that do not publish a GitHub release API
+    /// suitable for selecting a version (WordPress is the important example).
+    var directArchiveURL: URL? = nil
+    /// Some official archives contain one wrapper folder. It is flattened only
+    /// after extraction into a newly-created empty destination.
+    var wrapperFolder: String? = nil
 
     static let joomla5 = DownloadableProject(
         id: "joomla5", title: "Joomla 5",
@@ -43,11 +49,25 @@ nonisolated struct DownloadableProject: Sendable {
         repository: "joomla/joomla-cms", majorVersion: "6.",
         assetContains: ["Stable-Full_Package", ".zip"], guide: .joomla)
 
+    static let webToPrint = DownloadableProject(
+        id: "wordpress-w2p", title: "Web-to-Print project",
+        repository: "", majorVersion: "", assetContains: [], guide: .wordpress,
+        directArchiveURL: URL(string: "https://wordpress.org/latest.zip"),
+        wrapperFolder: "wordpress")
+
+    static let printShopCRM = DownloadableProject(
+        id: "printshopcrm", title: "Print Shop CRM",
+        repository: "", majorVersion: "", assetContains: [], guide: .index,
+        directArchiveURL: URL(string: "https://github.com/ColeLundstrom/printshopcrm/archive/refs/heads/main.zip"),
+        wrapperFolder: "printshopcrm-main")
+
     /// What a template can offer to download, if anything.
     static func forTemplate(_ id: String) -> DownloadableProject? {
         switch id {
         case "joomla5": return joomla5
         case "joomla6": return joomla6
+        case "web-to-print-store", "web-to-print-showcase": return webToPrint
+        case "printshopcrm": return printShopCRM
         default:        return nil
         }
     }
@@ -92,7 +112,7 @@ final class ProjectDownloader {
             try verify(archive, against: release.sha256)
 
             stage = .unpacking
-            try await unpack(archive, into: destination)
+            try await unpack(archive, into: destination, wrapperFolder: project.wrapperFolder)
 
             stage = .done(release.version)
         } catch {
@@ -151,6 +171,12 @@ final class ProjectDownloader {
     }
 
     private func findRelease(_ project: DownloadableProject) async throws -> Release {
+        if let directArchiveURL = project.directArchiveURL {
+            // WordPress' official latest.zip has no release checksum API. We
+            // still validate it is a ZIP before unpacking, but make no stronger
+            // integrity claim than a normal browser download would.
+            return Release(version: "latest", url: directArchiveURL, size: 0, sha256: nil)
+        }
         var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(project.repository)/releases?per_page=40")!)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("ServerMaster/\(AppInfo.version)", forHTTPHeaderField: "User-Agent")
@@ -253,7 +279,7 @@ final class ProjectDownloader {
         }
     }
 
-    private func unpack(_ archive: URL, into folder: URL) async throws {
+    private func unpack(_ archive: URL, into folder: URL, wrapperFolder: String?) async throws {
         // ditto rather than unzip: it keeps macOS metadata straight and refuses
         // paths that would escape the destination.
         let result = await ProcessRunner.run("/usr/bin/ditto",
@@ -264,5 +290,15 @@ final class ProjectDownloader {
                                              ? String(localized: "unknown reason")
                                              : String(result.combined.suffix(200)))
         }
+        guard let wrapperFolder else { return }
+        let wrapped = folder.appendingPathComponent(wrapperFolder, isDirectory: true)
+        guard FileManager.default.fileExists(atPath: wrapped.path) else { return }
+        let entries = try FileManager.default.contentsOfDirectory(at: wrapped,
+                                                                   includingPropertiesForKeys: nil)
+        for entry in entries {
+            try FileManager.default.moveItem(at: entry,
+                                             to: folder.appendingPathComponent(entry.lastPathComponent))
+        }
+        try FileManager.default.removeItem(at: wrapped)
     }
 }

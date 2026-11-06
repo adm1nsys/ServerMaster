@@ -28,7 +28,7 @@ struct AppSettingsView: View {
                 Card("Appearance", systemImage: "paintpalette") {
                     Toggle("Moving background", isOn: $model.settings.backgroundEnabled)
                         .onChange(of: model.settings.backgroundEnabled) { model.saveSettings() }
-                    Text("A mesh of colour behind every screen. It takes its colour from the servers that are running, so the window says what is happening before you have read a word.")
+                    Text("A mesh of colour behind every screen. It can take its colour from the last server you started, so the window says what is happening before you have read a word.")
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -97,7 +97,7 @@ struct AppSettingsView: View {
                     Toggle("Take the colour from running servers", isOn: $model.settings.backgroundFollowsServers)
                         .onChange(of: model.settings.backgroundFollowsServers) { model.saveSettings() }
                         .disabled(!model.settings.backgroundEnabled)
-                    Text("With this on, starting a server repaints the background with that profile's accent colour, and the colour chosen above applies only while nothing is running.")
+                    Text("With this on, starting a server repaints the background with that profile's colour. Stopping it returns to the previous running profile; the colour chosen above applies only while nothing is running.")
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -547,7 +547,7 @@ struct AppSettingsView: View {
                     }
                     HStack {
                         Text("Version file").frame(minWidth: 130, idealWidth: 190, maxWidth: 210, alignment: .leading)
-                        TextField("updates/maclastversion.txt", text: $model.settings.updateVersionFile)
+                        TextField("lastversion.txt", text: $model.settings.updateVersionFile)
                             .font(.system(.callout, design: .monospaced))
                             .frame(width: 160)
                         Text("Builds folder").frame(minWidth: 80, idealWidth: 110, alignment: .trailing)

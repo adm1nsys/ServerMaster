@@ -2,7 +2,6 @@
 //  DatabaseView.swift
 //  ServerMaster
 //
-
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
@@ -12,7 +11,6 @@ private struct BrowseTarget: Identifiable {
     var name: String
     var id: String { name }
 }
-
 struct DatabaseView: View {
 
     @Environment(AppModel.self) private var model

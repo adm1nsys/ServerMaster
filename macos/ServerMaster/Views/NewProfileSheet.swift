@@ -525,7 +525,8 @@ struct NewProfileSheet: View {
     private func generate(_ starter: StarterFile, for template: ProfileTemplate) {
         do {
             _ = try starter.write(into: folder, profile: draftProfile(from: template), overwrite: false)
-            if template.settings.engine == .nodeScript, starter.fileName.hasSuffix(".js") {
+            if template.settings.engine == .nodeScript,
+               ["js", "cjs", "mjs"].contains(URL(fileURLWithPath: starter.fileName).pathExtension.lowercased()) {
                 entryFile = starter.fileName
             }
             problem = starter.afterNote ?? String(localized: "Created \(starter.fileName).")
@@ -547,7 +548,7 @@ struct NewProfileSheet: View {
         databaseName = suggestedDatabaseName(for: template)
         httpsEnabled = false
         command = ""
-        entryFile = "server.js"
+        entryFile = template.settings.nodeEntryFile
         stage = .questions(template)
     }
 
@@ -580,11 +581,18 @@ struct NewProfileSheet: View {
         if template.settings.engine.supportsHTTPS { profile.httpsEnabled = httpsEnabled }
         if template.settings.engine == .custom { profile.customCommand = command }
         if template.settings.engine == .nodeScript { profile.nodeEntryFile = entryFile }
+        if template.packageKind == "printshopcrm" {
+            profile.workingDirectory = profile.rootPath
+            profile.environment = [EnvVar(key: "PSC_HOST", value: "127.0.0.1"),
+                                   EnvVar(key: "PSC_AUTH", value: "0")]
+        }
 
         model.addProfile(profile)
         model.selectedProfileID = profile.id
 
-        if createDatabase && !databaseName.trimmingCharacters(in: .whitespaces).isEmpty {
+        if template.packageKind == "wordpress-w2p" || template.packageKind == "printshopcrm" {
+            Task { await model.prepareProjectRecipe(template, profileID: profile.id) }
+        } else if createDatabase && !databaseName.trimmingCharacters(in: .whitespaces).isEmpty {
             let wanted = databaseName.trimmingCharacters(in: .whitespaces)
             Task { await model.prepareDatabase(named: wanted, for: profile) }
         }

@@ -149,8 +149,8 @@ nonisolated struct AppSettings: Codable, Sendable, Equatable {
 
     // Updates
     var updateRepository: String = "adm1nsys/ServerMaster"
-    var updateVersionFile: String = "updates/maclastversion.txt"
-    var updateBuildsFolder: String = "macos"
+    var updateVersionFile: String = "lastversion.txt"
+    var updateBuildsFolder: String = "mac"
     var checkUpdatesOnLaunch: Bool = false
     var lastUpdateCheck: Date? = nil
     /// The version whose banner the user dismissed. For a newer one we show it again.

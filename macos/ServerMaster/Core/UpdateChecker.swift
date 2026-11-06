@@ -3,7 +3,8 @@
 //  ServerMaster
 //
 //  Update checking on a simple scheme:
-//    updates/maclastversion.txt holds the latest public macOS version number.
+//    lastversion.txt in the repository root holds the latest version number,
+//    next to it a mac/<version> folder holds the build.
 //  If the version in the file is greater than the installed one — show a banner
 //  linking to that folder. Nothing is downloaded and nothing is executed.
 //
@@ -45,11 +46,11 @@ final class UpdateChecker {
         didSet { if state == .notConfigured && !normalizedRepository.isEmpty { state = .idle } }
     }
 
-    /// The file in the repository holding the latest macOS version number.
-    var versionFile: String = "updates/maclastversion.txt"
+    /// The file in the repository root holding the latest version number.
+    var versionFile: String = "lastversion.txt"
 
-    /// The legacy source folder used only as a fallback link target.
-    var buildsFolder: String = "macos"
+    /// The builds folder: a subfolder named after the version is expected inside it.
+    var buildsFolder: String = "mac"
 
     /// The installed version. A separate property so it can be checked in tests.
     var currentVersion: String = AppInfo.version
@@ -125,7 +126,11 @@ final class UpdateChecker {
                     return
                 }
 
-                let pageURL = "\(siteBaseURL)/\(repo)/releases/tag/macos-v\(latest)"
+                let folder = "\(buildsFolder)/\(latest)"
+                let exists = await buildFolderExists(repo: repo, branch: branch, folder: folder)
+                let pageURL = exists
+                    ? "\(siteBaseURL)/\(repo)/tree/\(branch)/\(folder)"
+                    : "\(siteBaseURL)/\(repo)"
 
                 state = .available(ReleaseInfo(
                     version: latest,
@@ -134,7 +139,7 @@ final class UpdateChecker {
                     pageURL: pageURL,
                     publishedAt: nil,
                     branch: branch,
-                    buildFolderExists: true))
+                    buildFolderExists: exists))
                 return
 
             } catch {
@@ -149,9 +154,7 @@ final class UpdateChecker {
         }
     }
 
-    /// Does a legacy source folder exist — otherwise the link would lead nowhere.
-    /// Kept for older tests and settings compatibility; release builds now link
-    /// to GitHub Releases instead of repository folders.
+    /// Does the mac/<version> folder exist — otherwise the link would lead nowhere.
     private func buildFolderExists(repo: String, branch: String, folder: String) async -> Bool {
         let encoded = folder.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? folder
         guard let url = URL(string: "\(apiBaseURL)/repos/\(repo)/contents/\(encoded)?ref=\(branch)") else {
@@ -188,7 +191,7 @@ final class UpdateChecker {
 
     // MARK: - Parsing and comparison
 
-    /// Extract the version number from the contents of the version manifest.
+    /// Extract the version number from the contents of lastversion.txt.
     /// Tolerates stray spaces, a newline, a BOM and a “v” prefix.
     nonisolated static func parseVersion(_ raw: String) -> String? {
         let cleaned = raw

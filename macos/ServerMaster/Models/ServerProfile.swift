@@ -11,6 +11,27 @@ nonisolated struct EnvVar: Codable, Identifiable, Hashable, Sendable {
     var value: String = ""
 }
 
+/// A deliberately small palette shared with the Windows app. A profile colour
+/// belongs to the profile itself: it may tint the application background, but
+/// it must never be coupled to the colour of generated HTTP error pages.
+nonisolated struct ProfileColorOption: Identifiable, Hashable, Sendable {
+    let name: String
+    let hex: String
+
+    var id: String { hex }
+
+    static let palette: [ProfileColorOption] = [
+        .init(name: "Blue",   hex: "#3B82F6"),
+        .init(name: "Green",  hex: "#22C55E"),
+        .init(name: "Amber",  hex: "#F59E0B"),
+        .init(name: "Red",    hex: "#EF4444"),
+        .init(name: "Purple", hex: "#A855F7"),
+        .init(name: "Teal",   hex: "#14B8A6"),
+        .init(name: "Orange", hex: "#F97316"),
+        .init(name: "Slate",  hex: "#94A3B8")
+    ]
+}
+
 /// A launch profile — everything needed to start one server precisely.
 nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
 
@@ -19,6 +40,16 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
     var engine: ServerEngine = .httpServer
     /// The profile's own icon. Empty — the engine's icon is used.
     var iconName: String = ""
+    /// The visual identity of this profile. Used by the optional ambient
+    /// background behaviour; error pages have their own separate accent below.
+    var profileColor: String = "#3B82F6"
+    /// Stable template identifier, shared with the Windows profile format.
+    /// It lets both apps retain product-specific guidance after a profile moves
+    /// to another machine; it is not required to launch an ordinary profile.
+    var templateId: String = ""
+    /// A product-level hint shared with Windows. Database credentials remain
+    /// local to each machine and are deliberately never inferred from it.
+    var needsDatabase: Bool = false
 
     // MARK: Network
     var host: String = "127.0.0.1"
@@ -110,6 +141,12 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
         name = container.value(.name, default: defaults.name)
         engine = container.value(.engine, default: defaults.engine)
         iconName = container.value(.iconName, default: defaults.iconName)
+        // Profiles written before profileColor existed used errorPageAccent as
+        // their only visible accent. Carry that value forward once, then keep
+        // both concepts independent from now on.
+        let savedProfileColor = container.value(.profileColor, default: "")
+        templateId = container.value(.templateId, default: defaults.templateId)
+        needsDatabase = container.value(.needsDatabase, default: defaults.needsDatabase)
         host = container.value(.host, default: defaults.host)
         port = container.value(.port, default: defaults.port)
         rootPath = container.value(.rootPath, default: defaults.rootPath)
@@ -138,6 +175,7 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
         hstsEnabled = container.value(.hstsEnabled, default: defaults.hstsEnabled)
         customErrorPages = container.value(.customErrorPages, default: defaults.customErrorPages)
         errorPageAccent = container.value(.errorPageAccent, default: defaults.errorPageAccent)
+        profileColor = savedProfileColor.isEmpty ? errorPageAccent : savedProfileColor
         errorPageFooter = container.value(.errorPageFooter, default: defaults.errorPageFooter)
         phpMemoryLimit = container.value(.phpMemoryLimit, default: defaults.phpMemoryLimit)
         phpUploadMaxFilesize = container.value(.phpUploadMaxFilesize, default: defaults.phpUploadMaxFilesize)

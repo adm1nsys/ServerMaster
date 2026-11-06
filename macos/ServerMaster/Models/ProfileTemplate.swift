@@ -22,6 +22,7 @@ nonisolated enum TemplateCategory: String, Codable, CaseIterable, Identifiable, 
     case cms
     case frameworks
     case runtimes
+    case publishing
     case custom
 
     var id: String { rawValue }
@@ -32,6 +33,7 @@ nonisolated enum TemplateCategory: String, Codable, CaseIterable, Identifiable, 
         case .cms:        return String(localized: "Content management")
         case .frameworks: return String(localized: "Frameworks")
         case .runtimes:   return String(localized: "Runtimes and tools")
+        case .publishing: return String(localized: "Printing & publishing")
         case .custom:     return String(localized: "Your own")
         }
     }
@@ -42,6 +44,7 @@ nonisolated enum TemplateCategory: String, Codable, CaseIterable, Identifiable, 
         case .cms:        return "square.grid.2x2"
         case .frameworks: return "cube"
         case .runtimes:   return "terminal"
+        case .publishing: return "printer"
         case .custom:     return "person.crop.square"
         }
     }
@@ -83,6 +86,16 @@ nonisolated struct ProfileTemplate: Identifiable, Codable, Sendable, Equatable {
     /// The settings this template writes into a new profile.
     var settings: TemplateSettings
 
+    // MARK: Cross-platform package contract
+    // These values mirror the Windows template file. macOS retains them even
+    // when a recipe is not yet runnable here, so sharing a template never
+    // erases the other platform's setup instructions.
+    var packageKind: String = ""
+    var packageSource: String = ""
+    var recipeKind: String = ""
+    var pluginPackages: [String] = []
+    var quickSetup: Bool = false
+
     /// Set by import: a template that came from a file rather than the app.
     var isUserDefined: Bool = false
 
@@ -95,6 +108,8 @@ nonisolated struct ProfileTemplate: Identifiable, Codable, Sendable, Equatable {
         profile.name = name
         profile.port = port
         profile.rootPath = root
+        profile.templateId = id
+        profile.needsDatabase = needsDatabase
         profile.engine = settings.engine
         profile.indexFile = settings.indexFile
         profile.directoryListing = settings.directoryListing
@@ -107,6 +122,7 @@ nonisolated struct ProfileTemplate: Identifiable, Codable, Sendable, Equatable {
         profile.phpUploadMaxFilesize = settings.phpUploadMaxFilesize
         profile.phpMaxExecutionTime = settings.phpMaxExecutionTime
         profile.phpVersion = phpVersion
+        profile.nodeEntryFile = settings.nodeEntryFile
         if let icon = settings.iconName { profile.iconName = icon }
         return profile
     }
@@ -130,6 +146,41 @@ nonisolated struct ProfileTemplate: Identifiable, Codable, Sendable, Equatable {
     }
 }
 
+// MARK: - Portable template decoding
+
+nonisolated extension ProfileTemplate {
+    private enum CodingKeys: String, CodingKey {
+        case id, title, summary, symbol, category, guideAnchor, rootHint, folderAdvice
+        case needsDatabase, phpVersion, questions, settings, isUserDefined
+        case packageKind, packageSource, recipeKind, pluginPackages, quickSetup
+    }
+
+    /// Template files are exchanged with Windows and outlive individual app
+    /// builds. Every newer field therefore has a default on read.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        title = try c.decode(String.self, forKey: .title)
+        summary = try c.decode(String.self, forKey: .summary)
+        symbol = c.value(.symbol, default: "square.grid.2x2")
+        let savedCategory = c.value(.category, default: TemplateCategory.custom.rawValue)
+        category = TemplateCategory(rawValue: savedCategory) ?? .custom
+        guideAnchor = c.value(.guideAnchor, default: AppLinks.Guide.index.rawValue)
+        rootHint = c.value(.rootHint, default: nil)
+        folderAdvice = c.value(.folderAdvice, default: nil)
+        needsDatabase = c.value(.needsDatabase, default: false)
+        phpVersion = c.value(.phpVersion, default: "")
+        questions = c.value(.questions, default: [])
+        settings = c.value(.settings, default: TemplateSettings())
+        isUserDefined = c.value(.isUserDefined, default: false)
+        packageKind = c.value(.packageKind, default: "")
+        packageSource = c.value(.packageSource, default: "")
+        recipeKind = c.value(.recipeKind, default: "")
+        pluginPackages = c.value(.pluginPackages, default: [])
+        quickSetup = c.value(.quickSetup, default: false)
+    }
+}
+
 /// The part of a profile a template fixes. Deliberately a separate type: a
 /// template must not carry a profile's identity, its paths or its certificates.
 nonisolated struct TemplateSettings: Codable, Sendable, Equatable {
@@ -144,6 +195,7 @@ nonisolated struct TemplateSettings: Codable, Sendable, Equatable {
     var phpMemoryLimit: String = "256M"
     var phpUploadMaxFilesize: String = "64M"
     var phpMaxExecutionTime: Int = 300
+    var nodeEntryFile: String = "server.js"
     var iconName: String?
 
     init() {}
@@ -160,6 +212,7 @@ nonisolated struct TemplateSettings: Codable, Sendable, Equatable {
         phpMemoryLimit = profile.phpMemoryLimit
         phpUploadMaxFilesize = profile.phpUploadMaxFilesize
         phpMaxExecutionTime = profile.phpMaxExecutionTime
+        nodeEntryFile = profile.nodeEntryFile
         iconName = profile.iconName.isEmpty ? nil : profile.iconName
     }
 
@@ -178,6 +231,7 @@ nonisolated struct TemplateSettings: Codable, Sendable, Equatable {
         phpMemoryLimit = c.value(.phpMemoryLimit, default: d.phpMemoryLimit)
         phpUploadMaxFilesize = c.value(.phpUploadMaxFilesize, default: d.phpUploadMaxFilesize)
         phpMaxExecutionTime = c.value(.phpMaxExecutionTime, default: d.phpMaxExecutionTime)
+        nodeEntryFile = c.value(.nodeEntryFile, default: d.nodeEntryFile)
         iconName = c.value(.iconName, default: d.iconName)
     }
 }
@@ -265,6 +319,56 @@ nonisolated extension ProfileTemplate {
             needsDatabase: false, phpVersion: "",
             questions: [.folder, .name, .port, .https],
             settings: staticSettings(listing: false)),
+
+        // ── Printing & publishing ───────────────────────────────────────
+        // These use the same stable identifiers and recipe metadata as the
+        // Windows catalogue. The metadata stays with an exported template even
+        // when the receiving platform needs its own runner for a recipe.
+        ProfileTemplate(
+            id: "printshopcrm", title: "Print Shop CRM",
+            summary: String(localized: "Self-hosted print shop CRM on Node.js and SQLite"),
+            symbol: "printer", category: .publishing,
+            guideAnchor: "index", rootHint: nil,
+            folderAdvice: String(localized: "Choose the Print Shop CRM project folder."),
+            needsDatabase: false, phpVersion: "",
+            questions: [.folder, .name, .port, .entryFile],
+            settings: {
+                var s = TemplateSettings()
+                s.engine = .nodeScript
+                s.nodeEntryFile = "server.mjs"
+                return s
+            }(),
+            packageKind: "printshopcrm",
+            packageSource: "https://github.com/ColeLundstrom/printshopcrm"),
+
+        ProfileTemplate(
+            id: "web-to-print-store", title: "Web-to-Print Store",
+            summary: String(localized: "WordPress, WooCommerce and a local database"),
+            symbol: "printer.fill", category: .publishing,
+            guideAnchor: "wordpress", rootHint: nil,
+            folderAdvice: String(localized: "Choose the WordPress project folder."),
+            needsDatabase: true, phpVersion: "8.3",
+            questions: [.folder, .name, .port, .database, .phpVersion],
+            settings: cmsSettings(),
+            packageKind: "wordpress-w2p",
+            packageSource: "https://wordpress.org/latest.zip",
+            recipeKind: "wordpress-w2p",
+            pluginPackages: ["woocommerce", "printcart-integration"]),
+
+        ProfileTemplate(
+            id: "web-to-print-showcase", title: "Web-to-Print Showcase",
+            summary: String(localized: "A WordPress print-shop showcase with local database settings"),
+            symbol: "printer.fill", category: .publishing,
+            guideAnchor: "wordpress", rootHint: nil,
+            folderAdvice: String(localized: "Choose the prepared showcase project folder."),
+            needsDatabase: true, phpVersion: "8.3",
+            questions: [.folder, .name, .port, .database, .phpVersion],
+            settings: cmsSettings(),
+            packageKind: "wordpress-w2p",
+            packageSource: "https://wordpress.org/latest.zip",
+            recipeKind: "wordpress-w2p-showcase",
+            pluginPackages: ["woocommerce", "printcart-integration"],
+            quickSetup: true),
 
         // ── Content management ───────────────────────────────────────────
         ProfileTemplate(
@@ -424,6 +528,21 @@ nonisolated extension ProfileTemplate {
             settings: {
                 var s = TemplateSettings()
                 s.engine = .nodeScript
+                return s
+            }()),
+
+        ProfileTemplate(
+            id: "node-api", title: String(localized: "Node.js JSON API"),
+            summary: String(localized: "JSON endpoints without npm dependencies"),
+            symbol: "arrow.left.arrow.right.circle", category: .runtimes,
+            guideAnchor: "static", rootHint: nil,
+            folderAdvice: String(localized: "Choose the project folder."),
+            needsDatabase: false, phpVersion: "",
+            questions: [.folder, .name, .port, .entryFile],
+            settings: {
+                var s = TemplateSettings()
+                s.engine = .nodeScript
+                s.nodeEntryFile = "server.cjs"
                 return s
             }()),
 

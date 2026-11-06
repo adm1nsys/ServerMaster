@@ -683,11 +683,6 @@ final class AppModel {
             return
         }
         await controller.stop(settings: settings)
-        guard controller.state == .stopped else {
-            if case .failed(let message) = controller.state { notify(message, isError: true) }
-            publishStatus()
-            return
-        }
         RunRegistry.forget(profileID)
         runningOrder.removeAll { $0 == profileID }
         publishStatus()
@@ -695,7 +690,6 @@ final class AppModel {
 
     func restartServer(profile: ServerProfile) async {
         await stopServer(profileID: profile.id)
-        if let controller = servers[profile.id], controller.state != .stopped { return }
         try? await Task.sleep(nanoseconds: 400_000_000)
         await startServer(profile: profile)
     }
@@ -948,6 +942,26 @@ final class AppModel {
         } else {
             notify(result.stderr.isEmpty ? String(localized: "Could not create the database.") : result.stderr,
                    isError: true)
+        }
+    }
+
+    /// Applies a product recipe only after its profile exists in the model. A
+    /// failed recipe leaves the downloaded folder and profile intact so the user
+    /// can read the console, repair a dependency and run it again.
+    func prepareProjectRecipe(_ template: ProfileTemplate, profileID: UUID) async {
+        guard let index = profiles.firstIndex(where: { $0.id == profileID }) else { return }
+        let profile = profiles[index]
+        do {
+            let outcome = try await WebToPrintRecipe.prepare(template: template, profile: profile,
+                                                              database: database, log: installLog)
+            guard let current = profiles.firstIndex(where: { $0.id == profileID }) else { return }
+            if let databaseName = outcome.databaseName {
+                profiles[current].databaseName = databaseName
+            }
+            saveProfiles()
+            notify(String(localized: "Web-to-Print is ready. Open the profile to see the local store."))
+        } catch {
+            notify(String(localized: "Web-to-Print was not fully prepared: \(error.localizedDescription)"), isError: true)
         }
     }
 

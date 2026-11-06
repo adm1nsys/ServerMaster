@@ -165,11 +165,18 @@ struct ContentView: View {
             .tag(section)
     }
 
-    /// One colour per running server, taken from the profile's own accent.
+    /// The last profile started owns the ambient colour. This stays predictable
+    /// when several profiles run at once: starting a new one is an intentional
+    /// visual hand-off, and stopping it returns the colour to the previous one.
+    /// Error-page styling is intentionally unrelated: a user can change a 404
+    /// page from blue to red without unexpectedly repainting the whole app.
     private var runningColours: [Color] {
-        model.profiles
-            .filter { model.state(of: $0.id) == .running }
-            .compactMap { Color.accent(fromHex: $0.errorPageAccent) }
+        Array(model.runningOrder.reversed().compactMap { id in
+            guard model.state(of: id) == .running,
+                  let profile = model.profiles.first(where: { $0.id == id })
+            else { return nil }
+            return Color.accent(fromHex: profile.profileColor)
+        }.prefix(1))
     }
 
     /// Every section over the same moving background.
