@@ -172,6 +172,11 @@ final class AppModel {
 
     private var portTimer: Timer?
     private var profilesSaveTask: Task<Void, Never>?
+    /// A crashing process must not turn “restart on crash” into an infinite
+    /// launch loop. This mirrors the Windows policy: 1/2/4 second backoff and
+    /// at most three automatic attempts in one minute.
+    private var crashRestartTasks: [UUID: Task<Void, Never>] = [:]
+    private var crashRestartAttempts: [UUID: [Date]] = [:]
 
     init() {
         load()
@@ -349,9 +354,7 @@ final class AppModel {
             self.notify(String(localized: "Server “\(profile.name)” exited unexpectedly (code \(String(code)))."), isError: true)
             self.runningOrder.removeAll { $0 == profile.id }
             self.publishStatus()
-            if self.settings.restartOnCrash {
-                Task { await self.startServer(profile: profile) }
-            }
+            self.scheduleCrashRestart(for: profile)
         }
         servers[profileID] = controller
         return controller
@@ -672,6 +675,7 @@ final class AppModel {
     }
 
     func stopServer(profileID: UUID) async {
+        cancelCrashRestart(for: profileID)
         // A server the terminal started has no controller here, but it is still
         // ours to stop — the registry knows where it is.
         guard let controller = servers[profileID] else {
@@ -689,6 +693,7 @@ final class AppModel {
     }
 
     func restartServer(profile: ServerProfile) async {
+        cancelCrashRestart(for: profile.id)
         await stopServer(profileID: profile.id)
         try? await Task.sleep(nanoseconds: 400_000_000)
         await startServer(profile: profile)
@@ -696,6 +701,37 @@ final class AppModel {
 
     func stopAll() async {
         for id in runningOrder { await stopServer(profileID: id) }
+    }
+
+    private func scheduleCrashRestart(for profile: ServerProfile) {
+        guard settings.restartOnCrash, crashRestartTasks[profile.id] == nil else { return }
+        let now = Date()
+        let recent = (crashRestartAttempts[profile.id] ?? []).filter { now.timeIntervalSince($0) < 60 }
+        guard recent.count < 3 else {
+            crashRestartAttempts[profile.id] = recent
+            notify(String(localized: "Automatic restart paused for “\(profile.name)” after 3 crashes in one minute. Check Console and start it manually."), isError: true)
+            return
+        }
+        let delay = TimeInterval(1 << recent.count)
+        crashRestartAttempts[profile.id] = recent + [now]
+        notify(String(localized: "Server “\(profile.name)” exited unexpectedly. Restarting in \(String(Int(delay))) seconds…"), isError: true)
+        crashRestartTasks[profile.id] = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled, let self,
+                  self.settings.restartOnCrash,
+                  self.state(of: profile.id) == .stopped || {
+                      if case .failed = self.state(of: profile.id) { return true }
+                      return false
+                  }()
+            else { return }
+            self.crashRestartTasks.removeValue(forKey: profile.id)
+            await self.startServer(profile: profile)
+        }
+    }
+
+    private func cancelCrashRestart(for profileID: UUID) {
+        crashRestartTasks.removeValue(forKey: profileID)?.cancel()
+        crashRestartAttempts.removeValue(forKey: profileID)
     }
 
     /// Synchronous shutdown of every server when the application quits.

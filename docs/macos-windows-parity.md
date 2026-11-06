@@ -30,6 +30,9 @@ Safari-extension integration instead of imitating the Windows tray UI.
   (`server.mjs`) instead of assuming only `server.js`.
 - [x] macOS has its own native replacement for Windows-only shell/tray flows;
   no PowerShell or CMD parity is required.
+- [x] Crash recovery uses the same safe policy as Windows: 1/2/4-second
+  backoff, no more than three attempts in one minute, and cancellation after a
+  manual stop/restart.
 - [x] Ports does not claim a root-owned listener is free: when macOS hides its
   owner from ordinary `lsof`, the listener is still listed as non-killable and
   startup stops with an actionable message instead of launching into a conflict.
