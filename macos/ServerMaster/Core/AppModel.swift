@@ -193,7 +193,6 @@ final class AppModel {
         shell.setDirectory(selectedProfile?.effectiveWorkingDirectory ?? NSHomeDirectory())
         updates.repository = settings.updateRepository
         updates.versionFile = settings.updateVersionFile
-        updates.buildsFolder = settings.updateBuildsFolder
     }
 
     /// The language is read from the settings file before the model is created.
@@ -1193,7 +1192,6 @@ final class AppModel {
             settings.updateVersionFile = defaults.updateVersionFile
             migrated = true
         }
-        if settings.updateBuildsFolder.isEmpty { settings.updateBuildsFolder = defaults.updateBuildsFolder; migrated = true }
         if migrated { saveSettings() }
 
         if profiles.isEmpty {
@@ -1230,7 +1228,6 @@ final class AppModel {
             updates.repository = settings.updateRepository
         }
         updates.versionFile = settings.updateVersionFile
-        updates.buildsFolder = settings.updateBuildsFolder
     }
 
     func revealSupportFolder() {

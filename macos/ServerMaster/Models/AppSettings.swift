@@ -150,7 +150,6 @@ nonisolated struct AppSettings: Codable, Sendable, Equatable {
     // Updates
     var updateRepository: String = "adm1nsys/ServerMaster"
     var updateVersionFile: String = "updates/maclastversion.txt"
-    var updateBuildsFolder: String = "mac"
     var checkUpdatesOnLaunch: Bool = false
     var lastUpdateCheck: Date? = nil
     /// The version whose banner the user dismissed. For a newer one we show it again.
@@ -223,7 +222,6 @@ nonisolated struct AppSettings: Codable, Sendable, Equatable {
         language = container.value(.language, default: defaults.language)
         updateRepository = container.value(.updateRepository, default: defaults.updateRepository)
         updateVersionFile = container.value(.updateVersionFile, default: defaults.updateVersionFile)
-        updateBuildsFolder = container.value(.updateBuildsFolder, default: defaults.updateBuildsFolder)
         checkUpdatesOnLaunch = container.value(.checkUpdatesOnLaunch, default: defaults.checkUpdatesOnLaunch)
         lastUpdateCheck = container.value(.lastUpdateCheck, default: defaults.lastUpdateCheck)
         dismissedUpdateVersion = container.value(.dismissedUpdateVersion, default: defaults.dismissedUpdateVersion)

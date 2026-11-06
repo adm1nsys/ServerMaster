@@ -48,10 +48,6 @@ final class UpdateChecker {
     /// The small macOS-channel manifest committed with a completed release.
     var versionFile: String = "updates/maclastversion.txt"
 
-    /// Kept only to read settings written by older apps. Downloads are releases,
-    /// never directories full of binaries committed to Git.
-    var buildsFolder: String = "mac"
-
     /// macOS releases use tags such as `macos-v2.0.0`.
     var releaseTagPrefix: String = "macos-v"
 
