@@ -11,6 +11,12 @@ import Foundation
 import CryptoKit
 
 nonisolated enum WebToPrintRecipe {
+    private struct RecipeState: Codable {
+        var recipeKind: String
+        var databaseName: String?
+        var completedAt: Date
+    }
+
     struct Outcome: Sendable {
         var databaseName: String?
     }
@@ -38,14 +44,23 @@ nonisolated enum WebToPrintRecipe {
         await database.start()
         guard database.state == .running else { throw RecipeError.databaseUnavailable }
 
-        let name = uniqueDatabaseName(profile.databaseName.isEmpty ? suggestedName(profile.name) : profile.databaseName,
+        let previous = readState(in: root)
+        let configuredName = databaseName(in: root)
+        let reusedName = previous?.databaseName ?? configuredName
+        let name: String
+        if let reusedName, !reusedName.isEmpty {
+            name = reusedName
+            log.system("Reusing the existing Web-to-Print database \(name).")
+        } else {
+            name = uniqueDatabaseName(profile.databaseName.isEmpty ? suggestedName(profile.name) : profile.databaseName,
                                       taken: Set(database.databases.map(\.name)))
-        let user = "sm_" + name.prefix(45)
-        let password = randomSecret()
-        let created = await database.createDatabase(name: name, user: user, password: password)
-        guard created.succeeded else { throw RecipeError.databaseCreation(created.combined) }
-        try writeConfig(in: root, database: database, name: name, user: user, password: password,
-                        showcase: template.recipeKind == "wordpress-w2p-showcase")
+            let user = "sm_" + name.prefix(45)
+            let password = randomSecret()
+            let created = await database.createDatabase(name: name, user: user, password: password)
+            guard created.succeeded else { throw RecipeError.databaseCreation(created.combined) }
+            try writeConfig(in: root, database: database, name: name, user: user, password: password,
+                            showcase: template.recipeKind == "wordpress-w2p-showcase")
+        }
 
         let wp = try await wordpressCLI(log: log)
         try await run(wp, ["core", "is-installed"], root: root, log: log, allowFailure: true)
@@ -75,6 +90,7 @@ nonisolated enum WebToPrintRecipe {
         if template.recipeKind == "wordpress-w2p-showcase" {
             try await seedShowcase(wp, root: root, log: log)
         }
+        try writeState(.init(recipeKind: template.recipeKind, databaseName: name, completedAt: .now), in: root)
         log.system("Web-to-Print preparation completed. Open \(profile.address).")
         return Outcome(databaseName: name)
     }
@@ -108,6 +124,7 @@ nonisolated enum WebToPrintRecipe {
         guard FileManager.default.fileExists(atPath: (root as NSString).appendingPathComponent("node_modules")) else {
             throw RecipeError.commandFailed("npm install completed but node_modules was not created.")
         }
+        try writeState(.init(recipeKind: "printshopcrm", databaseName: nil, completedAt: .now), in: root)
         log.system("Print Shop CRM is ready in \(root).")
     }
 
@@ -151,15 +168,84 @@ nonisolated enum WebToPrintRecipe {
 
     private static func seedShowcase(_ wp: URL, root: String, log: ConsoleLog) async throws {
         let php = """
+        if (!class_exists('WooCommerce')) { WP_CLI::error('WooCommerce is not active.'); }
         update_option('blogname', 'Друкарня «Відбиток»');
         update_option('blogdescription', 'Онлайн-замовлення друкованої продукції');
-        update_option('woocommerce_currency', 'UAH');
-        foreach ([['Візитки','350'],['Флаєри','500'],['Плакати','800'],['Наліпки','300']] as $item) {
-          $existing = get_page_by_title($item[0], OBJECT, 'product');
-          if (!$existing && class_exists('WC_Product_Simple')) { $p = new WC_Product_Simple(); $p->set_name($item[0]); $p->set_regular_price($item[1]); $p->set_status('publish'); $p->save(); }
+        update_option('timezone_string', 'Europe/Kyiv');
+        foreach (array('woocommerce_currency' => 'UAH', 'woocommerce_currency_pos' => 'right_space',
+          'woocommerce_price_num_decimals' => '0', 'woocommerce_price_thousand_sep' => ' ',
+          'woocommerce_price_decimal_sep' => ',', 'woocommerce_default_country' => 'UA',
+          'woocommerce_store_city' => 'Київ', 'woocommerce_allow_tracking' => 'no',
+          'woocommerce_enable_guest_checkout' => 'yes') as $key => $value) { update_option($key, $value); }
+        update_option('woocommerce_allowed_countries', 'specific');
+        update_option('woocommerce_specific_allowed_countries', array('UA'));
+        update_option('woocommerce_cod_settings', array('enabled'=>'yes','title'=>'Оплата при отриманні',
+          'description'=>'Оплата готової продукції у друкарні або на пошті.'));
+        update_option('woocommerce_bacs_settings', array('enabled'=>'yes','title'=>'Оплата на рахунок',
+          'description'=>'Рахунок надішлемо після перевірки макета.'));
+        $hasZone = false; foreach (WC_Shipping_Zones::get_zones() as $zone) if ($zone['zone_name'] === 'Україна') $hasZone = true;
+        if (!$hasZone) { $zone = new WC_Shipping_Zone(); $zone->set_zone_name('Україна'); $zone->set_zone_order(1); $zone->add_location('UA','country'); $zone->save();
+          $post = $zone->add_shipping_method('flat_rate'); update_option('woocommerce_flat_rate_'.$post.'_settings',array('title'=>'Нова Пошта','tax_status'=>'none','cost'=>'80'));
+          $pickup = $zone->add_shipping_method('local_pickup'); update_option('woocommerce_local_pickup_'.$pickup.'_settings',array('title'=>'Самовивіз з друкарні','tax_status'=>'none','cost'=>'0')); }
+
+        function sm_attribute($slug, $name, $terms) {
+          if (!wc_attribute_taxonomy_id_by_name($slug)) wc_create_attribute(array('name'=>$name,'slug'=>$slug,'type'=>'select'));
+          $taxonomy = 'pa_' . $slug;
+          if (!taxonomy_exists($taxonomy)) register_taxonomy($taxonomy, array('product'), array('hierarchical'=>false,'show_ui'=>false));
+          foreach ($terms as $termSlug=>$termName) if (!get_term_by('slug',$termSlug,$taxonomy)) wp_insert_term($termName,$taxonomy,array('slug'=>$termSlug));
+        }
+        sm_attribute('format','Формат',array('90x50'=>'90×50 мм','85x55'=>'85×55 мм','a6'=>'A6 (105×148 мм)','a5'=>'A5 (148×210 мм)','a4'=>'A4 (210×297 мм)','a2'=>'A2 (420×594 мм)'));
+        sm_attribute('papir','Папір',array('kreid-300'=>'Крейдований 300 г/м²','dyzain-290'=>'Дизайнерський 290 г/м²','kreid-170'=>'Крейдований 170 г/м²','foto-200'=>'Фотопапір 200 г/м²','samoklei-mat'=>'Самоклейка матова'));
+        sm_attribute('tyrazh','Тираж',array('10'=>'10 шт.','100'=>'100 шт.','500'=>'500 шт.','1000'=>'1000 шт.','5000'=>'5000 шт.'));
+        sm_attribute('obrobka','Обробка',array('bez'=>'Без обробки','lam-mat'=>'Ламінування матове','lam-hlianets'=>'Ламінування глянцеве','porizka'=>'Контурна порізка'));
+
+        function sm_product($item) {
+          $existing = get_page_by_path($item['slug'], OBJECT, 'product'); if ($existing) return $existing->ID;
+          $product = new WC_Product_Variable(); $product->set_name($item['name']); $product->set_slug($item['slug']); $product->set_status('publish'); $product->set_description($item['description']);
+          $attributes = array(); foreach ($item['options'] as $slug=>$values) { $ids=array(); foreach($values as $value) { $term=get_term_by('slug',$value,'pa_'.$slug); if($term) $ids[]=$term->term_id; } $a=new WC_Product_Attribute(); $a->set_id(wc_attribute_taxonomy_id_by_name($slug)); $a->set_name('pa_'.$slug); $a->set_options($ids); $a->set_visible(true); $a->set_variation(true); $attributes[]=$a; }
+          $product->set_attributes($attributes); $product->set_default_attributes(array('pa_format'=>$item['options']['format'][0],'pa_papir'=>$item['options']['papir'][0],'pa_tyrazh'=>$item['options']['tyrazh'][0],'pa_obrobka'=>$item['options']['obrobka'][0])); $id=$product->save();
+          foreach($item['prices'] as $run=>$price) { $variation=new WC_Product_Variation(); $variation->set_parent_id($id); $variation->set_attributes(array('pa_format'=>'','pa_papir'=>'','pa_tyrazh'=>(string)$run,'pa_obrobka'=>'')); $variation->set_regular_price((string)$price); $variation->set_stock_status('instock'); $variation->set_status('publish'); $variation->save(); } WC_Product_Variable::sync($id); return $id;
+        }
+        $products=array(
+          array('slug'=>'vizytky','name'=>'Візитки','description'=>'Класичні візитки на щільному папері.','options'=>array('format'=>array('90x50','85x55'),'papir'=>array('kreid-300','dyzain-290'),'tyrazh'=>array('100','500','1000'),'obrobka'=>array('bez','lam-mat','lam-hlianets')),'prices'=>array('100'=>350,'500'=>890,'1000'=>1290)),
+          array('slug'=>'flaiery','name'=>'Флаєри','description'=>'Рекламні флаєри та листівки для акцій і заходів.','options'=>array('format'=>array('a6','a5','a4'),'papir'=>array('kreid-170'),'tyrazh'=>array('500','1000','5000'),'obrobka'=>array('bez','lam-hlianets')),'prices'=>array('500'=>790,'1000'=>1190,'5000'=>3990)),
+          array('slug'=>'plakaty','name'=>'Плакати','description'=>'Плакати й афіші великого формату.','options'=>array('format'=>array('a2','a4'),'papir'=>array('kreid-170','foto-200'),'tyrazh'=>array('10','100'),'obrobka'=>array('bez','lam-mat')),'prices'=>array('10'=>450,'100'=>2990)),
+          array('slug'=>'nalipky','name'=>'Наліпки','description'=>'Наліпки для пакування, етикеток і мерчу.','options'=>array('format'=>array('a6','90x50'),'papir'=>array('samoklei-mat'),'tyrazh'=>array('100','500','1000'),'obrobka'=>array('porizka','bez')),'prices'=>array('100'=>390,'500'=>1150,'1000'=>1890))
+        ); foreach($products as $item) sm_product($item);
+        foreach(array('shop'=>'Каталог','cart'=>'Кошик','checkout'=>'Оформлення замовлення','my-account'=>'Мій кабінет') as $slug=>$title) { $page=get_page_by_path($slug); if($page) wp_update_post(array('ID'=>$page->ID,'post_title'=>$title)); }
+        $shop=wc_get_page_id('shop'); if($shop>0) { update_option('show_on_front','page'); update_option('page_on_front',$shop); }
+        if (get_option('servermaster_showcase_orders') !== 'yes') {
+          foreach(array(array('vizytky','500','processing','Олена Коваль'),array('flaiery','1000','on-hold','Ігор Бондар'),array('plakaty','100','completed','Андрій Мельник'),array('nalipky','1000','processing','Марія Шевченко')) as $demo) { $post=get_page_by_path($demo[0],OBJECT,'product'); if(!$post) continue; $product=wc_get_product($post->ID); $children=$product ? $product->get_children() : array(); $variation=$children ? wc_get_product($children[0]) : null; if(!$variation) continue; $order=wc_create_order(); $order->add_product($variation,1,array('variation'=>array('attribute_pa_tyrazh'=>$demo[1]))); $order->set_billing_first_name($demo[3]); $order->set_billing_country('UA'); $order->set_payment_method('cod'); $order->set_payment_method_title('Оплата при отриманні'); $order->calculate_totals(false); $order->update_status($demo[2],'Демо-замовлення ServerMaster.'); }
+          update_option('servermaster_showcase_orders','yes');
         }
         """
         try await run(wp, ["eval", php], root: root, log: log)
+    }
+
+    private static func stateURL(in root: String) -> URL {
+        URL(fileURLWithPath: root).appendingPathComponent(".servermaster-recipe.json")
+    }
+
+    private static func readState(in root: String) -> RecipeState? {
+        let url = stateURL(in: root)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(RecipeState.self, from: data)
+    }
+
+    private static func writeState(_ state: RecipeState, in root: String) throws {
+        let data = try JSONEncoder().encode(state)
+        try data.write(to: stateURL(in: root), options: .atomic)
+    }
+
+    private static func databaseName(in root: String) -> String? {
+        let config = URL(fileURLWithPath: root).appendingPathComponent("wp-config.php")
+        guard let text = try? String(contentsOf: config, encoding: .utf8) else { return nil }
+        let pattern = #"define\(\s*['\"]DB_NAME['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)"#
+        guard let expression = try? NSRegularExpression(pattern: pattern),
+              let match = expression.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let range = Range(match.range(at: 1), in: text)
+        else { return nil }
+        return String(text[range])
     }
 
     private static func writeConfig(in root: String, database: DatabaseService, name: String, user: String,

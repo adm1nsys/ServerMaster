@@ -57,7 +57,7 @@ struct PortsView: View {
                 .width(min: 120, ideal: 180)
 
                 TableColumn("PID", value: \.pid) { entry in
-                    Text(String(entry.pid)).font(.system(.body, design: .monospaced))
+                    Text(entry.pid > 0 ? String(entry.pid) : "—").font(.system(.body, design: .monospaced))
                 }
                 .width(min: 55, ideal: 65, max: 80)
 
@@ -94,6 +94,7 @@ struct PortsView: View {
                         }
                         .buttonStyle(.borderless)
                         .help("Process details")
+                        .disabled(entry.pid <= 0)
 
                         Button {
                             requestKill(entry)
@@ -102,7 +103,8 @@ struct PortsView: View {
                         }
                         .buttonStyle(.borderless)
                         .foregroundStyle(.red)
-                        .help("Terminate process")
+                        .help(entry.pid > 0 ? "Terminate process" : "macOS hides this process owner; stop it from its profile or use an administrator terminal")
+                        .disabled(entry.pid <= 0)
                     }
                 }
                 .width(min: 90, ideal: 96, max: 110)
@@ -112,18 +114,18 @@ struct PortsView: View {
             }
             .contextMenu(forSelectionType: PortEntry.ID.self) { ids in
                 if let id = ids.first, let entry = model.portEntries.first(where: { $0.id == id }) {
-                    Button("Terminate process") { requestKill(entry) }
+                    Button("Terminate process") { requestKill(entry) }.disabled(entry.pid <= 0)
                     Button("Terminate as administrator") {
                         Task { await model.killPortAsAdmin(entry, signal: model.settings.defaultKillSignal) }
-                    }
+                    }.disabled(entry.pid <= 0)
                     Divider()
                     Button("Copy PID") {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(String(entry.pid), forType: .string)
-                    }
+                    }.disabled(entry.pid <= 0)
                     Button("Details") {
                         Task { details = await PortScanner.processDetails(pid: entry.pid) }
-                    }
+                    }.disabled(entry.pid <= 0)
                 }
             }
             // No zebra striping, and no background of its own. The alternating

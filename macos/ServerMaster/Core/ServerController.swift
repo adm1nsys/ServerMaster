@@ -88,9 +88,17 @@ final class ServerController {
                 if settings.killPortOccupantOnStart {
                     log.system(String(localized: "Port \(String(profile.port)) is taken: \(summary). Freeing it…"))
                     for occupant in occupants {
+                        guard occupant.pid > 0 else { continue }
                         _ = await PortScanner.kill(pid: occupant.pid, signal: .term)
                     }
                     try? await Task.sleep(nanoseconds: 700_000_000)
+                    guard PortScanner.isPortFree(profile.port, host: profile.host) else {
+                        let message = String(localized: "Port \(String(profile.port)) is still occupied. Its owner may require administrator rights; stop that profile or free the port from Ports.")
+                        log.append(message, stream: .stderr)
+                        state = .failed(message)
+                        log.stopFileLogging()
+                        return
+                    }
                 } else {
                     log.append(String(localized: "Port \(String(profile.port)) is already taken: \(summary)"), stream: .stderr)
                     state = .failed(String(localized: "Port \(String(profile.port)) is taken: \(summary)"))

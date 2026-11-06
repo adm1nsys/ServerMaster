@@ -39,18 +39,27 @@ nonisolated enum PortScanner {
     /// Every listening TCP socket (and optionally UDP).
     static func scan(includeUDP: Bool) async -> [PortEntry] {
         async let tcp = runLSOF(arguments: ["-nP", "-F", "pcuLtn", "-iTCP", "-sTCP:LISTEN"], proto: "TCP")
+        async let hiddenTCP = runNetstatListeners()
+        let known = await tcp
+        let hidden = await hiddenTCP
         if includeUDP {
             async let udp = runLSOF(arguments: ["-nP", "-F", "pcuLtn", "-iUDP"], proto: "UDP")
-            let combined = await tcp + udp
+            let udpEntries = await udp
+            let combined = known + udpEntries + hiddenEntries(from: hidden, known: known)
             return dedupe(combined)
         }
-        return dedupe(await tcp)
+        return dedupe(known + hiddenEntries(from: hidden, known: known))
     }
 
     /// Who is listening on a specific port.
     static func processesListening(onPort port: Int) async -> [PortEntry] {
         let entries = await runLSOF(arguments: ["-nP", "-F", "pcuLtn", "-iTCP:\(String(port))", "-sTCP:LISTEN"], proto: "TCP")
-        return dedupe(entries.filter { $0.port == port })
+        let visible = dedupe(entries.filter { $0.port == port })
+        // macOS deliberately withholds root-owned sockets from an ordinary
+        // lsof invocation. A bind check still knows the truth, so surface a
+        // non-killable entry rather than claiming that the port is free.
+        guard visible.isEmpty, !isPortFree(port, host: "127.0.0.1") else { return visible }
+        return [hiddenEntry(port: port)]
     }
 
     /// Whether the port is free (by trying to take it ourselves).
@@ -102,12 +111,14 @@ nonisolated enum PortScanner {
     // MARK: - Process management
 
     static func kill(pid: Int32, signal: KillSignal) async -> CommandResult {
-        await ProcessRunner.run("/bin/kill", ["-\(signal.rawValue)", String(pid)])
+        guard pid > 0 else { return CommandResult(exitCode: 1, stdout: "", stderr: "The process owner is hidden by macOS.") }
+        return await ProcessRunner.run("/bin/kill", ["-\(signal.rawValue)", String(pid)])
     }
 
     static func killAsAdmin(pid: Int32, signal: KillSignal) async -> CommandResult {
-        await ProcessRunner.runAsAdmin("/bin/kill -\(signal.rawValue) \(String(pid))",
-                                       prompt: String(localized: "ServerMaster wants to terminate process \(String(pid))."))
+        guard pid > 0 else { return CommandResult(exitCode: 1, stdout: "", stderr: "Refresh after granting access or stop the server from its profile.") }
+        return await ProcessRunner.runAsAdmin("/bin/kill -\(signal.rawValue) \(String(pid))",
+                                              prompt: String(localized: "ServerMaster wants to terminate process \(String(pid))."))
     }
 
     /// Details about a process — the full command line.
@@ -122,6 +133,34 @@ nonisolated enum PortScanner {
         let result = await ProcessRunner.run("/usr/sbin/lsof", arguments, timeout: 20)
         // lsof returns 1 when it simply found nothing — that is not an error.
         return parse(result.stdout, proto: proto)
+    }
+
+    /// `netstat` does not reveal PID/owner, but unlike an unprivileged `lsof`
+    /// it still reveals that a root-owned listener exists. This closes the
+    /// dangerous gap where the Ports screen said “free” while Apache held it.
+    private static func runNetstatListeners() async -> [(address: String, port: Int)] {
+        let result = await ProcessRunner.run("/usr/sbin/netstat", ["-an", "-p", "tcp"], timeout: 20)
+        return result.stdout.split(separator: "\n").compactMap { raw in
+            let fields = raw.split(whereSeparator: { $0 == " " || $0 == "\t" })
+            guard fields.count >= 6, fields[0].hasPrefix("tcp"), fields.last == "LISTEN" else { return nil }
+            let endpoint = String(fields[3])
+            guard let dot = endpoint.lastIndex(of: "."), let port = Int(endpoint[endpoint.index(after: dot)...]) else { return nil }
+            let address = String(endpoint[..<dot])
+            return (address.isEmpty || address == "*" ? "*" : address, port)
+        }
+    }
+
+    private static func hiddenEntries(from listeners: [(address: String, port: Int)], known: [PortEntry]) -> [PortEntry] {
+        let visiblePorts = Set(known.map(\.port))
+        return listeners.filter { !visiblePorts.contains($0.port) }.map { listener in
+            hiddenEntry(port: listener.port, address: listener.address)
+        }
+    }
+
+    private static func hiddenEntry(port: Int, address: String = "127.0.0.1") -> PortEntry {
+        PortEntry(pid: 0, command: String(localized: "Process hidden by macOS"),
+                  user: String(localized: "unknown (administrator-owned possible)"),
+                  proto: "TCP", family: "IPv4", address: address, port: port)
     }
 
     static func parse(_ output: String, proto: String) -> [PortEntry] {
