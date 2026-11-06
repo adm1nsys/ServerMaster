@@ -71,13 +71,24 @@ nonisolated enum WebToPrintRecipe {
                                "--title=ServerMaster Web-to-Print",
                                "--admin_user=servermaster", "--admin_password=\(adminPassword)",
                                "--admin_email=servermaster@example.local", "--skip-email"], root: root, log: log)
-            try """
+            let notes = template.recipeKind == "wordpress-w2p-showcase" ? """
+            # Друкарня «Відбиток» — демо Web-to-Print
+
+            Магазин: \(profile.address)
+            Адмінка: \(profile.address)/wp-admin/
+            Логін: servermaster
+            Пароль: \(adminPassword)
+
+            Уже готово: україномовний магазин, товари з варіантами друку,
+            «Нова Пошта», самовивіз, оплата при отриманні та демо-замовлення.
+            """ : """
             # ServerMaster Web-to-Print
 
             Admin: \(profile.address)/wp-admin/
             User: servermaster
             Password: \(adminPassword)
-            """.write(to: URL(fileURLWithPath: root).appendingPathComponent("servermaster-demo.md"),
+            """
+            try notes.write(to: URL(fileURLWithPath: root).appendingPathComponent("servermaster-demo.md"),
                          atomically: true, encoding: .utf8)
         }
 
@@ -194,8 +205,8 @@ nonisolated enum WebToPrintRecipe {
           if (!taxonomy_exists($taxonomy)) register_taxonomy($taxonomy, array('product'), array('hierarchical'=>false,'show_ui'=>false));
           foreach ($terms as $termSlug=>$termName) if (!get_term_by('slug',$termSlug,$taxonomy)) wp_insert_term($termName,$taxonomy,array('slug'=>$termSlug));
         }
-        sm_attribute('format','Формат',array('90x50'=>'90×50 мм','85x55'=>'85×55 мм','a6'=>'A6 (105×148 мм)','a5'=>'A5 (148×210 мм)','a4'=>'A4 (210×297 мм)','a2'=>'A2 (420×594 мм)'));
-        sm_attribute('papir','Папір',array('kreid-300'=>'Крейдований 300 г/м²','dyzain-290'=>'Дизайнерський 290 г/м²','kreid-170'=>'Крейдований 170 г/м²','foto-200'=>'Фотопапір 200 г/м²','samoklei-mat'=>'Самоклейка матова'));
+        sm_attribute('format','Формат',array('90x50'=>'90×50 мм','85x55'=>'85×55 мм','a6'=>'A6 (105×148 мм)','a5'=>'A5 (148×210 мм)','a4'=>'A4 (210×297 мм)','a3'=>'A3 (297×420 мм)','a2'=>'A2 (420×594 мм)','a1'=>'A1 (594×841 мм)','50x50'=>'50×50 мм','70x70'=>'70×70 мм'));
+        sm_attribute('papir','Папір',array('kreid-300'=>'Крейдований 300 г/м²','dyzain-290'=>'Дизайнерський 290 г/м²','lion-250'=>'Льон 250 г/м²','kreid-130'=>'Крейдований 130 г/м²','kreid-170'=>'Крейдований 170 г/м²','foto-200'=>'Фотопапір 200 г/м²','samoklei-glianets'=>'Самоклейка глянцева','samoklei-mat'=>'Самоклейка матова'));
         sm_attribute('tyrazh','Тираж',array('10'=>'10 шт.','100'=>'100 шт.','500'=>'500 шт.','1000'=>'1000 шт.','5000'=>'5000 шт.'));
         sm_attribute('obrobka','Обробка',array('bez'=>'Без обробки','lam-mat'=>'Ламінування матове','lam-hlianets'=>'Ламінування глянцеве','porizka'=>'Контурна порізка'));
 
@@ -207,10 +218,10 @@ nonisolated enum WebToPrintRecipe {
           foreach($item['prices'] as $run=>$price) { $variation=new WC_Product_Variation(); $variation->set_parent_id($id); $variation->set_attributes(array('pa_format'=>'','pa_papir'=>'','pa_tyrazh'=>(string)$run,'pa_obrobka'=>'')); $variation->set_regular_price((string)$price); $variation->set_stock_status('instock'); $variation->set_status('publish'); $variation->save(); } WC_Product_Variable::sync($id); return $id;
         }
         $products=array(
-          array('slug'=>'vizytky','name'=>'Візитки','description'=>'Класичні візитки на щільному папері.','options'=>array('format'=>array('90x50','85x55'),'papir'=>array('kreid-300','dyzain-290'),'tyrazh'=>array('100','500','1000'),'obrobka'=>array('bez','lam-mat','lam-hlianets')),'prices'=>array('100'=>350,'500'=>890,'1000'=>1290)),
-          array('slug'=>'flaiery','name'=>'Флаєри','description'=>'Рекламні флаєри та листівки для акцій і заходів.','options'=>array('format'=>array('a6','a5','a4'),'papir'=>array('kreid-170'),'tyrazh'=>array('500','1000','5000'),'obrobka'=>array('bez','lam-hlianets')),'prices'=>array('500'=>790,'1000'=>1190,'5000'=>3990)),
-          array('slug'=>'plakaty','name'=>'Плакати','description'=>'Плакати й афіші великого формату.','options'=>array('format'=>array('a2','a4'),'papir'=>array('kreid-170','foto-200'),'tyrazh'=>array('10','100'),'obrobka'=>array('bez','lam-mat')),'prices'=>array('10'=>450,'100'=>2990)),
-          array('slug'=>'nalipky','name'=>'Наліпки','description'=>'Наліпки для пакування, етикеток і мерчу.','options'=>array('format'=>array('a6','90x50'),'papir'=>array('samoklei-mat'),'tyrazh'=>array('100','500','1000'),'obrobka'=>array('porizka','bez')),'prices'=>array('100'=>390,'500'=>1150,'1000'=>1890))
+          array('slug'=>'vizytky','name'=>'Візитки','description'=>'Класичні візитки на щільному папері: друк з двох боків, ламінування та скруглення кутів на вибір.','options'=>array('format'=>array('90x50','85x55'),'papir'=>array('kreid-300','dyzain-290','lion-250'),'tyrazh'=>array('100','500','1000'),'obrobka'=>array('bez','lam-mat','lam-hlianets','kuty')),'prices'=>array('100'=>350,'500'=>890,'1000'=>1290)),
+          array('slug'=>'flaiery','name'=>'Флаєри','description'=>'Рекламні флаєри та листівки для акцій і заходів. Що більший тираж, то нижча ціна за примірник.','options'=>array('format'=>array('a6','a5','a4'),'papir'=>array('kreid-130','kreid-170'),'tyrazh'=>array('500','1000','5000'),'obrobka'=>array('bez','lam-hlianets')),'prices'=>array('500'=>790,'1000'=>1190,'5000'=>3990)),
+          array('slug'=>'plakaty','name'=>'Плакати','description'=>'Плакати й афіші великого формату для вітрин, виставок і подій.','options'=>array('format'=>array('a3','a2','a1'),'papir'=>array('kreid-170','foto-200'),'tyrazh'=>array('10','50','100'),'obrobka'=>array('bez','lam-mat')),'prices'=>array('10'=>450,'50'=>1690,'100'=>2990)),
+          array('slug'=>'nalipky','name'=>'Наліпки','description'=>'Наліпки на самоклейці з контурною порізкою — для пакування, етикеток і мерчу.','options'=>array('format'=>array('50x50','70x70','a6'),'papir'=>array('samoklei-glianets','samoklei-mat'),'tyrazh'=>array('100','500','1000'),'obrobka'=>array('porizka','bez')),'prices'=>array('100'=>390,'500'=>1150,'1000'=>1890))
         ); foreach($products as $item) sm_product($item);
         foreach(array('shop'=>'Каталог','cart'=>'Кошик','checkout'=>'Оформлення замовлення','my-account'=>'Мій кабінет') as $slug=>$title) { $page=get_page_by_path($slug); if($page) wp_update_post(array('ID'=>$page->ID,'post_title'=>$title)); }
         $shop=wc_get_page_id('shop'); if($shop>0) { update_option('show_on_front','page'); update_option('page_on_front',$shop); }
