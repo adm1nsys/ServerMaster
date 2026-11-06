@@ -27,6 +27,14 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
+      # The app reads this manifest, not binaries committed to the repository.
+      # Keeping it in the release commit makes the published version reproducible
+      # and avoids a workflow writing back into main after a release is live.
+      - name: Verify macOS update manifest
+        run: |
+          ACTUAL="$(sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' updates/maclastversion.txt | sed -n '/^[^#]/p' | head -n 1)"
+          test "$ACTUAL" = "${{ inputs.version }}"
+
       - name: Prepare bundled CLI helper
         run: ./macos/Tools/update-cli.sh
 
