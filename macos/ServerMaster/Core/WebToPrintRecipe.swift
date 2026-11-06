@@ -92,10 +92,13 @@ nonisolated enum WebToPrintRecipe {
                          atomically: true, encoding: .utf8)
         }
 
-        try await run(wp, ["plugin", "install", "woocommerce", "--activate"], root: root, log: log)
-        // Printcart is optional at runtime: its designer requires a separate
-        // cloud account, so a local store must remain usable without it.
-        _ = await command(wp, ["plugin", "install", "printcart-integration", "--activate"], root: root)
+        try await ensurePlugin("woocommerce", wp: wp, root: root, log: log)
+        // The designer itself needs a Printcart account, but the integration is
+        // part of this template on both platforms and must be present locally.
+        try await ensurePlugin("printcart-integration", wp: wp, root: root, log: log)
+        guard FileManager.default.fileExists(atPath: (root as NSString).appendingPathComponent("wp-content/plugins/woocommerce/woocommerce.php")),
+              FileManager.default.fileExists(atPath: (root as NSString).appendingPathComponent("wp-content/plugins/printcart-integration/nbdesigner.php"))
+        else { throw RecipeError.webToPrintPluginMissing }
         try await run(wp, ["option", "update", "woocommerce_currency", "UAH"], root: root, log: log)
 
         if template.recipeKind == "wordpress-w2p-showcase" {
@@ -139,6 +142,10 @@ nonisolated enum WebToPrintRecipe {
         guard FileManager.default.fileExists(atPath: (root as NSString).appendingPathComponent("node_modules")) else {
             throw RecipeError.commandFailed("npm install completed but node_modules was not created.")
         }
+        let entry = (root as NSString).appendingPathComponent(profile.nodeEntryFile)
+        guard FileManager.default.fileExists(atPath: entry) else {
+            throw RecipeError.printShopEntryMissing(profile.nodeEntryFile)
+        }
         try writeState(.init(recipeKind: "printshopcrm", databaseName: nil, completedAt: .now), in: root)
         log.system("Print Shop CRM is ready in \(root).")
     }
@@ -179,6 +186,18 @@ nonisolated enum WebToPrintRecipe {
         let result = await ProcessRunner.run(executable, args, cwd: root, timeout: timeout)
         if !result.combined.isEmpty { log.append(result.combined, stream: result.succeeded ? .stdout : .stderr) }
         if !result.succeeded { throw RecipeError.commandFailed(result.combined) }
+    }
+
+    /// `wp plugin install` fails when a partially completed earlier run already
+    /// downloaded the plugin. Checking first makes the recipe actually resumable
+    /// and matches the Windows downloader's existing-folder behaviour.
+    private static func ensurePlugin(_ slug: String, wp: URL, root: String, log: ConsoleLog) async throws {
+        let existing = await command(wp, ["plugin", "is-installed", slug], root: root)
+        if existing.succeeded {
+            try await run(wp, ["plugin", "activate", slug], root: root, log: log)
+        } else {
+            try await run(wp, ["plugin", "install", slug, "--activate"], root: root, log: log)
+        }
     }
 
     private static func seedShowcase(_ wp: URL, root: String, log: ConsoleLog, isFreshInstall: Bool) async throws {
@@ -334,11 +353,13 @@ nonisolated enum WebToPrintRecipe {
     }
     private static func randomSecret() -> String { SHA256.hash(data: Data(UUID().uuidString.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined() }
 
-    enum RecipeError: LocalizedError { case unsupported, missingWordPress, missingPrintShop, databaseUnavailable, databaseCreation(String), phpMissing, npmMissing, wpCLIUnavailable, commandFailed(String)
+    enum RecipeError: LocalizedError { case unsupported, missingWordPress, missingPrintShop, printShopEntryMissing(String), webToPrintPluginMissing, databaseUnavailable, databaseCreation(String), phpMissing, npmMissing, wpCLIUnavailable, commandFailed(String)
         var errorDescription: String? { switch self {
         case .unsupported: return "This project has no macOS setup recipe."
         case .missingWordPress: return "WordPress files are missing. Download the project into an empty folder first."
         case .missingPrintShop: return "Print Shop CRM files are missing. Download the project into an empty folder first."
+        case .printShopEntryMissing(let entry): return "Print Shop CRM entry file was not found: \(entry)"
+        case .webToPrintPluginMissing: return "WooCommerce or Printcart Integration was not installed completely."
         case .databaseUnavailable: return "MariaDB could not start."
         case .databaseCreation(let message): return message.isEmpty ? "Could not create the WordPress database." : message
         case .phpMissing: return "PHP is required to prepare WordPress."

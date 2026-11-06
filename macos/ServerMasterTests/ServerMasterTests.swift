@@ -300,7 +300,7 @@ struct ProfileTemplateTests {
     @Test("The cross-platform templates keep their identifiers and launch defaults")
     func crossPlatformTemplates() throws {
         let templates = ProfileTemplate.builtIn
-        for id in ["node-api", "printshopcrm", "web-to-print-store", "web-to-print-showcase"] {
+        for id in ["php", "node-api", "printshopcrm", "web-to-print-store", "web-to-print-showcase"] {
             #expect(templates.contains(where: { $0.id == id }), "missing \(id)")
         }
 
@@ -673,6 +673,37 @@ struct PHPVersionTests {
             #expect(FileManager.default.isExecutableFile(atPath: installed.binary),
                     "\(installed.binary)")
         }
+    }
+}
+
+@Suite("Cross-platform profile validation")
+struct ProfileValidationTests {
+
+    @Test("Shared environment-variable rules reject names Windows rejects")
+    func environmentNames() {
+        #expect(ServerProfile.isValidEnvironmentKey("PORT"))
+        #expect(ServerProfile.isValidEnvironmentKey("_SERVER_MODE"))
+        #expect(!ServerProfile.isValidEnvironmentKey("SERVER-MODE"))
+        #expect(!ServerProfile.isValidEnvironmentKey("1PORT"))
+    }
+
+    @Test("Joomla 6 is stopped before it can start on PHP 8.2")
+    func joomlaMinimumPHP() {
+        var profile = ServerProfile()
+        profile.templateId = "joomla6"
+        profile.phpVersion = "8.2"
+        #expect(profile.validationIssues.contains { $0.contains("Joomla 6 requires PHP 8.3") })
+        #expect(ServerProfile.phpVersion("8.3", isAtLeast: "8.3"))
+        #expect(ServerProfile.phpVersion("8.4", isAtLeast: "8.3"))
+        #expect(!ServerProfile.phpVersion("8.2", isAtLeast: "8.3"))
+    }
+
+    @Test("PHP limits use the same portable shape as Windows")
+    func phpLimits() {
+        #expect(ServerProfile.isValidPHPSize("256M"))
+        #expect(ServerProfile.isValidPHPSize("-1"))
+        #expect(!ServerProfile.isValidPHPSize("256 MB"))
+        #expect(!ServerProfile.isValidPHPSize("1T"))
     }
 }
 

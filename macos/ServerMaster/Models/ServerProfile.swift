@@ -309,12 +309,40 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
         if hstsEnabled && !(httpsEnabled && engine.supportsHTTPS) {
             issues.append(String(localized: "HSTS is on without HTTPS — the header will have no effect."))
         }
-        if engine == .phpFpm && !phpVersion.trimmingCharacters(in: .whitespaces).isEmpty {
+        if engine.runsPHP {
+            if !Self.isValidPHPSize(phpMemoryLimit) {
+                issues.append(String(localized: "PHP memory limit must be a number with optional K, M or G suffix, or -1."))
+            }
+            if !Self.isValidPHPSize(phpUploadMaxFilesize) {
+                issues.append(String(localized: "PHP upload limit must be a number with optional K, M or G suffix, or -1."))
+            }
+            if phpMaxExecutionTime < 1 || phpMaxExecutionTime > 86_400 {
+                issues.append(String(localized: "PHP execution time must be between 1 and 86400 seconds."))
+            }
+        }
+        if engine.runsPHP && !phpVersion.trimmingCharacters(in: .whitespaces).isEmpty {
             let version = phpVersion.trimmingCharacters(in: .whitespaces)
-            let candidates = ["/opt/homebrew/opt/php@\(version)/sbin/php-fpm",
-                              "/usr/local/opt/php@\(version)/sbin/php-fpm"]
+            let binary = engine == .phpBuiltIn ? "php" : "php-fpm"
+            let folder = engine == .phpBuiltIn ? "bin" : "sbin"
+            let candidates = ["/opt/homebrew/opt/php@\(version)/\(folder)/\(binary)",
+                              "/usr/local/opt/php@\(version)/\(folder)/\(binary)"]
             if !candidates.contains(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
                 issues.append(String(localized: "PHP \(version) is not installed. Run: brew install php@\(version)"))
+            }
+        }
+        if templateId == "joomla6", !Self.phpVersion(phpVersion, isAtLeast: "8.3") {
+            issues.append(String(localized: "Joomla 6 requires PHP 8.3 or newer. Select PHP 8.3 or later for this profile."))
+        }
+        if engine == .httpServer && cacheSeconds < -1 {
+            issues.append(String(localized: "Cache time must be -1 or more seconds."))
+        }
+        var environmentNames = Set<String>()
+        for variable in environment {
+            let key = variable.key.trimmingCharacters(in: .whitespaces)
+            if !Self.isValidEnvironmentKey(key) {
+                issues.append(String(localized: "Invalid environment variable name: \(variable.key)"))
+            } else if !environmentNames.insert(key.uppercased()).inserted {
+                issues.append(String(localized: "Duplicate environment variable: \(key)"))
             }
         }
         if customErrorPages && !engine.supportsErrorPages {
@@ -338,6 +366,34 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
             dict[item.key.trimmingCharacters(in: .whitespaces)] = item.value
         }
         return dict
+    }
+
+    static func isValidEnvironmentKey(_ key: String) -> Bool {
+        guard let first = key.unicodeScalars.first,
+              CharacterSet.letters.contains(first) || first == "_",
+              key.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || $0 == "_" })
+        else { return false }
+        return true
+    }
+
+    static func isValidPHPSize(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed == "-1" { return true }
+        return trimmed.range(of: #"^\d{1,9}[KMG]?$"#, options: .regularExpression) != nil
+    }
+
+    static func phpVersion(_ raw: String, isAtLeast minimum: String) -> Bool {
+        func pieces(_ value: String) -> [Int] {
+            value.split(separator: ".").map { Int($0) ?? 0 }
+        }
+        let actual = pieces(raw)
+        let required = pieces(minimum)
+        for index in 0..<max(actual.count, required.count) {
+            let left = index < actual.count ? actual[index] : 0
+            let right = index < required.count ? required[index] : 0
+            if left != right { return left > right }
+        }
+        return true
     }
 
     /// A copy for duplicating a profile.

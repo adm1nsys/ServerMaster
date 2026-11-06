@@ -123,6 +123,10 @@ nonisolated struct ProfileTemplate: Identifiable, Codable, Sendable, Equatable {
         profile.phpMaxExecutionTime = settings.phpMaxExecutionTime
         profile.phpVersion = phpVersion
         profile.nodeEntryFile = settings.nodeEntryFile
+        // The Windows catalogue opens a newly started template in the browser.
+        // Keep the shared starter behaviour rather than making a transferred
+        // project feel different on the other platform.
+        profile.openBrowserOnStart = true
         if let icon = settings.iconName { profile.iconName = icon }
         return profile
     }
@@ -517,6 +521,16 @@ nonisolated extension ProfileTemplate {
             settings: phpSettings(engine: .apachePHP)),
 
         // ── Runtimes and tools ───────────────────────────────────────────
+        ProfileTemplate(
+            id: "php", title: String(localized: "PHP site"),
+            summary: String(localized: "PHP entry page"),
+            symbol: "curlybraces", category: .runtimes,
+            guideAnchor: "php", rootHint: nil,
+            folderAdvice: String(localized: "Choose the folder with index.php."),
+            needsDatabase: false, phpVersion: "",
+            questions: [.folder, .name, .port, .phpVersion],
+            settings: phpSettings(engine: .phpBuiltIn)),
+
         ProfileTemplate(
             id: "node-script", title: String(localized: "Node.js server"),
             summary: String(localized: "Your own server.js or an npm entry point"),
