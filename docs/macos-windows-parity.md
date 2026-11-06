@@ -24,6 +24,10 @@ Safari-extension integration instead of imitating the Windows tray UI.
 - [x] Profile validation follows the shared rules: PHP size/time values,
   environment-variable names and duplicates, HTTP cache values, and Joomla 6's
   PHP 8.3 minimum are stopped before a server is started.
+- [x] Each platform reads only its own update manifest and opens an immutable
+  platform release (`macos-v…`, `windows-v…` or `cli-v…`), never a folder of
+  compiled binaries in the source repository. Older macOS settings pointing to
+  root `lastversion.txt` migrate to `updates/maclastversion.txt`.
 
 ## Server workbench
 

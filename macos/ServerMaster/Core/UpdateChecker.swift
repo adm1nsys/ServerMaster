@@ -3,10 +3,9 @@
 //  ServerMaster
 //
 //  Update checking on a simple scheme:
-//    lastversion.txt in the repository root holds the latest version number,
-//    next to it a mac/<version> folder holds the build.
-//  If the version in the file is greater than the installed one — show a banner
-//  linking to that folder. Nothing is downloaded and nothing is executed.
+//    updates/maclastversion.txt holds the latest version number.
+//  If it is newer than the installed app, offer its immutable GitHub Release.
+//  Nothing is downloaded and nothing is executed by the checker.
 //
 
 import Foundation
@@ -21,8 +20,8 @@ nonisolated struct ReleaseInfo: Sendable, Equatable {
     var publishedAt: Date?
     /// The branch the version was found in.
     var branch: String = ""
-    /// The build folder exists — the link works.
-    var buildFolderExists: Bool = true
+    /// The immutable GitHub Release exists — the link works.
+    var releaseExists: Bool = true
 }
 
 nonisolated enum UpdateState: Equatable, Sendable {
@@ -46,11 +45,15 @@ final class UpdateChecker {
         didSet { if state == .notConfigured && !normalizedRepository.isEmpty { state = .idle } }
     }
 
-    /// The file in the repository root holding the latest version number.
-    var versionFile: String = "lastversion.txt"
+    /// The small macOS-channel manifest committed with a completed release.
+    var versionFile: String = "updates/maclastversion.txt"
 
-    /// The builds folder: a subfolder named after the version is expected inside it.
+    /// Kept only to read settings written by older apps. Downloads are releases,
+    /// never directories full of binaries committed to Git.
     var buildsFolder: String = "mac"
+
+    /// macOS releases use tags such as `macos-v2.0.0`.
+    var releaseTagPrefix: String = "macos-v"
 
     /// The installed version. A separate property so it can be checked in tests.
     var currentVersion: String = AppInfo.version
@@ -126,10 +129,10 @@ final class UpdateChecker {
                     return
                 }
 
-                let folder = "\(buildsFolder)/\(latest)"
-                let exists = await buildFolderExists(repo: repo, branch: branch, folder: folder)
+                let tag = "\(releaseTagPrefix)\(latest)"
+                let exists = await releaseExists(repo: repo, tag: tag)
                 let pageURL = exists
-                    ? "\(siteBaseURL)/\(repo)/tree/\(branch)/\(folder)"
+                    ? "\(siteBaseURL)/\(repo)/releases/tag/\(tag)"
                     : "\(siteBaseURL)/\(repo)"
 
                 state = .available(ReleaseInfo(
@@ -139,7 +142,7 @@ final class UpdateChecker {
                     pageURL: pageURL,
                     publishedAt: nil,
                     branch: branch,
-                    buildFolderExists: exists))
+                    releaseExists: exists))
                 return
 
             } catch {
@@ -154,10 +157,11 @@ final class UpdateChecker {
         }
     }
 
-    /// Does the mac/<version> folder exist — otherwise the link would lead nowhere.
-    private func buildFolderExists(repo: String, branch: String, folder: String) async -> Bool {
-        let encoded = folder.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? folder
-        guard let url = URL(string: "\(apiBaseURL)/repos/\(repo)/contents/\(encoded)?ref=\(branch)") else {
+    /// Does the tag have a published release? A manifest may be committed before
+    /// a release finishes uploading, so never lead someone to an invented URL.
+    private func releaseExists(repo: String, tag: String) async -> Bool {
+        let encoded = tag.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? tag
+        guard let url = URL(string: "\(apiBaseURL)/repos/\(repo)/releases/tags/\(encoded)") else {
             return false
         }
         guard let (_, response) = try? await fetch(url),

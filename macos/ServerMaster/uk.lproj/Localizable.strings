@@ -420,6 +420,12 @@
 "Block dotfiles (.env, .git and similar)" = "Блокувати приховані файли (.env, .git тощо)";
 "Browsers trust this certificate — no warning." = "Браузери довіряють цьому сертифікату — попередження не буде.";
 "Builds folder" = "Тека збірок";
+"Open release" = "Відкрити реліз";
+"Installed %@. The GitHub Release is ready to download." = "Встановлено %@. Реліз GitHub готовий до завантаження.";
+"Installed %@. The release is not published yet — the repository root will open." = "Встановлено %@. Реліз ще не опубліковано — відкриється корінь репозиторію.";
+"The app reads the version number from the update manifest and, if it is higher than the installed one, opens its immutable GitHub Release. Nothing is downloaded or run automatically." = "Програма читає номер версії з маніфесту оновлень і, якщо він новіший за встановлений, відкриває незмінний реліз GitHub. Нічого не завантажується й не запускається автоматично.";
+"The macOS release tag is macos-v<version>. We look in the main and master branches for the manifest." = "Тег релізу macOS має вигляд macos-v<version>. Маніфест шукається у гілках main і master.";
+"The GitHub Release for macos-v%@ is not published yet — the repository root will open instead." = "Реліз GitHub для macos-v%@ ще не опубліковано — натомість відкриється корінь репозиторію.";
 "Built against %@" = "Зібрано під %@";
 "Bundled with the app — nothing to install" = "Постачається з програмою — встановлювати нічого";
 "CMS with pretty URLs" = "CMS зі зрозумілими URL";

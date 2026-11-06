@@ -547,19 +547,15 @@ struct AppSettingsView: View {
                     }
                     HStack {
                         Text("Version file").frame(minWidth: 130, idealWidth: 190, maxWidth: 210, alignment: .leading)
-                        TextField("lastversion.txt", text: $model.settings.updateVersionFile)
+                        TextField("updates/maclastversion.txt", text: $model.settings.updateVersionFile)
                             .font(.system(.callout, design: .monospaced))
-                            .frame(width: 160)
-                        Text("Builds folder").frame(minWidth: 80, idealWidth: 110, alignment: .trailing)
-                        TextField("mac", text: $model.settings.updateBuildsFolder)
-                            .font(.system(.callout, design: .monospaced))
-                            .frame(width: 90)
+                            .frame(width: 240)
                         Spacer()
                     }
 
                     if model.updates.isConfigured {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("The app reads the version number from a file in the repository root and, if it is higher than the installed one, gives you a link to the build folder. Nothing is downloaded or run automatically.")
+                            Text("The app reads the version number from the update manifest and, if it is higher than the installed one, opens its immutable GitHub Release. Nothing is downloaded or run automatically.")
                                 .font(.caption).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(model.updates.versionFileURL)
@@ -567,7 +563,7 @@ struct AppSettingsView: View {
                                 .foregroundStyle(.tertiary)
                                 .textSelection(.enabled)
                                 .lineLimit(1).truncationMode(.middle)
-                            Text("The build is expected in \(model.updates.buildsFolder)/<version>. We look in the main and master branches.")
+                            Text("The macOS release tag is macos-v<version>. We look in the main and master branches for the manifest.")
                                 .font(.caption2).foregroundStyle(.tertiary)
                         }
                     } else {
@@ -690,13 +686,13 @@ struct AppSettingsView: View {
                 }
                 Text("Installed \(AppInfo.version), repository has \(release.version) (branch \(release.branch)).")
                     .font(.caption).foregroundStyle(.secondary)
-                if !release.buildFolderExists {
-                    Label("Folder \(model.updates.buildsFolder)/\(release.version) not found — the repository root will open instead.",
+                if !release.releaseExists {
+                    Label("The GitHub Release for macos-v\(release.version) is not published yet — the repository root will open instead.",
                           systemImage: "exclamationmark.triangle.fill")
                         .font(.caption).foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Button(release.buildFolderExists ? "Open the build folder" : "Open repository") {
+                Button(release.releaseExists ? "Open release" : "Open repository") {
                     model.updates.openReleasePage()
                 }
                 .modifier(ChipStyle())

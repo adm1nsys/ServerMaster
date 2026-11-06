@@ -1189,7 +1189,10 @@ final class AppModel {
         let defaults = AppSettings()
         var migrated = false
         if settings.updateRepository.isEmpty { settings.updateRepository = defaults.updateRepository; migrated = true }
-        if settings.updateVersionFile.isEmpty { settings.updateVersionFile = defaults.updateVersionFile; migrated = true }
+        if settings.updateVersionFile.isEmpty || settings.updateVersionFile == "lastversion.txt" {
+            settings.updateVersionFile = defaults.updateVersionFile
+            migrated = true
+        }
         if settings.updateBuildsFolder.isEmpty { settings.updateBuildsFolder = defaults.updateBuildsFolder; migrated = true }
         if migrated { saveSettings() }
 

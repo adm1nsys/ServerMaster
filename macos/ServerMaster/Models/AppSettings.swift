@@ -149,7 +149,7 @@ nonisolated struct AppSettings: Codable, Sendable, Equatable {
 
     // Updates
     var updateRepository: String = "adm1nsys/ServerMaster"
-    var updateVersionFile: String = "lastversion.txt"
+    var updateVersionFile: String = "updates/maclastversion.txt"
     var updateBuildsFolder: String = "mac"
     var checkUpdatesOnLaunch: Bool = false
     var lastUpdateCheck: Date? = nil

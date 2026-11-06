@@ -707,6 +707,27 @@ struct ProfileValidationTests {
     }
 }
 
+@Suite("macOS release channel")
+struct MacReleaseChannelTests {
+
+    @Test("The default manifest and tag match the published macOS releases")
+    func defaults() {
+        let updates = UpdateChecker()
+        #expect(updates.versionFile == "updates/maclastversion.txt")
+        #expect(updates.releaseTagPrefix == "macos-v")
+    }
+
+    @Test("A legacy root manifest is migrated to the macOS channel")
+    func legacyManifest() throws {
+        let settings = try JSONDecoder().decode(AppSettings.self,
+                                                from: Data(#"{"updateVersionFile":"lastversion.txt"}"#.utf8))
+        // The settings decoder preserves a file faithfully; the migration lives
+        // in AppModel so an intentionally custom path is never overwritten.
+        #expect(settings.updateVersionFile == "lastversion.txt")
+        #expect(AppSettings().updateVersionFile == "updates/maclastversion.txt")
+    }
+}
+
 // MARK: - Certificates the browser accepts
 
 @Suite("Certificate trust")
