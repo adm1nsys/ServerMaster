@@ -63,9 +63,9 @@ nonisolated enum WebToPrintRecipe {
         }
 
         let wp = try await wordpressCLI(log: log)
-        try await run(wp, ["core", "is-installed"], root: root, log: log, allowFailure: true)
         let check = await command(wp, ["core", "is-installed"], root: root)
-        if !check.succeeded {
+        let isFreshInstall = !check.succeeded
+        if isFreshInstall {
             let adminPassword = randomSecret()
             try await run(wp, ["core", "install", "--url=\(profile.address)",
                                "--title=ServerMaster Web-to-Print",
@@ -99,7 +99,11 @@ nonisolated enum WebToPrintRecipe {
         try await run(wp, ["option", "update", "woocommerce_currency", "UAH"], root: root, log: log)
 
         if template.recipeKind == "wordpress-w2p-showcase" {
-            try await seedShowcase(wp, root: root, log: log)
+            // Language packs need an internet connection once. They are optional so
+            // an offline local install remains usable, just in its fallback locale.
+            try await run(wp, ["language", "core", "install", "uk", "--activate"], root: root, log: log, allowFailure: true)
+            try await run(wp, ["language", "plugin", "install", "woocommerce", "uk"], root: root, log: log, allowFailure: true)
+            try await seedShowcase(wp, root: root, log: log, isFreshInstall: isFreshInstall)
         }
         try writeState(.init(recipeKind: template.recipeKind, databaseName: name, completedAt: .now), in: root)
         log.system("Web-to-Print preparation completed. Open \(profile.address).")
@@ -177,8 +181,10 @@ nonisolated enum WebToPrintRecipe {
         if !result.succeeded { throw RecipeError.commandFailed(result.combined) }
     }
 
-    private static func seedShowcase(_ wp: URL, root: String, log: ConsoleLog) async throws {
+    private static func seedShowcase(_ wp: URL, root: String, log: ConsoleLog, isFreshInstall: Bool) async throws {
+        let freshInstall = isFreshInstall ? "true" : "false"
         let php = """
+        $sm_fresh_install = \(freshInstall);
         if (!class_exists('WooCommerce')) { WP_CLI::error('WooCommerce is not active.'); }
         update_option('blogname', 'Друкарня «Відбиток»');
         update_option('blogdescription', 'Онлайн-замовлення друкованої продукції');
@@ -186,10 +192,17 @@ nonisolated enum WebToPrintRecipe {
         foreach (array('woocommerce_currency' => 'UAH', 'woocommerce_currency_pos' => 'right_space',
           'woocommerce_price_num_decimals' => '0', 'woocommerce_price_thousand_sep' => ' ',
           'woocommerce_price_decimal_sep' => ',', 'woocommerce_default_country' => 'UA',
-          'woocommerce_store_city' => 'Київ', 'woocommerce_allow_tracking' => 'no',
-          'woocommerce_enable_guest_checkout' => 'yes') as $key => $value) { update_option($key, $value); }
+          'woocommerce_store_address' => 'вул. Друкарська, 1', 'woocommerce_store_city' => 'Київ',
+          'woocommerce_store_postcode' => '01001', 'woocommerce_allow_tracking' => 'no',
+          'woocommerce_coming_soon' => 'no', 'woocommerce_store_pages_only' => 'no',
+          'woocommerce_task_list_hidden' => 'yes', 'woocommerce_task_list_complete' => 'yes',
+          'woocommerce_show_marketplace_suggestions' => 'no', 'woocommerce_calc_taxes' => 'no',
+          'woocommerce_enable_guest_checkout' => 'yes', 'woocommerce_ship_to_countries' => '') as $key => $value) { update_option($key, $value); }
         update_option('woocommerce_allowed_countries', 'specific');
         update_option('woocommerce_specific_allowed_countries', array('UA'));
+        update_option('woocommerce_default_customer_address', 'base');
+        update_option('woocommerce_onboarding_profile', array('skipped' => true, 'completed' => true));
+        delete_transient('_wc_activation_redirect');
         update_option('woocommerce_cod_settings', array('enabled'=>'yes','title'=>'Оплата при отриманні',
           'description'=>'Оплата готової продукції у друкарні або на пошті.'));
         update_option('woocommerce_bacs_settings', array('enabled'=>'yes','title'=>'Оплата на рахунок',
@@ -200,35 +213,72 @@ nonisolated enum WebToPrintRecipe {
           $pickup = $zone->add_shipping_method('local_pickup'); update_option('woocommerce_local_pickup_'.$pickup.'_settings',array('title'=>'Самовивіз з друкарні','tax_status'=>'none','cost'=>'0')); }
 
         function sm_attribute($slug, $name, $terms) {
-          if (!wc_attribute_taxonomy_id_by_name($slug)) wc_create_attribute(array('name'=>$name,'slug'=>$slug,'type'=>'select'));
+          if (!wc_attribute_taxonomy_id_by_name($slug)) wc_create_attribute(array('name'=>$name,'slug'=>$slug,'type'=>'select','order_by'=>'menu_order','has_archives'=>false));
           $taxonomy = 'pa_' . $slug;
           if (!taxonomy_exists($taxonomy)) register_taxonomy($taxonomy, array('product'), array('hierarchical'=>false,'show_ui'=>false));
           foreach ($terms as $termSlug=>$termName) if (!get_term_by('slug',$termSlug,$taxonomy)) wp_insert_term($termName,$taxonomy,array('slug'=>$termSlug));
         }
         sm_attribute('format','Формат',array('90x50'=>'90×50 мм','85x55'=>'85×55 мм','a6'=>'A6 (105×148 мм)','a5'=>'A5 (148×210 мм)','a4'=>'A4 (210×297 мм)','a3'=>'A3 (297×420 мм)','a2'=>'A2 (420×594 мм)','a1'=>'A1 (594×841 мм)','50x50'=>'50×50 мм','70x70'=>'70×70 мм'));
         sm_attribute('papir','Папір',array('kreid-300'=>'Крейдований 300 г/м²','dyzain-290'=>'Дизайнерський 290 г/м²','lion-250'=>'Льон 250 г/м²','kreid-130'=>'Крейдований 130 г/м²','kreid-170'=>'Крейдований 170 г/м²','foto-200'=>'Фотопапір 200 г/м²','samoklei-glianets'=>'Самоклейка глянцева','samoklei-mat'=>'Самоклейка матова'));
-        sm_attribute('tyrazh','Тираж',array('10'=>'10 шт.','100'=>'100 шт.','500'=>'500 шт.','1000'=>'1000 шт.','5000'=>'5000 шт.'));
-        sm_attribute('obrobka','Обробка',array('bez'=>'Без обробки','lam-mat'=>'Ламінування матове','lam-hlianets'=>'Ламінування глянцеве','porizka'=>'Контурна порізка'));
+        sm_attribute('tyrazh','Тираж',array('10'=>'10 шт.','50'=>'50 шт.','100'=>'100 шт.','500'=>'500 шт.','1000'=>'1000 шт.','5000'=>'5000 шт.'));
+        sm_attribute('obrobka','Обробка',array('bez'=>'Без обробки','lam-mat'=>'Ламінування матове','lam-hlianets'=>'Ламінування глянцеве','kuty'=>'Скруглення кутів','porizka'=>'Контурна порізка'));
 
-        function sm_product($item) {
+        // Generated artwork makes the empty local catalogue presentation-ready.
+        // Windows has Segoe fonts; macOS uses the bundled Helvetica or Arial font.
+        function sm_image($slug, $title, $label, $colour, $w, $h) {
+          if (!function_exists('imagecreatetruecolor')) return 0;
+          $existing=get_page_by_path('sm-'.$slug,OBJECT,'attachment'); if($existing) return $existing->ID;
+          $size=800; $im=imagecreatetruecolor($size,$size); list($r,$g,$b)=sscanf($colour,'#%02x%02x%02x');
+          for($y=0;$y<$size;$y++){ $k=1-.38*$y/$size; imageline($im,0,$y,$size,$y,imagecolorallocate($im,(int)($r*$k),(int)($g*$k),(int)($b*$k))); }
+          $scale=430/max($w,$h); $sw=(int)($w*$scale); $sh=(int)($h*$scale); $x=(int)(($size-$sw)/2); $top=(int)(($size-$sh)/2)-40;
+          imagefilledrectangle($im,$x+16,$top+20,$x+$sw+16,$top+$sh+20,imagecolorallocatealpha($im,0,0,0,85));
+          imagefilledrectangle($im,$x,$top,$x+$sw,$top+$sh,imagecolorallocate($im,251,250,247));
+          foreach(array(array(0,174,239),array(236,0,140),array(255,222,0),array(35,31,32)) as $i=>$m){ $mx=$x+14+$i*26; imagefilledrectangle($im,$mx,$top+$sh-30,$mx+20,$top+$sh-12,imagecolorallocate($im,$m[0],$m[1],$m[2])); }
+          $fonts=array('/System/Library/Fonts/Helvetica.ttc','/System/Library/Fonts/Supplemental/Arial Bold.ttf'); $font=''; foreach($fonts as $candidate) if(file_exists($candidate)){ $font=$candidate; break; }
+          if(function_exists('imagettftext') && $font){ $white=imagecolorallocate($im,255,255,255); $box=imagettfbbox(46,0,$font,$title); imagettftext($im,46,0,(int)(($size-($box[2]-$box[0]))/2),$size-78,$white,$font,$title); $ink=imagecolorallocate($im,(int)($r*.7),(int)($g*.7),(int)($b*.7)); $box=imagettfbbox(24,0,$font,$label); imagettftext($im,24,0,(int)($x+($sw-($box[2]-$box[0]))/2),(int)($top+$sh/2+10),$ink,$font,$label); }
+          ob_start(); imagepng($im); $png=ob_get_clean(); imagedestroy($im); $upload=wp_upload_bits('sm-'.$slug.'.png',null,$png); if(!empty($upload['error'])) return 0;
+          $id=wp_insert_attachment(array('post_title'=>$title,'post_name'=>'sm-'.$slug,'post_mime_type'=>'image/png','post_status'=>'inherit'),$upload['file']); require_once ABSPATH.'wp-admin/includes/image.php'; wp_update_attachment_metadata($id,wp_generate_attachment_metadata($id,$upload['file'])); return $id;
+        }
+
+        $category=get_term_by('slug','drukovana-produktsiia','product_cat'); $categoryId=$category ? $category->term_id : 0;
+        if(!$categoryId){ $created=wp_insert_term('Друкована продукція','product_cat',array('slug'=>'drukovana-produktsiia')); $categoryId=is_wp_error($created)?0:$created['term_id']; }
+        $requirements='<h3>Вимоги до макета</h3><ul><li>PDF (PDF/X-1a) або TIFF, 300 dpi</li><li>Колірна модель CMYK, без RGB та Pantone</li><li>Вильоти 2 мм з кожного боку, важливі елементи — не ближче 3 мм до краю</li><li>Шрифти переведені в криві</li></ul><p>Перед друком дизайнер перевіряє макет і надсилає підтвердження.</p>';
+
+        function sm_product($item, $categoryId, $requirements) {
           $existing = get_page_by_path($item['slug'], OBJECT, 'product'); if ($existing) return $existing->ID;
-          $product = new WC_Product_Variable(); $product->set_name($item['name']); $product->set_slug($item['slug']); $product->set_status('publish'); $product->set_description($item['description']);
+          $product = new WC_Product_Variable(); $product->set_name($item['name']); $product->set_slug($item['slug']); $product->set_status('publish'); $product->set_short_description($item['description']); $product->set_description('<p>'.$item['description'].'</p>'.$requirements); if($categoryId) $product->set_category_ids(array($categoryId));
           $attributes = array(); foreach ($item['options'] as $slug=>$values) { $ids=array(); foreach($values as $value) { $term=get_term_by('slug',$value,'pa_'.$slug); if($term) $ids[]=$term->term_id; } $a=new WC_Product_Attribute(); $a->set_id(wc_attribute_taxonomy_id_by_name($slug)); $a->set_name('pa_'.$slug); $a->set_options($ids); $a->set_visible(true); $a->set_variation(true); $attributes[]=$a; }
-          $product->set_attributes($attributes); $product->set_default_attributes(array('pa_format'=>$item['options']['format'][0],'pa_papir'=>$item['options']['papir'][0],'pa_tyrazh'=>$item['options']['tyrazh'][0],'pa_obrobka'=>$item['options']['obrobka'][0])); $id=$product->save();
+          $product->set_attributes($attributes); $product->set_default_attributes(array('pa_format'=>$item['options']['format'][0],'pa_papir'=>$item['options']['papir'][0],'pa_tyrazh'=>$item['options']['tyrazh'][0],'pa_obrobka'=>$item['options']['obrobka'][0])); $image=sm_image($item['slug'],$item['name'],$item['label'],$item['colour'],$item['w'],$item['h']); if($image) $product->set_image_id($image); $id=$product->save();
           foreach($item['prices'] as $run=>$price) { $variation=new WC_Product_Variation(); $variation->set_parent_id($id); $variation->set_attributes(array('pa_format'=>'','pa_papir'=>'','pa_tyrazh'=>(string)$run,'pa_obrobka'=>'')); $variation->set_regular_price((string)$price); $variation->set_stock_status('instock'); $variation->set_status('publish'); $variation->save(); } WC_Product_Variable::sync($id); return $id;
         }
         $products=array(
-          array('slug'=>'vizytky','name'=>'Візитки','description'=>'Класичні візитки на щільному папері: друк з двох боків, ламінування та скруглення кутів на вибір.','options'=>array('format'=>array('90x50','85x55'),'papir'=>array('kreid-300','dyzain-290','lion-250'),'tyrazh'=>array('100','500','1000'),'obrobka'=>array('bez','lam-mat','lam-hlianets','kuty')),'prices'=>array('100'=>350,'500'=>890,'1000'=>1290)),
-          array('slug'=>'flaiery','name'=>'Флаєри','description'=>'Рекламні флаєри та листівки для акцій і заходів. Що більший тираж, то нижча ціна за примірник.','options'=>array('format'=>array('a6','a5','a4'),'papir'=>array('kreid-130','kreid-170'),'tyrazh'=>array('500','1000','5000'),'obrobka'=>array('bez','lam-hlianets')),'prices'=>array('500'=>790,'1000'=>1190,'5000'=>3990)),
-          array('slug'=>'plakaty','name'=>'Плакати','description'=>'Плакати й афіші великого формату для вітрин, виставок і подій.','options'=>array('format'=>array('a3','a2','a1'),'papir'=>array('kreid-170','foto-200'),'tyrazh'=>array('10','50','100'),'obrobka'=>array('bez','lam-mat')),'prices'=>array('10'=>450,'50'=>1690,'100'=>2990)),
-          array('slug'=>'nalipky','name'=>'Наліпки','description'=>'Наліпки на самоклейці з контурною порізкою — для пакування, етикеток і мерчу.','options'=>array('format'=>array('50x50','70x70','a6'),'papir'=>array('samoklei-glianets','samoklei-mat'),'tyrazh'=>array('100','500','1000'),'obrobka'=>array('porizka','bez')),'prices'=>array('100'=>390,'500'=>1150,'1000'=>1890))
-        ); foreach($products as $item) sm_product($item);
+          array('slug'=>'vizytky','name'=>'Візитки','label'=>'90 × 50 мм','colour'=>'#3d5afe','w'=>90,'h'=>50,'description'=>'Класичні візитки на щільному папері: друк з двох боків, ламінування та скруглення кутів на вибір.','options'=>array('format'=>array('90x50','85x55'),'papir'=>array('kreid-300','dyzain-290','lion-250'),'tyrazh'=>array('100','500','1000'),'obrobka'=>array('bez','lam-mat','lam-hlianets','kuty')),'prices'=>array('100'=>350,'500'=>890,'1000'=>1290)),
+          array('slug'=>'flaiery','name'=>'Флаєри','label'=>'A5','colour'=>'#e5484d','w'=>148,'h'=>210,'description'=>'Рекламні флаєри та листівки для акцій і заходів. Що більший тираж, то нижча ціна за примірник.','options'=>array('format'=>array('a6','a5','a4'),'papir'=>array('kreid-130','kreid-170'),'tyrazh'=>array('500','1000','5000'),'obrobka'=>array('bez','lam-hlianets')),'prices'=>array('500'=>790,'1000'=>1190,'5000'=>3990)),
+          array('slug'=>'plakaty','name'=>'Плакати','label'=>'A2','colour'=>'#12a594','w'=>420,'h'=>594,'description'=>'Плакати й афіші великого формату для вітрин, виставок і подій.','options'=>array('format'=>array('a3','a2','a1'),'papir'=>array('kreid-170','foto-200'),'tyrazh'=>array('10','50','100'),'obrobka'=>array('bez','lam-mat')),'prices'=>array('10'=>450,'50'=>1690,'100'=>2990)),
+          array('slug'=>'nalipky','name'=>'Наліпки','label'=>'50 × 50 мм','colour'=>'#f5a524','w'=>50,'h'=>50,'description'=>'Наліпки на самоклейці з контурною порізкою — для пакування, етикеток і мерчу.','options'=>array('format'=>array('50x50','70x70','a6'),'papir'=>array('samoklei-glianets','samoklei-mat'),'tyrazh'=>array('100','500','1000'),'obrobka'=>array('porizka','bez')),'prices'=>array('100'=>390,'500'=>1150,'1000'=>1890))
+        ); foreach($products as $item) sm_product($item,$categoryId,$requirements);
         foreach(array('shop'=>'Каталог','cart'=>'Кошик','checkout'=>'Оформлення замовлення','my-account'=>'Мій кабінет') as $slug=>$title) { $page=get_page_by_path($slug); if($page) wp_update_post(array('ID'=>$page->ID,'post_title'=>$title)); }
+        // Never alter a user's existing store on a retry. These are only the
+        // stock WordPress/Printcart pages of a fresh Showcase installation.
+        if ($sm_fresh_install) {
+          foreach(array('create-your-own','design-studio','nbd-logged','templates','designer','product-builder','raq','upload-design-file','upload-your-file') as $slug) { $page=get_page_by_path($slug); if($page && $page->post_status==='publish') wp_update_post(array('ID'=>$page->ID,'post_status'=>'private')); }
+          foreach(array(array('sample-page','page'),array('hello-world','post')) as $sample) { $post=get_page_by_path($sample[0],OBJECT,$sample[1]); if($post) wp_delete_post($post->ID,true); }
+        }
         $shop=wc_get_page_id('shop'); if($shop>0) { update_option('show_on_front','page'); update_option('page_on_front',$shop); }
         if (get_option('servermaster_showcase_orders') !== 'yes') {
-          foreach(array(array('vizytky','500','processing','Олена Коваль'),array('flaiery','1000','on-hold','Ігор Бондар'),array('plakaty','100','completed','Андрій Мельник'),array('nalipky','1000','processing','Марія Шевченко')) as $demo) { $post=get_page_by_path($demo[0],OBJECT,'product'); if(!$post) continue; $product=wc_get_product($post->ID); $children=$product ? $product->get_children() : array(); $variation=$children ? wc_get_product($children[0]) : null; if(!$variation) continue; $order=wc_create_order(); $order->add_product($variation,1,array('variation'=>array('attribute_pa_tyrazh'=>$demo[1]))); $order->set_billing_first_name($demo[3]); $order->set_billing_country('UA'); $order->set_payment_method('cod'); $order->set_payment_method_title('Оплата при отриманні'); $order->calculate_totals(false); $order->update_status($demo[2],'Демо-замовлення ServerMaster.'); }
+          $orders=array(
+            array('Олена','Коваль','', 'olena.koval@example.local','+380671112233','Київ','vizytky','500',array('format'=>'90x50','papir'=>'dyzain-290','obrobka'=>'lam-mat'),'processing','Макет у PDF, CMYK. Прошу скруглити кути.','Макет перевірено, передано в друк.',1),
+            array('Ігор','Бондар','Кав’ярня «Зерно»','zerno@example.local','+380503334455','Львів','flaiery','1000',array('format'=>'a5','papir'=>'kreid-170','obrobka'=>'lam-hlianets'),'on-hold','Флаєри для відкриття, потрібні до п’ятниці.','Очікуємо виправлений макет: текст ближче 3 мм до краю.',0),
+            array('Андрій','Мельник','Театр «Сцена»','scena@example.local','+380937778899','Одеса','plakaty','50',array('format'=>'a2','papir'=>'foto-200','obrobka'=>'bez'),'completed','Афіші вистави.','Видано клієнту.',3),
+            array('Марія','Шевченко','Пекарня «Колосок»','kolosok@example.local','+380665556677','Київ','nalipky','1000',array('format'=>'70x70','papir'=>'samoklei-mat','obrobka'=>'porizka'),'processing','Наліпки на коробки, контурна порізка по колу.','У порізці.',0)
+          );
+          foreach($orders as $o) { $post=get_page_by_path($o[6],OBJECT,'product'); if(!$post) continue; $product=wc_get_product($post->ID); $variation=null; foreach($product->get_children() as $childId) { $child=wc_get_product($childId); if($child && get_post_meta($childId,'attribute_pa_tyrazh',true)===$o[7]) { $variation=$child; break; } } if(!$variation) continue;
+            $order=wc_create_order(array('customer_note'=>$o[10])); $chosen=array('attribute_pa_tyrazh'=>$o[7]); foreach($o[8] as $slug=>$value) $chosen['attribute_pa_'.$slug]=$value; $order->add_product($variation,1,array('variation'=>$chosen));
+            $address=array('first_name'=>$o[0],'last_name'=>$o[1],'company'=>$o[2],'email'=>$o[3],'phone'=>$o[4],'city'=>$o[5],'country'=>'UA','address_1'=>'Відділення Нової Пошти №1'); $order->set_address($address,'billing'); $order->set_address($address,'shipping'); $order->set_payment_method('cod'); $order->set_payment_method_title('Оплата при отриманні');
+            $shipping=new WC_Order_Item_Shipping(); $shipping->set_method_title('Нова Пошта'); $shipping->set_method_id('flat_rate'); $shipping->set_total(80); $order->add_item($shipping); $order->set_date_created(time()-$o[12]*DAY_IN_SECONDS-3600); $order->calculate_totals(false); $order->update_status($o[9],'Демо-замовлення ServerMaster.'); $order->add_order_note($o[11]); }
           update_option('servermaster_showcase_orders','yes');
         }
+        WP_CLI::success('Друкарня «Відбиток» готова.');
         """
         try await run(wp, ["eval", php], root: root, log: log)
     }
