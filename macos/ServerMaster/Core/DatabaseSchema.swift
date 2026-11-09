@@ -101,6 +101,27 @@ nonisolated struct DatabaseUser: Identifiable, Sendable, Hashable {
     var id: String { "\(name)@\(host)" }
     var name: String
     var host: String
+    var isProtected: Bool { Self.isProtectedName(name) }
+
+    static func isProtectedName(_ name: String) -> Bool {
+        let name = name.lowercased()
+        return name == "root" || name.hasPrefix("mysql.") ||
+            ["servermaster_panel", "mysql", "mariadb.sys"].contains(name)
+    }
+
+    /// Account hosts can be names, IPv4/IPv6 addresses or MariaDB patterns.
+    /// SQL quoting is separate: never interpolate this value as SQL syntax.
+    static func normalizedHost(_ raw: String) -> String? {
+        let host = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty,
+              host.unicodeScalars.allSatisfy({ !CharacterSet.whitespacesAndNewlines.contains($0) && !CharacterSet.controlCharacters.contains($0) }) else { return nil }
+        return host
+    }
+
+    static var protectedMessage: String {
+        String(localized: "This system or ServerMaster account cannot be changed here.")
+    }
+
     /// Databases this account has been granted something on.
     var grants: [String] = []
 }
@@ -293,38 +314,52 @@ extension DatabaseService {
     }
 
     func createUser(_ name: String, host: String, password: String) async -> CommandResult {
-        guard Self.quoteString(name) != "''" , !name.isEmpty else {
+        guard !DatabaseUser.isProtectedName(name) else { return Self.refusal(DatabaseUser.protectedMessage) }
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
             return Self.refusal(String(localized: "A user needs a name."))
+        }
+        guard let accountHost = DatabaseUser.normalizedHost(host) else {
+            return Self.refusal(String(localized: "Enter an account host without spaces or control characters."))
         }
         // A user name is a string in MySQL grammar, not an identifier, so it is
         // quoted as one — which is also what makes an apostrophe in it safe.
-        let account = "\(Self.quoteString(name))@\(Self.quoteString(host.isEmpty ? "localhost" : host))"
+        let account = "\(Self.quoteString(name))@\(Self.quoteString(accountHost))"
         return await runDDL("CREATE USER \(account) IDENTIFIED BY \(Self.quoteString(password));",
-                            describing: String(localized: "User “\(name)” created."))
+                            describing: String(localized: "User “\(name)” created."), redacting: [password])
     }
 
     func dropUser(_ user: DatabaseUser) async -> CommandResult {
+        guard !user.isProtected else { return Self.refusal(DatabaseUser.protectedMessage) }
         let account = "\(Self.quoteString(user.name))@\(Self.quoteString(user.host))"
-        return await runDDL("DROP USER \(account);",
+        let result = await runDDL("DROP USER \(account);",
                             describing: String(localized: "User “\(user.name)” removed."))
+        if result.succeeded { await invalidateSavedCredentials(for: user) }
+        return result
     }
 
     func setPassword(of user: DatabaseUser, to password: String) async -> CommandResult {
+        guard !user.isProtected else { return Self.refusal(DatabaseUser.protectedMessage) }
         let account = "\(Self.quoteString(user.name))@\(Self.quoteString(user.host))"
-        return await runDDL("ALTER USER \(account) IDENTIFIED BY \(Self.quoteString(password));",
-                            describing: String(localized: "Password changed."))
+        let result = await runDDL("ALTER USER \(account) IDENTIFIED BY \(Self.quoteString(password));",
+                            describing: String(localized: "Password changed."), redacting: [password])
+        if result.succeeded { await invalidateSavedCredentials(for: user) }
+        return result
     }
 
     func grant(_ privileges: String, on database: String, to user: DatabaseUser) async -> CommandResult {
+        guard !user.isProtected else { return Self.refusal(DatabaseUser.protectedMessage) }
         guard let db = Self.quoteIdentifier(database) else {
             return Self.refusal(String(localized: "That is not a usable database name."))
         }
+        if privileges.uppercased() == "SELECT" { return await makeReadOnly(on: database, for: user) }
         let account = "\(Self.quoteString(user.name))@\(Self.quoteString(user.host))"
         return await runDDL("GRANT \(privileges) ON \(db).* TO \(account); FLUSH PRIVILEGES;",
                             describing: String(localized: "Granted on “\(database)”."))
     }
 
     func revokeAll(on database: String, from user: DatabaseUser) async -> CommandResult {
+        guard !user.isProtected else { return Self.refusal(DatabaseUser.protectedMessage) }
         guard let db = Self.quoteIdentifier(database) else {
             return Self.refusal(String(localized: "That is not a usable database name."))
         }
@@ -333,10 +368,88 @@ extension DatabaseService {
                             describing: String(localized: "Revoked on “\(database)”."))
     }
 
+    func makeReadOnly(on database: String, for user: DatabaseUser) async -> CommandResult {
+        guard !user.isProtected else { return Self.refusal(DatabaseUser.protectedMessage) }
+        guard state == .running else { return Self.refusal(String(localized: "The database server is not running.")) }
+        let account = "\(Self.quoteString(user.name))@\(Self.quoteString(user.host))"
+        let existing = await query(sql: "SHOW GRANTS FOR \(account);")
+        guard existing.succeeded else { return existing }
+        do {
+            let statements = try Self.readOnlyStatements(on: database, for: user,
+                grants: existing.stdout.split(separator: "\n").map(String.init))
+            return await runDDL(statements.joined(separator: "\n"),
+                describing: String(localized: "Read-only privileges applied on “\(database)”."))
+        } catch { return Self.refusal(error.localizedDescription) }
+    }
+
+    /// Replace only this database scope; broader/table/role grants need explicit
+    /// review instead of a misleading promise that this account is read-only.
+    nonisolated static func readOnlyStatements(on database: String, for user: DatabaseUser,
+                                               grants: [String]) throws -> [String] {
+        guard !user.isProtected else { throw AccountPolicyError(DatabaseUser.protectedMessage) }
+        guard let db = quoteIdentifier(database), !grants.isEmpty else {
+            throw AccountPolicyError(String(localized: "The account privileges could not be checked. Nothing was changed."))
+        }
+        let scope = db + ".*"
+        let account = "\(quoteString(user.name))@\(quoteString(user.host))"
+        var scoped = false
+        var grantOption = false
+        for grant in grants {
+            let pattern = #"^GRANT (.+?) ON (.+?) TO "#
+            let regex = try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+            guard let match = regex.firstMatch(in: grant, range: NSRange(grant.startIndex..., in: grant)),
+                  let privilegesRange = Range(match.range(at: 1), in: grant),
+                  let scopeRange = Range(match.range(at: 2), in: grant) else {
+                throw AccountPolicyError(String(localized: "This account has role or unrecognized grants. Review its grants manually; nothing was changed."))
+            }
+            let target = String(grant[scopeRange])
+            let privileges = grant[privilegesRange].uppercased()
+            let canGrant = grant.uppercased().contains("WITH GRANT OPTION")
+            if target == "*.*", privileges != "USAGE" || canGrant {
+                throw AccountPolicyError(String(localized: "This account has global privileges. Review its grants manually; nothing was changed."))
+            }
+            if target.hasPrefix(db + "."), target != scope {
+                throw AccountPolicyError(String(localized: "This account has table or column privileges on this database. Review its grants manually; nothing was changed."))
+            }
+            if target != scope, target.hasPrefix("`"), target.hasSuffix("`.*") {
+                let pattern = String(target.dropFirst().dropLast(3)).replacingOccurrences(of: "``", with: "`")
+                var regexPattern = "^"
+                var escaped = false
+                for character in pattern {
+                    if escaped {
+                        regexPattern += NSRegularExpression.escapedPattern(for: String(character))
+                        escaped = false
+                    } else if character == "\\" { escaped = true }
+                    else if character == "%" { regexPattern += ".*" }
+                    else if character == "_" { regexPattern += "." }
+                    else { regexPattern += NSRegularExpression.escapedPattern(for: String(character)) }
+                }
+                if escaped { regexPattern += NSRegularExpression.escapedPattern(for: "\\") }
+                regexPattern += "$"
+                if database.trimmingCharacters(in: .whitespacesAndNewlines).range(of: regexPattern, options: .regularExpression) != nil {
+                    throw AccountPolicyError(String(localized: "This account has overlapping database grants. Review its grants manually; nothing was changed."))
+                }
+            }
+            if target == scope { scoped = true; grantOption = canGrant }
+        }
+        var sql: [String] = []
+        if scoped { sql.append("REVOKE ALL PRIVILEGES ON \(scope) FROM \(account);") }
+        if grantOption { sql.append("REVOKE GRANT OPTION ON \(scope) FROM \(account);") }
+        sql.append("GRANT SELECT ON \(scope) TO \(account);")
+        return sql
+    }
+
+    nonisolated struct AccountPolicyError: LocalizedError {
+        var message: String
+        init(_ message: String) { self.message = message }
+        var errorDescription: String? { message }
+    }
+
     // MARK: Running one
 
-    private func runDDL(_ sql: String, describing success: String) async -> CommandResult {
-        let result = await query(sql: sql)
+    private func runDDL(_ sql: String, describing success: String, redacting secrets: [String] = []) async -> CommandResult {
+        guard state == .running else { return Self.refusal(String(localized: "The database server is not running.")) }
+        let result = await query(sql: sql, redacting: secrets)
         if result.succeeded {
             log.system(success)
         } else {

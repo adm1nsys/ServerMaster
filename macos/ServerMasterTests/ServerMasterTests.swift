@@ -20,6 +20,25 @@ import CryptoKit
 
 // MARK: - Guides
 
+@Suite("Joomla PHP built-in compatibility")
+struct JoomlaCompatibilityTests {
+    @Test("Only Joomla folders receive the compatibility router")
+    func detection() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(!PhpSiteCompatibility.isJoomla(root: root.path))
+        let uri = root.appendingPathComponent("libraries/src/Uri/Uri.php")
+        try FileManager.default.createDirectory(at: uri.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: uri)
+        #expect(!PhpSiteCompatibility.isJoomla(root: root.path))
+        let admin = root.appendingPathComponent("administrator/index.php")
+        try FileManager.default.createDirectory(at: admin.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: admin)
+        #expect(PhpSiteCompatibility.isJoomla(root: root.path))
+    }
+}
+
 @Suite("Guide links")
 struct GuideLinkTests {
 
@@ -102,6 +121,73 @@ struct BuildIdentifierTests {
         let summary = try? #require(released.summary)
         #expect(summary?.contains("26.0") == true)
         #expect(summary?.contains("·") == true)
+    }
+
+    @Test("Build-host beta and released Xcode versions remain separate")
+    func releasedXcodeOnBetaMacOS() {
+        let build = BuildIdentifier("arm.b27.3.xr27.3.uni")
+        #expect(build.host == "arm")
+        #expect(build.system == "27.3")
+        #expect(build.systemIsBeta)
+        #expect(build.beta == nil)
+        #expect(build.xcodeRelease == "27.3")
+        #expect(build.target == "uni")
+        #expect(build.systemName == String(localized: "macOS \("27.3") developer beta"))
+        #expect(build.toolchainName == String(localized: "Xcode \("27.3") release"))
+        #expect(build.summary == [build.systemName, build.toolchainName, build.targetName].compactMap { $0 }.joined(separator: " · "))
+    }
+
+    @Test("Release labels preserve distinct OS and toolchain versions and architecture aliases")
+    func modernVariants() {
+        let build = BuildIdentifier("intel.26.4.xr27.3.int")
+        #expect(build.system == "26.4" && !build.systemIsBeta)
+        #expect(build.xcodeRelease == "27.3")
+        #expect(build.targetName == String(localized: "Intel"))
+        let patch = BuildIdentifier("ARM.b27.3.1.XR27.3.2.UNI")
+        #expect(patch.system == "27.3.1" && patch.xcodeRelease == "27.3.2")
+        #expect(patch.systemIsBeta && patch.host == "arm" && patch.target == "uni")
+    }
+
+    @Test("Legacy Xcode beta labels are not presented as a beta macOS")
+    func legacyToolchain() {
+        let build = BuildIdentifier("arm.27.0.b6.uni")
+        #expect(build.beta == 6 && !build.systemIsBeta)
+        #expect(build.systemName == "macOS 27.0")
+        #expect(build.xcodeRelease == nil)
+        #expect(build.toolchainName == String(localized: "Xcode developer beta \("6")"))
+    }
+
+    @Test("Incomplete modern labels do not invent a version", arguments: [
+        "arm.b27.3.xr.uni", "arm.b27.3.xr27.uni", "arm.b27.3.xr27.3", "arm.b27.xr27.3.uni",
+        "arm.27.3.xr27.3.beta.uni", "arm.b27.3.xr27.3.uni-extra", "arm.b27.3.xr27.3.uni\n"
+    ])
+    func incompleteModern(_ raw: String) {
+        #expect(BuildIdentifier(raw).summary == nil)
+    }
+
+    @Test("Explicit OS and Xcode beta suffixes describe independent channels")
+    func explicitBuildLabel() {
+        let build = BuildIdentifier("arm.m27.3b.x27.3b1.uni")
+        #expect(build.host == "arm" && build.target == "uni")
+        #expect(build.system == "27.3" && build.systemIsBeta)
+        #expect(build.xcodeVersion == "27.3" && build.xcodeBeta == 1)
+        #expect(build.xcodeRelease == nil && build.beta == nil)
+        #expect(build.toolchainName == String(localized: "Xcode \("27.3") beta \("1")"))
+        let stable = BuildIdentifier("intel.m27.3.x27.3.int")
+        #expect(!stable.systemIsBeta && stable.xcodeBeta == nil)
+        #expect(stable.xcodeRelease == "27.3")
+        let mixed = BuildIdentifier("ARM.m27.3.1.X27.3.2b12.UNI")
+        #expect(!mixed.systemIsBeta && mixed.system == "27.3.1")
+        #expect(mixed.xcodeVersion == "27.3.2" && mixed.xcodeBeta == 12)
+        #expect(mixed.host == "arm" && mixed.target == "uni")
+    }
+
+    @Test("Incomplete explicit toolchain versions are rejected", arguments: [
+        "arm.m27b.x27.3b1.uni", "arm.m27.3b.x27b1.uni", "arm.m27.3b.x27.3b.uni",
+        "arm.m27.3b.x27.3b0.uni", "arm.m27.3b.x27.3b1.uni\n"
+    ])
+    func incompleteExplicit(_ raw: String) {
+        #expect(BuildIdentifier(raw).summary == nil)
     }
 
     @Test("A plain counter is not mistaken for a version")
@@ -273,8 +359,11 @@ struct ProfileTemplateTests {
     @Test("Every built-in template produces a profile with nothing left but the folder")
     func usable() {
         for template in ProfileTemplate.builtIn {
-            let profile = template.makeProfile(name: template.title, port: 8080,
+            var profile = template.makeProfile(name: template.title, port: 8080,
                                                root: NSTemporaryDirectory())
+            // TLS material is supplied by the wizard, not portable templates.
+            // Validate all other defaults without generating keys in a unit test.
+            profile.httpsEnabled = false
             let remaining = profile.validationIssues.filter { issue in
                 let text = issue.lowercased()
                 // The wizard asks for these separately; a bare template cannot
@@ -359,9 +448,17 @@ struct ProfileTemplateTests {
 @Suite("Template files")
 struct TemplateStoreTests {
 
+    private func sandbox() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
     @Test("Exported templates come back unchanged")
     func exportImport() throws {
-        let store = TemplateStore()
+        let directory = try sandbox()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TemplateStore(storeURL: directory.appendingPathComponent("templates.json"))
         let source = try #require(ProfileTemplate.builtIn.first { $0.id == "wordpress" })
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("sm-test-\(UUID().uuidString).smtemplate")
@@ -379,7 +476,9 @@ struct TemplateStoreTests {
 
     @Test("macOS exports the Node entry point Windows expects")
     func windowsTemplateContract() throws {
-        let store = TemplateStore()
+        let directory = try sandbox()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TemplateStore(storeURL: directory.appendingPathComponent("templates.json"))
         let source = try #require(ProfileTemplate.builtIn.first { $0.id == "node-api" })
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("sm-windows-contract-\(UUID().uuidString).smtemplate")
@@ -393,7 +492,9 @@ struct TemplateStoreTests {
 
     @Test("Windows template files preserve their Node entry point on macOS")
     func importsWindowsTemplateContract() throws {
-        let store = TemplateStore()
+        let directory = try sandbox()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TemplateStore(storeURL: directory.appendingPathComponent("templates.json"))
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("sm-windows-import-\(UUID().uuidString).smtemplate")
         defer { try? FileManager.default.removeItem(at: url) }
@@ -423,7 +524,9 @@ struct TemplateStoreTests {
 
     @Test("A file that is not a template is refused, not half-read")
     func rubbish() throws {
-        let store = TemplateStore()
+        let directory = try sandbox()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TemplateStore(storeURL: directory.appendingPathComponent("templates.json"))
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("sm-test-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
@@ -437,7 +540,9 @@ struct TemplateStoreTests {
 
     @Test("Importing the same template twice does not collide")
     func duplicates() throws {
-        let store = TemplateStore()
+        let directory = try sandbox()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TemplateStore(storeURL: directory.appendingPathComponent("templates.json"))
         let source = try #require(ProfileTemplate.builtIn.first { $0.id == "laravel" })
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("sm-test-\(UUID().uuidString).smtemplate")
@@ -585,7 +690,7 @@ struct ProjectDownloadTests {
         #expect(DownloadableProject.forTemplate("printshopcrm")?.directArchiveURL != nil)
         #expect(DownloadableProject.forTemplate("web-to-print-store")?.wrapperFolder == "wordpress")
         #expect(DownloadableProject.forTemplate("web-to-print-showcase")?.wrapperFolder == "wordpress")
-        #expect(DownloadableProject.forTemplate("wordpress") == nil)
+        #expect(DownloadableProject.forTemplate("wordpress")?.wrapperFolder == "wordpress")
         #expect(DownloadableProject.forTemplate("static") == nil)
     }
 }

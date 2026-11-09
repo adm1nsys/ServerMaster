@@ -36,6 +36,7 @@ final class DomainTrace {
     /// profiles on the same host and different ports fail in different places,
     /// and a single result for “the machine” would hide that.
     func run(for profile: ServerProfile) async {
+        guard !isRunning else { return }
         isRunning = true
         subject = profile.address
         steps = []
@@ -139,87 +140,21 @@ final class DomainTrace {
 
     /// What actually comes back. A 200 from the wrong server is still a 200, so
     /// the Server header is reported alongside it.
-    private func request(_ profile: ServerProfile) async -> TraceStep {
-        guard let url = URL(string: profile.address) else {
-            return TraceStep(id: "http", title: String(localized: "Request"),
-                             detail: String(localized: "The address could not be read."),
-                             outcome: .failed)
-        }
-        let started = Date()
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 8
-        request.httpMethod = "GET"
-        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-
-        let session = URLSession(configuration: .ephemeral,
-                                 delegate: TrustEverythingLocally(), delegateQueue: nil)
-        do {
-            let (data, response) = try await session.data(for: request)
-            let elapsed = Date().timeIntervalSince(started)
-            guard let http = response as? HTTPURLResponse else {
-                return TraceStep(id: "http", title: String(localized: "Request"),
-                                 detail: String(localized: "Answered, but not with HTTP."),
-                                 outcome: .warning, elapsed: elapsed)
-            }
-            let server = http.value(forHTTPHeaderField: "Server") ?? String(localized: "no Server header")
-            let size = ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
-            return TraceStep(id: "http", title: String(localized: "Request"),
-                             detail: String(localized: "\(String(http.statusCode)) · \(server) · \(size)"),
-                             outcome: (200..<400).contains(http.statusCode) ? .ok : .warning,
-                             elapsed: elapsed)
-        } catch {
-            return TraceStep(id: "http", title: String(localized: "Request"),
-                             detail: error.localizedDescription,
-                             outcome: .failed, elapsed: Date().timeIntervalSince(started))
-        }
+    func request(_ profile: ServerProfile) async -> TraceStep {
+        let response = await HealthCheck.check(profile)
+        return TraceStep(id: "http", title: String(localized: "Request"), detail: response.summary,
+            outcome: response.status == nil ? .failed : response.isGood ? .ok : .warning, elapsed: response.elapsed)
     }
 
-    private func certificate(_ profile: ServerProfile) async -> TraceStep? {
+    func certificate(_ profile: ServerProfile) async -> TraceStep? {
         guard profile.httpsEnabled, profile.engine.supportsHTTPS else { return nil }
-        let path = AppPaths.expand(profile.certificatePath)
-        guard !path.isEmpty, FileManager.default.fileExists(atPath: path) else {
-            return TraceStep(id: "tls", title: String(localized: "Certificate"),
-                             detail: String(localized: "HTTPS is on but no certificate file is set."),
-                             outcome: .failed)
-        }
-        let result = await ProcessRunner.run("/usr/bin/openssl",
-                                             ["x509", "-in", path, "-noout", "-subject", "-enddate", "-issuer"],
-                                             timeout: 10)
-        guard result.succeeded else {
-            return TraceStep(id: "tls", title: String(localized: "Certificate"),
-                             detail: String(localized: "The file at \(AppPaths.abbreviate(path)) is not a certificate."),
-                             outcome: .failed)
-        }
-        // notAfter=Jan  1 00:00:00 2030 GMT
-        var expired = false
-        if let line = result.stdout.split(separator: "\n").first(where: { $0.hasPrefix("notAfter=") }) {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "MMM d HH:mm:ss yyyy zzz"
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            let text = line.replacingOccurrences(of: "notAfter=", with: "")
-                .replacingOccurrences(of: "  ", with: " ")
-            if let date = formatter.date(from: text), date < Date() { expired = true }
-        }
+        let result = TLSValidation.check(profile)
         return TraceStep(id: "tls", title: String(localized: "Certificate"),
-                         detail: result.stdout.trimmingCharacters(in: .whitespacesAndNewlines),
-                         outcome: expired ? .failed : .ok)
+            detail: result.issues.isEmpty ? String(localized: "Certificate and key match; validity dates and host SAN are valid.") : result.issues.joined(separator: "\n"),
+            outcome: result.issues.isEmpty ? .ok : .failed)
     }
 
     private func isNumeric(_ host: String) -> Bool {
         host.allSatisfy { $0.isNumber || $0 == "." || $0 == ":" }
-    }
-}
-
-/// A self-signed certificate is the normal case here, and refusing to look at it
-/// would defeat the purpose. This runs only against the address of a profile the
-/// person configured, on their own machine.
-private final class TrustEverythingLocally: NSObject, URLSessionDelegate, @unchecked Sendable {
-    func urlSession(_ session: URLSession,
-                    didReceive challenge: URLAuthenticationChallenge) async
-    -> (URLSession.AuthChallengeDisposition, URLCredential?) {
-        guard let trust = challenge.protectionSpace.serverTrust else {
-            return (.performDefaultHandling, nil)
-        }
-        return (.useCredential, URLCredential(trust: trust))
     }
 }

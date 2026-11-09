@@ -203,7 +203,7 @@ final class CertificateManager {
     /// Being signed by mkcert is not enough on its own — its authority also has
     /// to be in the system keychain, which is a separate, password-guarded step.
     func isTrusted(_ pair: CertificatePair) -> Bool {
-        pair.isFromMkcert && mkcert.caExists && mkcert.trustedInSystem
+        TLSValidation.check(certificatePath: pair.certificatePath, keyPath: pair.privateKeyPath, host: pair.domains.first ?? "localhost").systemTrusted
     }
 
     /// Installs mkcert through Homebrew. `nss` comes with it because without it
@@ -220,6 +220,7 @@ final class CertificateManager {
         let result = await ProcessRunner.shell("brew install mkcert nss", timeout: 1800)
         if !result.combined.isEmpty { log.append(result.combined, stream: .stdout) }
         ShellEnvironment.shared.invalidate()
+        await ShellEnvironment.shared.refresh()
         await refreshMkcertStatus()
 
         log.system(mkcert.available

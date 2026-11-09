@@ -203,7 +203,11 @@ struct AppSettingsView: View {
                         Button("Open logs folder") {
                             NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: AppPaths.logs.path)
                         }
-                        Button("Clear old logs") { clearLogs() }
+                        Button("Clear old logs") {
+                            Task { await model.cleanOldLogs(showNotification: true) }
+                        }
+                        .disabled(model.isCleaningLogs)
+                        if model.isCleaningLogs { ProgressView().controlSize(.small) }
                         Spacer()
                     }
                 }
@@ -715,23 +719,6 @@ struct AppSettingsView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         model.settings.extraPATHEntries.append(url.path)
         model.saveSettings()
-    }
-
-    private func clearLogs() {
-        let manager = FileManager.default
-        let files = (try? manager.contentsOfDirectory(at: AppPaths.logs,
-                                                      includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
-        var removed = 0
-        for file in files {
-            let date = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-            let inUse = model.servers.values.contains { $0.log.fileURL == file }
-            if let date, date < cutoff, !inUse {
-                try? manager.removeItem(at: file)
-                removed += 1
-            }
-        }
-        model.notify(removed == 0 ? "No old logs found." : "Files removed: \(removed).")
     }
 
     // MARK: - Translation packs

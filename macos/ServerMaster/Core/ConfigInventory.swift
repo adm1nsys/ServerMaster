@@ -193,7 +193,8 @@ nonisolated enum ConfigInventory {
         ("composer.json", String(localized: "PHP dependencies."), .none),
         ("package.json", String(localized: "Node.js dependencies."), .none),
         ("index.php", String(localized: "The site entry point."), .php),
-        ("index.html", String(localized: "Start page."), .none)
+        ("index.html", String(localized: "Start page."), .none),
+        ("servermaster-demo.md", String(localized: "Recipe notes, local addresses and account details."), .none)
     ]
 
     // MARK: - Helpers
@@ -262,7 +263,7 @@ nonisolated enum ConfigInventory {
     }
 
     /// Checks the file before saving, so a broken config does not bring the server down.
-    static func validate(_ file: ConfigFile, contents: String) async -> ValidationResult {
+    static func validate(_ file: ConfigFile, contents: String, encodedContents: Data? = nil) async -> ValidationResult {
         let temporary = FileManager.default.temporaryDirectory
             .appendingPathComponent("sm-validate-\(UUID().uuidString.prefix(8))")
             .appendingPathExtension((file.path as NSString).pathExtension.isEmpty
@@ -270,7 +271,7 @@ nonisolated enum ConfigInventory {
         defer { try? FileManager.default.removeItem(at: temporary) }
 
         do {
-            try contents.write(to: temporary, atomically: true, encoding: .utf8)
+            try (encodedContents ?? Data(contents.utf8)).write(to: temporary, options: .atomic)
         } catch {
             return ValidationResult(ok: false, message: error.localizedDescription)
         }

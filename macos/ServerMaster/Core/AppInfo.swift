@@ -53,16 +53,16 @@ nonisolated enum AppInfo {
         #endif
     }
 
-    /// The build number is not a counter — it records where the build came from.
+    /// Build provenance, separate from the application version and minimum OS.
     ///
-    ///     <host>.<macOS>.b<beta>.<target>
-    ///     arm    .27.0   .b6    .arm
+    ///     <host>.m<macOS>[b].x<Xcode>[b<iteration>].<target>
+    ///     arm   .m27.3b   .x27.3b1              .uni
     ///
-    /// `host` is the architecture the build was made on, `macOS` the system it
-    /// was built against, `b<n>` that system's developer beta (absent on a
-    /// released system), and `target` what the binary runs on: `arm` for Apple
-    /// Silicon only, `uni` for a universal build.
+    /// Host `arm` describes the build machine; target `uni` describes the binary.
+    /// Released tools omit the beta suffix. Older labels remain readable.
     static var buildIdentifier: BuildIdentifier { BuildIdentifier(build) }
+
+
 }
 
 nonisolated struct BuildIdentifier: Sendable, Equatable {
@@ -70,51 +70,74 @@ nonisolated struct BuildIdentifier: Sendable, Equatable {
     var raw: String
     var host: String?
     var system: String?
+    var systemIsBeta = false
+    /// The beta number in the legacy Xcode-beta convention, not a macOS version.
     var beta: Int?
+    var xcodeRelease: String?
+    var xcodeVersion: String?
+    var xcodeBeta: Int?
     var target: String?
 
     init(_ raw: String) {
         self.raw = raw
-        var digits: [String] = []
-        var archs: [String] = []
-        for part in raw.split(separator: ".").map(String.init) {
-            let token = part.lowercased()
-            if token.first == "b", let n = Int(token.dropFirst()) {
-                beta = n
-            } else if !part.isEmpty, part.allSatisfy(\.isNumber) {
-                digits.append(part)
-            } else {
-                archs.append(token)
-            }
+        if let fields = Self.fields(in: raw, pattern: #"^([a-z0-9_]+)\.m([0-9]+\.[0-9]+(?:\.[0-9]+)?)(b?)\.x([0-9]+\.[0-9]+(?:\.[0-9]+)?)(?:b([1-9][0-9]*))?\.([a-z0-9_-]+)$"#) {
+            host = fields[0]?.lowercased()
+            system = fields[1]
+            systemIsBeta = fields[2]?.lowercased() == "b"
+            xcodeVersion = fields[3]
+            xcodeBeta = fields[4].flatMap(Int.init)
+            if xcodeBeta == nil { xcodeRelease = xcodeVersion }
+            target = fields[5]?.lowercased()
+        } else if let fields = Self.fields(in: raw, pattern: #"^([a-z0-9_]+)\.(b?)([0-9]+\.[0-9]+(?:\.[0-9]+)?)\.xr([0-9]+\.[0-9]+(?:\.[0-9]+)?)\.([a-z0-9_]+)$"#) {
+            host = fields[0]?.lowercased()
+            systemIsBeta = fields[1]?.lowercased() == "b"
+            system = fields[2]
+            xcodeRelease = fields[3]
+            target = fields[4]?.lowercased()
+        } else if let fields = Self.fields(in: raw, pattern: #"^([a-z0-9_]+)\.([0-9]+\.[0-9]+(?:\.[0-9]+)?)(?:\.b([0-9]+))?\.([a-z0-9_]+)$"#) {
+            host = fields[0]?.lowercased()
+            system = fields[1]
+            beta = fields[2].flatMap(Int.init)
+            target = fields[3]?.lowercased()
         }
-        // The first two numbers are the system version; anything after is noise.
-        // A single number is a plain build counter, not a version — leave it alone.
-        if digits.count >= 2 { system = digits.prefix(2).joined(separator: ".") }
-        host = archs.first
-        target = archs.last
     }
 
-    /// What the binary runs on.
+    private static func fields(in raw: String, pattern: String) -> [String?]? {
+        guard let expression = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let match = expression.firstMatch(in: raw, range: NSRange(raw.startIndex..., in: raw)),
+              match.range == NSRange(raw.startIndex..., in: raw) else { return nil }
+        return (1..<match.numberOfRanges).map { index in
+            Range(match.range(at: index), in: raw).map { String(raw[$0]) }
+        }
+    }
+
+    /// The architecture of the shipped binary, rather than the build machine.
     var targetName: String? {
         switch target {
         case "arm", "arm64": String(localized: "Apple Silicon")
         case "uni", "universal": String(localized: "Universal")
-        case "x86", "x86_64", "intel": String(localized: "Intel")
+        case "int", "x86", "x86_64", "intel": String(localized: "Intel")
         default: nil
         }
     }
 
-    /// The system the build was made against.
     var systemName: String? {
         guard let system else { return nil }
-        guard let beta else { return "macOS \(system)" }
-        return String(localized: "macOS \(system) developer beta \(String(beta))")
+        return systemIsBeta ? String(localized: "macOS \(system) developer beta") : "macOS \(system)"
     }
 
-    /// One readable line, e.g. “macOS 27.0 developer beta 6 · Apple Silicon”.
-    /// Returns nil when the build number does not follow the scheme.
+    var toolchainName: String? {
+        if let xcodeVersion, let xcodeBeta {
+            return String(localized: "Xcode \(xcodeVersion) beta \(String(xcodeBeta))")
+        }
+        if let xcodeRelease { return String(localized: "Xcode \(xcodeRelease) release") }
+        if let beta { return String(localized: "Xcode developer beta \(String(beta))") }
+        return nil
+    }
+
+    /// Build-host OS, toolchain and binary target; never a minimum-OS claim.
     var summary: String? {
-        let parts = [systemName, targetName].compactMap { $0 }
+        let parts = [systemName, toolchainName, targetName].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }

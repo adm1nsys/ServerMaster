@@ -32,6 +32,7 @@ nonisolated enum ServerState: Equatable, Sendable {
 final class ServerController {
 
     private(set) var state: ServerState = .stopped
+    private(set) var stopFailure: String?
     private(set) var activeProfile: ServerProfile?
     private(set) var startedAt: Date?
     private(set) var processIdentifier: Int32?
@@ -43,6 +44,9 @@ final class ServerController {
     /// Called when the process dies unexpectedly.
     var onUnexpectedExit: ((ServerProfile, Int32) -> Void)?
 
+    private var runID = UUID()
+    private var stopInProgress = false
+    private var startInProgress = false
     private var process: Process?
     private var stdoutPipe: Pipe?
     private var stderrPipe: Pipe?
@@ -52,6 +56,16 @@ final class ServerController {
     private var logTail: Process?
     private var watchdog: Task<Void, Never>?
     private var sidecars: [(name: String, process: Process)] = []
+    private let runtimeRoot: URL?
+    private let startupTimeout: TimeInterval
+    private let responseTimeout: TimeInterval
+    private var readinessProbe: Task<HTTPStartup.Result, Never>?
+
+    init(runtimeRoot: URL? = nil, startupTimeout: TimeInterval = 20, responseTimeout: TimeInterval = 60) {
+        self.runtimeRoot = runtimeRoot
+        self.startupTimeout = max(0.1, startupTimeout)
+        self.responseTimeout = max(0.1, responseTimeout)
+    }
 
     /// The server was started as root through the system password prompt.
     var isPrivileged: Bool { privileged != nil }
@@ -61,10 +75,27 @@ final class ServerController {
         return Date().timeIntervalSince(startedAt)
     }
 
+    func failToStart(profile: ServerProfile, message: String) {
+        guard !state.isActive, !state.isBusy, processIdentifier == nil else { return }
+        activeProfile = profile
+        state = .failed(message)
+        log.append(message, stream: .stderr)
+    }
+
     // MARK: - Startup
 
     func start(profile: ServerProfile, settings: AppSettings) async {
-        guard !state.isActive else { return }
+        guard !state.isActive, !stopInProgress, !startInProgress, state != .stopping, !Task.isCancelled else { return }
+        // A failed stop must retain control of its live process or supervisor.
+        guard process?.isRunning != true, privileged == nil else { return }
+        stopFailure = nil
+        startInProgress = true
+        let run = UUID()
+        runID = run
+        defer {
+            startInProgress = false
+            if Task.isCancelled, runID == run { stopImmediately() }
+        }
 
         intentionalStop = false
         recentStderr = []
@@ -80,18 +111,30 @@ final class ServerController {
         log.system(String(localized: "──────── Starting profile “\(profile.name)” ────────"))
         log.system(String(localized: "Engine: \(profile.engine.title)"))
 
+        let errors = profile.validationErrors
+        guard errors.isEmpty else {
+            let message = errors.joined(separator: "\n")
+            state = .failed(message)
+            log.append(message, stream: .stderr)
+            log.stopFileLogging()
+            return
+        }
+
         // Port check
         if settings.checkPortBeforeStart {
             let occupants = await PortScanner.processesListening(onPort: profile.port)
+            guard runID == run, state == .starting, !Task.isCancelled else { return }
             if !occupants.isEmpty {
                 let summary = occupants.map { "\($0.command) (PID \($0.pid))" }.joined(separator: ", ")
                 if settings.killPortOccupantOnStart {
                     log.system(String(localized: "Port \(String(profile.port)) is taken: \(summary). Freeing it…"))
                     for occupant in occupants {
                         guard occupant.pid > 0 else { continue }
-                        _ = await PortScanner.kill(pid: occupant.pid, signal: .term)
+                        _ = await PortScanner.terminate(occupant, signal: .term)
+                        guard runID == run, state == .starting, !Task.isCancelled else { return }
                     }
                     try? await Task.sleep(nanoseconds: 700_000_000)
+                    guard runID == run, state == .starting, !Task.isCancelled else { return }
                     guard PortScanner.isPortFree(profile.port, host: profile.host) else {
                         let message = String(localized: "Port \(String(profile.port)) is still occupied. Its owner may require administrator rights; stop that profile or free the port from Ports.")
                         log.append(message, stream: .stderr)
@@ -108,15 +151,31 @@ final class ServerController {
             }
         }
 
+        // A readiness probe must not mistake a pre-existing listener for ours,
+        // even when the optional interactive occupant check is disabled.
+        if profile.engine != .custom, !PortScanner.isPortFree(profile.port, host: profile.host) {
+            let message = String(localized: "Port \(String(profile.port)) is already occupied.")
+            state = .failed(message)
+            log.append(message, stream: .stderr)
+            log.stopFileLogging()
+            return
+        }
+
         // Building the command
+        guard runID == run, state == .starting, !Task.isCancelled else { return }
         let plan: LaunchPlan
         do {
-            plan = try LaunchPlanBuilder.build(for: profile)
+            plan = try LaunchPlanBuilder.build(for: profile, runtimeRoot: runtimeRoot)
         } catch {
             log.append(error.localizedDescription, stream: .stderr)
             state = .failed(error.localizedDescription)
             log.stopFileLogging()
             return
+        }
+
+        if let ready = plan.readinessFile {
+            try? FileManager.default.removeItem(atPath: ready)
+            try? FileManager.default.removeItem(atPath: ready + ".stop")
         }
 
         // The config, if it is generated
@@ -165,6 +224,9 @@ final class ServerController {
         log.system(String(localized: "Command: \(plan.displayCommand)"))
         log.system(String(localized: "Working directory: \(plan.workingDirectory)"))
 
+        // Retain logical reservations until readiness, releasing sockets for children to bind.
+        for lease in plan.portLeases { lease.allowChildBind() }
+
         // Helper processes (php-fpm) are brought up before the main one.
         for sidecar in plan.sidecars {
             guard startSidecar(sidecar) else {
@@ -174,6 +236,7 @@ final class ServerController {
                 return
             }
             try? await Task.sleep(nanoseconds: UInt64(sidecar.warmup * 1_000_000_000))
+            guard runID == run, state == .starting, !Task.isCancelled else { return }
             if let running = sidecars.last?.process, !running.isRunning {
                 let message = String(localized: "\(sidecar.name) exited right after start.")
                 log.append(message, stream: .stderr)
@@ -186,7 +249,7 @@ final class ServerController {
 
         // Ports below 1024 require uid 0 — launch through the system password prompt.
         if profile.runAsAdministrator {
-            await startPrivileged(profile: profile, plan: plan, settings: settings)
+            await startPrivileged(profile: profile, plan: plan, settings: settings, run: run)
             return
         }
 
@@ -205,24 +268,17 @@ final class ServerController {
         process.standardError = errPipe
         process.standardInput = FileHandle.nullDevice
 
-        outPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let controller = self else { return }
-            let text = String(decoding: data, as: UTF8.self)
-            Task { @MainActor in controller.ingest(text, stream: .stdout) }
-        }
-        errPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let controller = self else { return }
-            let text = String(decoding: data, as: UTF8.self)
-            Task { @MainActor in controller.ingest(text, stream: .stderr) }
-        }
+        attachOutput(outPipe, stream: .stdout, run: run)
+        attachOutput(errPipe, stream: .stderr, run: run)
 
         process.terminationHandler = { [weak self] finished in
             guard let controller = self else { return }
             let code = finished.terminationStatus
             let reason = finished.terminationReason
-            Task { @MainActor in controller.handleTermination(code: code, reason: reason) }
+            Task { @MainActor in
+                guard controller.runID == run, controller.process === finished else { return }
+                controller.handleTermination(code: code, reason: reason)
+            }
         }
 
         do {
@@ -243,9 +299,15 @@ final class ServerController {
         log.system("PID: \(String(process.processIdentifier))")
 
         // Give the process a chance to fail immediately (port taken, broken config and so on).
-        try? await Task.sleep(nanoseconds: 1_200_000_000)
+        let ready = await waitForReadiness(plan: plan, profile: profile, run: run) { process.isRunning }
 
-        guard state == .starting else { return }
+        guard runID == run, state == .starting, !Task.isCancelled else { return }
+
+        if !ready && process.isRunning {
+            await stop(settings: settings)
+            state = .failed(String(localized: "Server did not become ready. Check the server and backend log."))
+            return
+        }
 
         if process.isRunning {
             state = .running
@@ -260,6 +322,71 @@ final class ServerController {
     }
 
     // MARK: - Helper processes
+
+    private func waitForReadiness(plan: LaunchPlan, profile: ServerProfile, run: UUID,
+                                  isAlive: () -> Bool) async -> Bool {
+        if let path = plan.readinessFile {
+            let deadline = Date().addingTimeInterval(startupTimeout)
+            while runID == run && state == .starting && !Task.isCancelled && Date() < deadline {
+                guard isAlive() else { return false }
+                if FileManager.default.fileExists(atPath: path) { break }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            guard FileManager.default.fileExists(atPath: path) else { return false }
+        }
+        guard runID == run, state == .starting, !Task.isCancelled, isAlive() else { return false }
+        if profile.engine == .custom {
+            try? await Task.sleep(for: .milliseconds(200))
+            return runID == run && !Task.isCancelled && isAlive()
+        }
+        guard let url = HTTPStartup.address(for: profile) else { return false }
+        let deadline = Date().addingTimeInterval(startupTimeout)
+        while runID == run && state == .starting && !Task.isCancelled && Date() < deadline {
+            guard isAlive() else { return false }
+            let probe = Task { await HTTPStartup.headers(url: url,
+                certificatePath: profile.scheme == "https" ? AppPaths.expand(profile.certificatePath) : nil,
+                timeout: responseTimeout) }
+            readinessProbe = probe
+            let result = await withTaskCancellationHandler {
+                await probe.value
+            } onCancel: { probe.cancel() }
+            guard runID == run, state == .starting, !Task.isCancelled else { return false }
+            readinessProbe = nil
+            if result == .response {
+                let owned = await ownsListeningEndpoint(profile: profile)
+                guard runID == run, state == .starting, !Task.isCancelled, isAlive() else { return false }
+                if owned { return true }
+            }
+            if result == .timedOut { return false } // never queue new requests behind a slow accepted one
+            try? await Task.sleep(for: .milliseconds(150))
+        }
+        return false
+    }
+
+    private func ownsListeningEndpoint(profile: ServerProfile) async -> Bool {
+        guard let owner = processIdentifier else { return false }
+        let host = HTTPStartup.address(for: profile)?.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]")) ?? profile.host
+        let entries = await PortScanner.processesListening(onPort: profile.port)
+        for entry in entries {
+            let matches = ["*", "0.0.0.0", "::", host].contains(entry.address)
+                || (host == "localhost" && ["127.0.0.1", "::1"].contains(entry.address))
+            guard matches else { continue }
+            // Root listeners may be hidden by macOS; the privileged launcher
+            // owns its live session and supervised readiness sentinel instead.
+            if entry.pid == 0, let session = privileged,
+               PrivilegedLauncher.isAlive(pid: session.serverPID) { return true }
+            var pid = entry.pid
+            var seen = Set<Int32>()
+            for _ in 0..<16 {
+                if pid == owner { return true }
+                guard pid > 1, seen.insert(pid).inserted else { break }
+                let parent = await ProcessRunner.run("/bin/ps", ["-p", String(pid), "-o", "ppid="], timeout: 2)
+                guard parent.succeeded, let next = Int32(parent.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) else { break }
+                pid = next
+            }
+        }
+        return false
+    }
 
     @discardableResult
     private func startSidecar(_ plan: SidecarPlan) -> Bool {
@@ -276,20 +403,7 @@ final class ServerController {
         process.standardError = pipe
         process.standardInput = FileHandle.nullDevice
 
-        let label = plan.name
-        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let controller = self else { return }
-            let text = String(decoding: data, as: UTF8.self)
-            Task { @MainActor in
-                // Tag the lines so the shared log shows who wrote them.
-                let prefixed = text
-                    .split(separator: "\n", omittingEmptySubsequences: false)
-                    .map { $0.isEmpty ? "" : "[\(label)] " + $0 }
-                    .joined(separator: "\n")
-                controller.ingest(prefixed, stream: .stdout)
-            }
-        }
+        attachOutput(pipe, stream: .stdout, run: runID, label: plan.name)
 
         do {
             try process.run()
@@ -320,6 +434,7 @@ final class ServerController {
     /// takes control back without asking for the password again.
     func adopt(session: PrivilegedSession, profile: ServerProfile, settings: AppSettings) {
         guard state == .stopped else { return }
+        runID = UUID()
         activeProfile = profile
         privileged = session
         processIdentifier = session.serverPID
@@ -337,7 +452,7 @@ final class ServerController {
 
     private func startPrivileged(profile: ServerProfile,
                                  plan: LaunchPlan,
-                                 settings: AppSettings) async {
+                                 settings: AppSettings, run: UUID) async {
         let runtime = AppPaths.subdir("Runtime/root-\(profile.id.uuidString.prefix(8))").path
         log.system(String(localized: "Starting with administrator rights — a password is required."))
 
@@ -345,12 +460,17 @@ final class ServerController {
         do {
             session = try await PrivilegedLauncher.start(plan: plan, runtimeDirectory: runtime)
         } catch {
+            guard runID == run, state == .starting else { return }
             log.append(error.localizedDescription, stream: .stderr)
             state = .failed(error.localizedDescription)
             log.stopFileLogging()
             return
         }
 
+        guard runID == run, state == .starting, !Task.isCancelled else {
+            PrivilegedLauncher.requestStop(session)
+            return
+        }
         privileged = session
         processIdentifier = session.serverPID
         startedAt = Date()
@@ -359,9 +479,15 @@ final class ServerController {
         startLogTail(path: session.logPath)
 
         // Give the process a chance to fail immediately — because of a taken port, for example.
-        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        let ready = await waitForReadiness(plan: plan, profile: profile, run: run) { PrivilegedLauncher.isAlive(pid: session.serverPID) }
 
-        guard state == .starting else { return }
+        guard runID == run, state == .starting, !Task.isCancelled else { return }
+
+        if !ready && PrivilegedLauncher.isAlive(pid: session.serverPID) {
+            await stop(settings: settings)
+            state = .failed(String(localized: "Server did not become ready. Check the server and backend log."))
+            return
+        }
 
         if PrivilegedLauncher.isAlive(pid: session.serverPID) {
             state = .running
@@ -394,12 +520,8 @@ final class ServerController {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
-        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let controller = self else { return }
-            let text = String(decoding: data, as: UTF8.self)
-            Task { @MainActor in controller.ingest(text, stream: .stdout) }
-        }
+        attachOutput(pipe, stream: .stdout, run: runID)
+
         try? process.run()
         logTail = process
     }
@@ -426,6 +548,8 @@ final class ServerController {
     }
 
     private func handlePrivilegedExit() {
+        readinessProbe?.cancel()
+        readinessProbe = nil
         let profile = activeProfile
         let message = Self.explain(base: String(localized: "The process started with administrator rights has exited."),
                                    stderr: recentStderr, profile: profile)
@@ -451,75 +575,150 @@ final class ServerController {
 
     // MARK: - Stopping
 
-    func stop(settings: AppSettings) async {
+    @discardableResult
+    func stop(settings: AppSettings) async -> Bool {
+        // All callers observe the result of the same cleanup operation.
+        if stopInProgress {
+            while stopInProgress {
+                guard !Task.isCancelled else { return false }
+                try? await Task.sleep(for: .milliseconds(25))
+            }
+            return state == .stopped
+        }
+        readinessProbe?.cancel()
+        readinessProbe = nil
+        stopInProgress = true
+        defer { stopInProgress = false }
+        runID = UUID() // invalidates pending starts, output and exit callbacks
+        intentionalStop = true
+        if state == .starting && process == nil && privileged == nil {
+            finishStopped()
+            return true
+        }
         if let session = privileged {
-            intentionalStop = true
             state = .stopping
+            watchdog?.cancel()
+            watchdog = nil
             log.system(String(localized: "Stopping the server (PID \(String(session.serverPID)))…"))
-            // Remove the sentinel: the root watchdog will stop the process, no password needed.
             PrivilegedLauncher.requestStop(session)
-            for _ in 0..<40 {
-                if !PrivilegedLauncher.isAlive(pid: session.serverPID) { break }
-                try? await Task.sleep(nanoseconds: 150_000_000)
+            for _ in 0..<60 {
+                if PrivilegedLauncher.hasStopped(session) { break }
+                try? await Task.sleep(for: .milliseconds(150))
+            }
+            guard PrivilegedLauncher.hasStopped(session) else {
+                failStop(String(localized: "The administrator server has not confirmed shutdown. Try Stop again; check Console and Ports."))
+                return false
             }
             cleanupPrivileged()
-            detectedURLs = []
-            state = .stopped
-            log.system(String(localized: "Server stopped."))
-            log.stopFileLogging()
-            return
+            return await completeStop()
         }
-        guard let process, state.isActive else { return }
-        intentionalStop = true
+        guard let process else {
+            if stopFailure != nil { return await completeStop() }
+            finishStopped()
+            return true
+        }
         state = .stopping
         log.system(String(localized: "Stopping the server (PID \(String(process.processIdentifier)))…"))
-
-        process.terminate()
-
+        if process.isRunning { process.terminate() }
         for _ in 0..<30 {
             if !process.isRunning { break }
-            try? await Task.sleep(nanoseconds: 100_000_000)
+            try? await Task.sleep(for: .milliseconds(100))
         }
-
         if process.isRunning {
             log.system(String(localized: "The process is not responding to SIGTERM, sending SIGKILL."))
             kill(process.processIdentifier, SIGKILL)
-            try? await Task.sleep(nanoseconds: 300_000_000)
-        }
-
-        // Clean up any “orphans” that are still holding the port.
-        if let profile = activeProfile {
-            let leftovers = await PortScanner.processesListening(onPort: profile.port)
-            for leftover in leftovers where leftover.pid != process.processIdentifier {
-                log.system(String(localized: "Port \(String(profile.port)) is still held by \(leftover.command) (PID \(String(leftover.pid)))."))
+            for _ in 0..<10 {
+                if !process.isRunning { break }
+                try? await Task.sleep(for: .milliseconds(100))
             }
         }
+        guard !process.isRunning else {
+            failStop(String(localized: "The server process is still running. Try Stop again; check Console and Ports."))
+            return false
+        }
+        return await completeStop()
+    }
 
+    /// Check listeners after owned children have stopped. A failed bind alone
+    /// can be TIME_WAIT or a permission error, especially on privileged ports.
+    private func completeStop() async -> Bool {
+        stopSidecars()
+        if let profile = activeProfile, profile.engine != .custom {
+            let deadline = Date().addingTimeInterval(2)
+            var leftovers: [PortEntry]
+            repeat {
+                leftovers = await PortScanner.processesListening(onPort: profile.port)
+                    .filter { PortScanner.listener($0, matchesHost: profile.host) }
+                if leftovers.isEmpty { break }
+                if Date() >= deadline || Task.isCancelled {
+                    let owners = leftovers.map { "\($0.command) (PID \(String($0.pid)))" }.joined(separator: ", ")
+                    log.system(String(localized: "Port \(String(profile.port)) is still held by \(owners)."))
+                    failStop(String(localized: "The server stopped, but \(profile.host):\(String(profile.port)) is still occupied. Check Ports before restarting; another process may be listening."))
+                    return false
+                }
+                try? await Task.sleep(for: .milliseconds(100))
+            } while true
+        }
         finishStopped()
+        return true
+    }
+
+    private func failStop(_ message: String) {
+        stopSidecars()
+        watchdog?.cancel()
+        watchdog = nil
+        stopLogTail()
+        // Keep live owned handles for a later Stop. Never adopt or kill a
+        // replacement listener merely because it has taken the old port.
+        if process?.isRunning != true { releaseProcessHandles() }
+        processIdentifier = privileged?.serverPID ?? process?.processIdentifier
+        startedAt = nil
+        detectedURLs = []
+        stopFailure = message
+        state = .failed(message)
+        log.append(message, stream: .stderr)
+        log.stopFileLogging()
     }
 
     func restart(profile: ServerProfile, settings: AppSettings) async {
-        await stop(settings: settings)
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        guard await stop(settings: settings) else { return }
+        let stoppedRun = runID
+        try? await Task.sleep(for: .milliseconds(400))
+        guard runID == stoppedRun, state == .stopped, !Task.isCancelled else { return }
         await start(profile: profile, settings: settings)
     }
 
     /// Synchronous shutdown when the application quits.
     func stopImmediately() {
+        readinessProbe?.cancel()
+        readinessProbe = nil
+        defer {
+            if let session = privileged, !PrivilegedLauncher.hasStopped(session) {
+                failStop(String(localized: "The administrator server has not confirmed shutdown. Try Stop again; check Console and Ports."))
+            } else if process?.isRunning == true {
+                failStop(String(localized: "The server process is still running. Try Stop again; check Console and Ports."))
+            } else {
+                finishStopped()
+            }
+        }
+        runID = UUID()
         intentionalStop = true
         if let session = privileged {
             PrivilegedLauncher.requestStop(session)
-            let deadline = Date().addingTimeInterval(4)
-            while PrivilegedLauncher.isAlive(pid: session.serverPID) && Date() < deadline {
+            let deadline = Date().addingTimeInterval(8)
+            while !PrivilegedLauncher.hasStopped(session) && Date() < deadline {
                 usleep(100_000)
             }
-            cleanupPrivileged()
+            if PrivilegedLauncher.hasStopped(session) { cleanupPrivileged() }
             return
         }
         stopSidecars()
         guard let process, process.isRunning else { return }
         process.terminate()
-        let deadline = Date().addingTimeInterval(2)
+        let needsProxyCleanup = activeProfile.map {
+            ($0.httpsEnabled && $0.engine.requiresHTTPSProxy) || $0.engine == .apachePHP || $0.engine == .phpFpm
+        } ?? false
+        let deadline = Date().addingTimeInterval(needsProxyCleanup ? 4 : 2)
         while process.isRunning && Date() < deadline {
             usleep(50_000)
         }
@@ -536,7 +735,24 @@ final class ServerController {
 
     // MARK: - Internals
 
-    private func ingest(_ text: String, stream: LogStream) {
+    private func attachOutput(_ pipe: Pipe, stream: LogStream, run: UUID, label: String? = nil) {
+        let reader = ProcessOutputLines()
+        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            let lines = reader.consume(data, endOfFile: data.isEmpty)
+            if data.isEmpty { handle.readabilityHandler = nil }
+            guard !lines.isEmpty else { return }
+            Task { @MainActor [weak self] in
+                guard let self, self.runID == run else { return }
+                for line in lines {
+                    let text = label.map { "[\($0)] " + line.text } ?? line.text
+                    self.ingest(text, stream: stream, detectURLs: line.complete)
+                }
+            }
+        }
+    }
+
+    private func ingest(_ text: String, stream: LogStream, detectURLs: Bool = true) {
         log.append(text, stream: stream)
         if stream == .stderr {
             for line in text.strippingANSI.split(separator: "\n") {
@@ -545,19 +761,17 @@ final class ServerController {
             }
             if recentStderr.count > 40 { recentStderr.removeFirst(recentStderr.count - 40) }
         }
-        for url in Self.extractURLs(from: text) where !detectedURLs.contains(url) {
+        if let profile = activeProfile, profile.httpsEnabled && profile.engine.requiresHTTPSProxy { return }
+        guard detectURLs else { return }
+        for url in Self.extractURLs(from: text.strippingANSI) where !detectedURLs.contains(url) {
             detectedURLs.append(url)
         }
     }
 
     private func handleTermination(code: Int32, reason: Process.TerminationReason) {
-        stdoutPipe?.fileHandleForReading.readabilityHandler = nil
-        stderrPipe?.fileHandleForReading.readabilityHandler = nil
-
-        if intentionalStop {
-            finishStopped()
-            return
-        }
+        readinessProbe?.cancel()
+        readinessProbe = nil
+        if intentionalStop { return } // stop owns the cleanup barrier
 
         let profile = activeProfile
         let base = reason == .uncaughtSignal
@@ -578,17 +792,22 @@ final class ServerController {
     private func finishStopped() {
         stopSidecars()
         stopLogTail()
+        releaseProcessHandles()
+        processIdentifier = nil
+        startedAt = nil
+        detectedURLs = []
+        stopFailure = nil
+        state = .stopped
+        log.system(String(localized: "Server stopped."))
+        log.stopFileLogging()
+    }
+
+    private func releaseProcessHandles() {
         stdoutPipe?.fileHandleForReading.readabilityHandler = nil
         stderrPipe?.fileHandleForReading.readabilityHandler = nil
         process = nil
         stdoutPipe = nil
         stderrPipe = nil
-        processIdentifier = nil
-        startedAt = nil
-        detectedURLs = []
-        state = .stopped
-        log.system(String(localized: "Server stopped."))
-        log.stopFileLogging()
     }
 
     /// The exit code alone is useless — pull the reason out of stderr
@@ -639,7 +858,7 @@ final class ServerController {
     }
 
     nonisolated static func extractURLs(from text: String) -> [String] {
-        let pattern = "https?://[A-Za-z0-9\\.\\-\\[\\]:]+(?::\\d+)?"
+        let pattern = #"https?://[^\s<>"']+"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         let range = NSRange(text.startIndex..., in: text)
         var found: [String] = []

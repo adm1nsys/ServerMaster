@@ -10,6 +10,7 @@ struct ControlView: View {
 
     @Environment(AppModel.self) private var model
     @State private var stopCandidate: ServerProfile?
+    @State private var showNewProfile = false
     @State private var now = Date()
 
     /// Ties the header buttons together so Liquid Glass can flow between them
@@ -43,6 +44,7 @@ struct ControlView: View {
         }
         .frame(maxWidth: .infinity)
         .onReceive(ticker) { now = $0 }
+        .sheet(isPresented: $showNewProfile) { NewProfileSheet() }
         .confirmationDialog("Stop “\(stopCandidate?.name ?? "")”?",
                             isPresented: Binding(get: { stopCandidate != nil },
                                                  set: { if !$0 { stopCandidate = nil } })) {
@@ -78,7 +80,7 @@ struct ControlView: View {
         if #available(macOS 26.0, *) {
             GlassEffectContainer(spacing: 14) {
                 HStack(spacing: 14) {
-                    if model.activeCount > 0 {
+                    if model.canStopAllServers {
                         Button(role: .destructive) {
                             Task { await model.stopAll() }
                         } label: {
@@ -101,7 +103,7 @@ struct ControlView: View {
             .animation(.smooth(duration: 0.4), value: model.activeCount > 0)
         } else {
             HStack(spacing: 8) {
-                if model.activeCount > 0 {
+                if model.canStopAllServers {
                     Button { Task { await model.stopAll() } } label: {
                         Label("Stop all", systemImage: "stop.fill")
                     }
@@ -167,12 +169,7 @@ struct ControlView: View {
 
     // MARK: - Quick actions
 
-    /// Buttons that are drawn but not wired up yet.
-    ///
-    /// Deliberately visible rather than hidden until they work: the shape of the
-    /// screen is being decided here, and a row that appears later changes the
-    /// layout everyone has already got used to. Each says so when pressed rather
-    /// than doing nothing, which is the difference between unfinished and broken.
+    /// Common actions, including the shared new-profile wizard.
     private var quickActions: some View {
         HStack(spacing: 10) {
             action("Open all", "safari") { openAllRunning() }
@@ -186,7 +183,7 @@ struct ControlView: View {
             }
             .disabled(runningProfiles.isEmpty || model.health.isRunning)
 
-            action("New profile", "plus") { model.section = .profiles }
+            action("New profile", "plus") { showNewProfile = true }
             Spacer()
         }
     }
@@ -403,7 +400,7 @@ struct ControlView: View {
 
             if state.isBusy {
                 ProgressView().controlSize(.small).frame(width: 74)
-            } else if state.isActive {
+            } else if model.canStopServer(profile.id) {
                 // Restart is what you press after every config change, so it
                 // belongs next to Stop rather than only in a menu.
                 glassButton(Button {
@@ -476,7 +473,7 @@ struct ControlView: View {
     @ViewBuilder
     private func issuesCard(for profile: ServerProfile) -> some View {
         let issues = profile.validationIssues
-        let missing = model.dependencies.missingTools(for: profile.engine)
+        let missing = model.dependencies.missingTools(for: profile)
         let state = model.state(of: profile.id)
         let failure: String? = { if case .failed(let m) = state { return m }; return nil }()
 

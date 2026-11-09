@@ -61,6 +61,8 @@ final class DatabaseAdminPanel {
     private(set) var currentPassword: String = ""
     private(set) var currentTool: DatabaseAdminTool = .adminer
 
+    private var generation = UUID()
+    private var startPending = false
     private var process: Process?
     private var runtimeDirectory: URL?
 
@@ -105,7 +107,14 @@ final class DatabaseAdminPanel {
     // MARK: - Lifecycle
 
     func start(tool: DatabaseAdminTool, database: DatabaseService, port: Int) async {
-        guard !isRunning else { return }
+        guard !isRunning, !startPending, !Task.isCancelled else { return }
+        let request = UUID()
+        generation = request
+        startPending = true
+        defer {
+            startPending = false
+            if Task.isCancelled, generation == request { stop() }
+        }
         state = .starting
         log.system(String(localized: "Starting \(tool.title)…"))
 
@@ -121,6 +130,7 @@ final class DatabaseAdminPanel {
         // than closed: terminating the app does not take its child php with it,
         // and the orphan keeps the port. Clear our own leftovers before giving up.
         await reclaimOrphan(port: port)
+        guard generation == request, state == .starting, !Task.isCancelled else { return }
 
         guard PortScanner.isPortFree(port, host: "127.0.0.1") else {
             fail(String(localized: "Port \(String(port)) is taken by something else. Choose another one in Settings."))
@@ -133,6 +143,7 @@ final class DatabaseAdminPanel {
         currentPassword = password
         currentTool = tool
         let granted = await database.grantPanelAccount(name: Self.accountName, password: password)
+        guard generation == request, state == .starting, !Task.isCancelled else { return }
         guard granted.succeeded else {
             fail(String(localized: "Could not prepare the panel account: \(granted.stderr)"))
             return
@@ -162,12 +173,12 @@ final class DatabaseAdminPanel {
         pipe.fileHandleForReading.readabilityHandler = { [log] handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-            log.append(text)
+            Task { @MainActor in log.append(text) }
         }
 
         task.terminationHandler = { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self, self.isRunning else { return }
+                guard let self, self.generation == request, self.isRunning else { return }
                 self.state = .stopped
                 self.log.system(String(localized: "The admin panel has stopped."))
             }
@@ -191,6 +202,7 @@ final class DatabaseAdminPanel {
     }
 
     func stop() {
+        generation = UUID()
         // Cleared on every path: a start that failed after generating the
         // password would otherwise leave it in memory and on screen.
         currentPassword = ""
@@ -214,6 +226,8 @@ final class DatabaseAdminPanel {
 
     /// Called when the application quits; the panel must not outlive it.
     func stopSynchronously() {
+        generation = UUID()
+        currentPassword = ""
         try? FileManager.default.removeItem(at: Self.sentinelURL)
         guard let task = process, task.isRunning else { return }
         process = nil

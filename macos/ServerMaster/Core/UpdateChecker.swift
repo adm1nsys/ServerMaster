@@ -88,6 +88,7 @@ final class UpdateChecker {
     // MARK: - Checking
 
     func check(silently: Bool = false) async {
+        guard !state.isChecking else { return }
         let repo = normalizedRepository
         guard !repo.isEmpty else {
             state = .notConfigured
@@ -165,6 +166,10 @@ final class UpdateChecker {
         return http.statusCode == 200
     }
 
+    var fetchResponse: (URLRequest) async throws -> (Data, URLResponse) = {
+        try await URLSession.shared.data(for: $0)
+    }
+
     private func fetch(_ url: URL) async throws -> (Data, URLResponse) {
         var request = URLRequest(url: url)
         request.timeoutInterval = 20
@@ -172,7 +177,7 @@ final class UpdateChecker {
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         request.setValue("ServerMaster/\(AppInfo.version)", forHTTPHeaderField: "User-Agent")
-        return try await URLSession.shared.data(for: request)
+        return try await fetchResponse(request)
     }
 
     // MARK: - Links

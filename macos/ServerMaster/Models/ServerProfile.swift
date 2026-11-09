@@ -9,6 +9,19 @@ nonisolated struct EnvVar: Codable, Identifiable, Hashable, Sendable {
     var id = UUID()
     var key: String = ""
     var value: String = ""
+
+    init(id: UUID = UUID(), key: String = "", value: String = "") {
+        self.id = id
+        self.key = key
+        self.value = value
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = c.value(.id, default: UUID())
+        key = c.value(.key, default: "")
+        value = c.value(.value, default: "")
+    }
 }
 
 /// A deliberately small palette shared with the Windows app. A profile colour
@@ -134,6 +147,23 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
 
     init() {}
 
+    /// Canonical Windows camelCase spelling; accept the historic Mac acronym
+    /// below on read, but emit a single unambiguous key on export.
+    private enum CodingKeys: String, CodingKey {
+        case id, name, engine, iconName, profileColor, templateId, needsDatabase
+        case host, port, rootPath, databaseName, workingDirectory, configPath
+        case httpsEnabled, certificatePath, privateKeyPath
+        case enableCORS = "enableCors"
+        case enableGzip, directoryListing, spaFallback, configPreset, cacheSeconds
+        case basicAuthEnabled, basicAuthUser, basicAuthPassword, indexFile, nodeEntryFile
+        case customCommand, customArguments, runAsAdministrator, hideDotfiles, securityHeaders
+        case hstsEnabled, customErrorPages, errorPageAccent, errorPageFooter
+        case phpMemoryLimit, phpUploadMaxFilesize, phpMaxExecutionTime, phpDisplayErrors, phpVersion
+        case extraArguments, environment, openBrowserOnStart, notes
+    }
+
+    private enum LegacyKeys: String, CodingKey { case enableCORS }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = ServerProfile()
@@ -146,7 +176,7 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
         // both concepts independent from now on.
         let savedProfileColor = container.value(.profileColor, default: "")
         templateId = container.value(.templateId, default: defaults.templateId)
-        needsDatabase = container.value(.needsDatabase, default: defaults.needsDatabase)
+        needsDatabase = container.value(.needsDatabase, default: engine.typicallyNeedsDatabase)
         host = container.value(.host, default: defaults.host)
         port = container.value(.port, default: defaults.port)
         rootPath = container.value(.rootPath, default: defaults.rootPath)
@@ -156,7 +186,8 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
         httpsEnabled = container.value(.httpsEnabled, default: defaults.httpsEnabled)
         certificatePath = container.value(.certificatePath, default: defaults.certificatePath)
         privateKeyPath = container.value(.privateKeyPath, default: defaults.privateKeyPath)
-        enableCORS = container.value(.enableCORS, default: defaults.enableCORS)
+        let legacy = try decoder.container(keyedBy: LegacyKeys.self)
+        enableCORS = container.value(.enableCORS, default: legacy.value(.enableCORS, default: defaults.enableCORS))
         enableGzip = container.value(.enableGzip, default: defaults.enableGzip)
         directoryListing = container.value(.directoryListing, default: defaults.directoryListing)
         spaFallback = container.value(.spaFallback, default: defaults.spaFallback)
@@ -188,6 +219,13 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
         notes = container.value(.notes, default: defaults.notes)
     }
     // MARK: Computed
+    var requiredTools: [String] {
+        var tools = engine.requiredTools
+        if engine == .httpServer || templateId == "printshopcrm" { tools.append("npm") }
+        if needsDatabase { tools.append("mariadbd") }
+        if httpsEnabled && engine.requiresHTTPSProxy { tools.append("caddy") }
+        return tools.reduce(into: []) { if !$0.contains($1) { $0.append($1) } }
+    }
 
     var effectiveWorkingDirectory: String {
         let wd = workingDirectory.trimmingCharacters(in: .whitespaces)
@@ -218,7 +256,10 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
     }
 
     /// Configuration problems that must be shown to the user before starting.
-    var validationIssues: [String] {
+    var validationIssues: [String] { validation(includeWarnings: true) }
+    var validationErrors: [String] { validation(includeWarnings: false) }
+
+    private func validation(includeWarnings: Bool) -> [String] {
         var issues: [String] = []
         if name.trimmingCharacters(in: .whitespaces).isEmpty {
             issues.append(String(localized: "Empty profile name."))
@@ -226,7 +267,7 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
         if port < 1 || port > 65535 {
             issues.append(String(localized: "The port must be between 1 and 65535."))
         }
-        if port < 1024 && !runAsAdministrator {
+        if includeWarnings && port > 0 && port < 1024 && !runAsAdministrator {
             issues.append(String(localized: "Port \(String(port)) is privileged and usually requires root."))
         }
         if engine.usesRootDirectory {
@@ -240,9 +281,16 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
                 issues.append(String(localized: "This is a file, not a directory: \(root)"))
             }
         }
+        if !workingDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            var directory: ObjCBool = false
+            let path = effectiveWorkingDirectory
+            if !FileManager.default.fileExists(atPath: path, isDirectory: &directory) || !directory.boolValue {
+                issues.append(String(localized: "Working directory does not exist or is not a directory: \(path)"))
+            }
+        }
         // Serving a PHP site as static files is dangerous: the engine does not execute
         // the code, and the browser receives the source along with the database password.
-        if engine.usesRootDirectory && !engine.runsPHP {
+        if engine.usesRootDirectory && !engine.runsPHP && (includeWarnings || engine != .nodeScript) {
             let root = AppPaths.expand(rootPath)
             let fm = FileManager.default
             let markers = ["index.php", "wp-config.php", "configuration.php",
@@ -262,7 +310,7 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
             let hasIndexHere = ["index.php", "index.html"].contains {
                 fm.fileExists(atPath: (root as NSString).appendingPathComponent($0))
             }
-            if !hasIndexHere {
+            if includeWarnings && !hasIndexHere {
                 for folder in ["public", "web", "dist", "build"] {
                     let candidate = (root as NSString).appendingPathComponent(folder)
                     let hasIndexThere = ["index.php", "index.html"].contains {
@@ -280,11 +328,11 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
         }
         if engine == .nodeScript {
             let entry = resolvedNodeEntry
-            if !FileManager.default.fileExists(atPath: entry) {
+            if (try? URL(fileURLWithPath: entry).resolvingSymlinksInPath().resourceValues(forKeys: [.isRegularFileKey,.isReadableKey])).map({ $0.isRegularFile == true && $0.isReadable == true }) != true {
                 issues.append(String(localized: "Entry file not found: \(entry)"))
             }
         }
-        if engine.honoursHtaccess, !rootPath.isEmpty,
+        if includeWarnings, engine.honoursHtaccess, !rootPath.isEmpty,
            let warning = ApacheInstallation.privacyWarning(forRoot: rootPath) {
             issues.append(warning)
         }
@@ -300,13 +348,13 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
                 }
             }
         }
-        if httpsEnabled && !engine.supportsHTTPS {
+        if includeWarnings && httpsEnabled && !engine.supportsHTTPS {
             issues.append(String(localized: "\(engine.title) does not support HTTPS — the setting will be ignored."))
         }
-        if basicAuthEnabled && (basicAuthUser.isEmpty || basicAuthPassword.isEmpty) {
+        if basicAuthEnabled && (includeWarnings || engine == .httpServer) && (basicAuthUser.isEmpty || basicAuthPassword.isEmpty) {
             issues.append(String(localized: "Basic authentication is on, but no login and password are set."))
         }
-        if hstsEnabled && !(httpsEnabled && engine.supportsHTTPS) {
+        if includeWarnings && hstsEnabled && !(httpsEnabled && engine.supportsHTTPS) {
             issues.append(String(localized: "HSTS is on without HTTPS — the header will have no effect."))
         }
         if engine.runsPHP {
@@ -324,8 +372,11 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
             let version = phpVersion.trimmingCharacters(in: .whitespaces)
             let binary = engine == .phpBuiltIn ? "php" : "php-fpm"
             let folder = engine == .phpBuiltIn ? "bin" : "sbin"
-            let candidates = ["/opt/homebrew/opt/php@\(version)/\(folder)/\(binary)",
-                              "/usr/local/opt/php@\(version)/\(folder)/\(binary)"]
+            let selected = ["/opt/homebrew/opt/php@\(version)/\(folder)/\(binary)",
+                            "/usr/local/opt/php@\(version)/\(folder)/\(binary)"]
+            let defaultBuilds = ["/opt/homebrew/opt/php/\(folder)/\(binary)",
+                                 "/usr/local/opt/php/\(folder)/\(binary)"]
+            let candidates = selected + defaultBuilds.filter { PHPVersions.matchesHomebrewPath($0, version: version) }
             if !candidates.contains(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
                 issues.append(String(localized: "PHP \(version) is not installed. Run: brew install php@\(version)"))
             }
@@ -345,11 +396,16 @@ nonisolated struct ServerProfile: Codable, Identifiable, Hashable, Sendable {
                 issues.append(String(localized: "Duplicate environment variable: \(key)"))
             }
         }
-        if customErrorPages && !engine.supportsErrorPages {
+        if includeWarnings && customErrorPages && !engine.supportsErrorPages {
             issues.append(String(localized: "\(engine.title) cannot serve custom error pages."))
         }
-        if host == "0.0.0.0" {
+        if includeWarnings && host == "0.0.0.0" {
             issues.append(String(localized: "The server will be reachable by everyone on the local network, not just this Mac."))
+        }
+        if httpsEnabled && engine.supportsHTTPS,
+           FileManager.default.fileExists(atPath: AppPaths.expand(certificatePath)),
+           FileManager.default.fileExists(atPath: AppPaths.expand(privateKeyPath)) {
+            issues += TLSValidation.check(self).issues
         }
         return issues
     }

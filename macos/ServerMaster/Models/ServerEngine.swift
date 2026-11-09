@@ -38,9 +38,9 @@ nonisolated enum ServerEngine: String, Codable, CaseIterable, Identifiable, Send
     var subtitle: String {
         switch self {
         case .httpServer:  return String(localized: "Static files, HTTPS, CORS, caching, basic auth")
-        case .nodeScript:  return String(localized: "Run your own server.js or npm script")
-        case .pythonHTTP:  return String(localized: "Quick static serving, no HTTPS")
-        case .phpBuiltIn:  return String(localized: "PHP routing, no HTTPS")
+        case .nodeScript:  return String(localized: "Run your own Node.js server, with optional managed HTTPS")
+        case .pythonHTTP:  return String(localized: "Quick static serving, with optional managed HTTPS")
+        case .phpBuiltIn:  return String(localized: "PHP routing, with optional managed HTTPS")
         case .nginx:       return String(localized: "Full config, HTTPS, proxying")
         case .phpFpm:      return String(localized: "For Joomla, WordPress and any PHP CMS")
         case .apache:      return String(localized: ".htaccess support, no installation needed")
@@ -83,13 +83,9 @@ nonisolated enum ServerEngine: String, Codable, CaseIterable, Identifiable, Send
         }
     }
 
-    /// The engine can serve HTTPS on its own.
-    var supportsHTTPS: Bool {
-        switch self {
-        case .httpServer, .nginx, .phpFpm, .apache, .apachePHP, .caddy, .nodeScript, .custom: return true
-        case .pythonHTTP, .phpBuiltIn: return false
-        }
-    }
+    /// Plain HTTP backends use a supervised local Caddy proxy.
+    var supportsHTTPS: Bool { true }
+    var requiresHTTPSProxy: Bool { self == .pythonHTTP || self == .phpBuiltIn || self == .nodeScript }
 
     /// The engine needs a configuration file.
     var usesConfigFile: Bool {

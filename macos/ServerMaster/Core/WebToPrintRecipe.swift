@@ -10,7 +10,41 @@
 import Foundation
 import CryptoKit
 
-nonisolated enum WebToPrintRecipe {
+@MainActor struct WebToPrintRecipe {
+    enum Step: Equatable, Sendable {
+        case checking, database, configuration, wordpress, plugins, demo, dependencies, verifying
+        var title: String {
+            switch self {
+            case .checking: return String(localized: "Checking project files…")
+            case .database: return String(localized: "Preparing the project database…")
+            case .configuration: return String(localized: "Checking project configuration…")
+            case .wordpress: return String(localized: "Preparing WordPress…")
+            case .plugins: return String(localized: "Preparing WooCommerce and Printcart…")
+            case .demo: return String(localized: "Preparing demo content…")
+            case .dependencies: return String(localized: "Installing project dependencies…")
+            case .verifying: return String(localized: "Verifying the prepared project…")
+            }
+        }
+    }
+
+    struct Runtime {
+        var progress: (Step) -> Void = { _ in }
+        /// Used only when creating a new database; existing configurations keep
+        /// their credentials. Never stored in the profile or recipe metadata.
+        var databasePassword: String? = nil
+        var toolsDirectory: URL? = nil
+        var privateDirectory: URL? = nil
+        var wordpressCLI: URL? = nil
+        var pluginArchives: [String: URL] = [:]
+        var execute: (String, [String], String, TimeInterval) async -> CommandResult = {
+            await ProcessRunner.run($0, $1, cwd: $2, timeout: $3)
+        }
+    }
+
+    private let runtime: Runtime
+    private let php: String?
+    private static var preparingRoots: Set<String> = []
+
     private struct RecipeState: Codable {
         var recipeKind: String
         var databaseName: String?
@@ -22,7 +56,28 @@ nonisolated enum WebToPrintRecipe {
     }
 
     static func prepare(template: ProfileTemplate, profile: ServerProfile,
-                        database: DatabaseService, log: ConsoleLog) async throws -> Outcome {
+                        database: DatabaseService, log: ConsoleLog, runtime: Runtime? = nil) async throws -> Outcome {
+        var directory: ObjCBool = false
+        let expandedRoot = AppPaths.expand(profile.rootPath)
+        guard !expandedRoot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              FileManager.default.fileExists(atPath: expandedRoot, isDirectory: &directory), directory.boolValue else {
+            throw RecipeError.missingProjectFolder
+        }
+        let root = URL(fileURLWithPath: expandedRoot).resolvingSymlinksInPath().path
+        guard preparingRoots.insert(root).inserted else { throw RecipeError.alreadyPreparing }
+        defer { preparingRoots.remove(root) }
+        guard ["wordpress-w2p", "printshopcrm"].contains(template.packageKind) else { throw RecipeError.unsupported }
+        let marker = URL(fileURLWithPath: root).appendingPathComponent(".servermaster-recipe.json")
+        if FileManager.default.fileExists(atPath: marker.path) { try FileManager.default.removeItem(at: marker) }
+        let runtime = runtime ?? Runtime()
+        runtime.progress(.checking)
+        let recipe = Self(runtime: runtime,
+                          php: template.packageKind == "wordpress-w2p" ? try LaunchPlanBuilder.requirePHP(profile: profile) : nil)
+        return try await recipe.apply(template: template, profile: profile, database: database, log: log)
+    }
+
+    private func apply(template: ProfileTemplate, profile: ServerProfile,
+                       database: DatabaseService, log: ConsoleLog) async throws -> Outcome {
         switch template.packageKind {
         case "wordpress-w2p":
             return try await prepareWebToPrint(template: template, profile: profile, database: database, log: log)
@@ -34,19 +89,22 @@ nonisolated enum WebToPrintRecipe {
         }
     }
 
-    private static func prepareWebToPrint(template: ProfileTemplate, profile: ServerProfile,
+    private func prepareWebToPrint(template: ProfileTemplate, profile: ServerProfile,
                                           database: DatabaseService, log: ConsoleLog) async throws -> Outcome {
         let root = AppPaths.expand(profile.rootPath)
         guard FileManager.default.fileExists(atPath: (root as NSString).appendingPathComponent("wp-config-sample.php")) else {
             throw RecipeError.missingWordPress
         }
 
+        runtime.progress(.database)
         await database.start()
         guard database.state == .running else { throw RecipeError.databaseUnavailable }
 
-        let previous = readState(in: root)
-        let configuredName = databaseName(in: root)
-        let reusedName = previous?.databaseName ?? configuredName
+        runtime.progress(.configuration)
+        let reusedName = databaseName(in: root)
+        if FileManager.default.fileExists(atPath: (root as NSString).appendingPathComponent("wp-config.php")), reusedName == nil {
+            throw RecipeError.commandFailed(String(localized: "The existing wp-config.php has no readable literal DB_NAME. Its configuration was not changed."))
+        }
         let name: String
         if let reusedName, !reusedName.isEmpty {
             name = reusedName
@@ -54,19 +112,30 @@ nonisolated enum WebToPrintRecipe {
         } else {
             name = uniqueDatabaseName(profile.databaseName.isEmpty ? suggestedName(profile.name) : profile.databaseName,
                                       taken: Set(database.databases.map(\.name)))
-            let user = "sm_" + name.prefix(45)
-            let password = randomSecret()
+            let user = "sm_" + randomSecret().prefix(24)
+            let password = runtime.databasePassword ?? randomSecret()
             let created = await database.createDatabase(name: name, user: user, password: password)
             guard created.succeeded else { throw RecipeError.databaseCreation(created.combined) }
             try writeConfig(in: root, database: database, name: name, user: user, password: password,
                             showcase: template.recipeKind == "wordpress-w2p-showcase")
         }
 
+        runtime.progress(.wordpress)
         let wp = try await wordpressCLI(log: log)
         let check = await command(wp, ["core", "is-installed"], root: root)
-        let isFreshInstall = !check.succeeded
-        if isFreshInstall {
+        let pending = URL(fileURLWithPath: root).appendingPathComponent(".servermaster-wp.pending")
+        let isFreshInstall = !check.succeeded || (try? String(contentsOf: pending, encoding: .utf8)) == name
+        if !check.succeeded {
+            try name.write(to: pending, atomically: true, encoding: .utf8)
             let adminPassword = randomSecret()
+            let credentialsDirectory = runtime.privateDirectory ?? AppPaths.subdir("RecipeCredentials")
+            try FileManager.default.createDirectory(at: credentialsDirectory, withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700])
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: credentialsDirectory.path)
+            let credentials = credentialsDirectory.appendingPathComponent(profile.id.uuidString + ".txt")
+            try "WordPress: \(profile.address)/wp-admin/\nUser: servermaster\nPassword: \(adminPassword)\n".write(to: credentials, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: credentials.path)
+            log.system(String(localized: "WordPress administrator credentials saved outside the web folder: \(credentials.path)"))
             try await run(wp, ["core", "install", "--url=\(profile.address)",
                                "--title=ServerMaster Web-to-Print",
                                "--admin_user=servermaster", "--admin_password=\(adminPassword)",
@@ -77,7 +146,7 @@ nonisolated enum WebToPrintRecipe {
             Магазин: \(profile.address)
             Адмінка: \(profile.address)/wp-admin/
             Логін: servermaster
-            Пароль: \(adminPassword)
+            Пароль: збережено окремо поза веб-папкою; шлях зазначено в журналі ServerMaster.
 
             Уже готово: україномовний магазин, товари з варіантами друку,
             «Нова Пошта», самовивіз, оплата при отриманні та демо-замовлення.
@@ -86,12 +155,13 @@ nonisolated enum WebToPrintRecipe {
 
             Admin: \(profile.address)/wp-admin/
             User: servermaster
-            Password: \(adminPassword)
+            Password: stored outside the web folder; see the ServerMaster setup log.
             """
             try notes.write(to: URL(fileURLWithPath: root).appendingPathComponent("servermaster-demo.md"),
                          atomically: true, encoding: .utf8)
         }
 
+        runtime.progress(.plugins)
         try await ensurePlugin("woocommerce", wp: wp, root: root, log: log)
         // The designer itself needs a Printcart account, but the integration is
         // part of this template on both platforms and must be present locally.
@@ -106,39 +176,73 @@ nonisolated enum WebToPrintRecipe {
             // an offline local install remains usable, just in its fallback locale.
             try await run(wp, ["language", "core", "install", "uk", "--activate"], root: root, log: log, allowFailure: true)
             try await run(wp, ["language", "plugin", "install", "woocommerce", "uk"], root: root, log: log, allowFailure: true)
+            runtime.progress(.demo)
             try await seedShowcase(wp, root: root, log: log, isFreshInstall: isFreshInstall)
         }
+        runtime.progress(.verifying)
+        if FileManager.default.fileExists(atPath: pending.path) { try FileManager.default.removeItem(at: pending) }
         try writeState(.init(recipeKind: template.recipeKind, databaseName: name, completedAt: .now), in: root)
         log.system("Web-to-Print preparation completed. Open \(profile.address).")
         return Outcome(databaseName: name)
     }
 
-    private static func preparePrintShopCRM(profile: ServerProfile, log: ConsoleLog) async throws {
+    private func preparePrintShopCRM(profile: ServerProfile, log: ConsoleLog) async throws {
         let root = AppPaths.expand(profile.rootPath)
         guard FileManager.default.fileExists(atPath: (root as NSString).appendingPathComponent("package.json")) else {
             throw RecipeError.missingPrintShop
         }
         guard ShellEnvironment.shared.which("npm") != nil else { throw RecipeError.npmMissing }
+        runtime.progress(.configuration)
         let data = URL(fileURLWithPath: root).appendingPathComponent("data", isDirectory: true)
         try FileManager.default.createDirectory(at: data.appendingPathComponent("uploads", isDirectory: true),
                                                 withIntermediateDirectories: true)
+        // Current upstream writes public/uploads directly. For a clean project
+        // point that location at our data folder without moving existing uploads.
+        let publicUploads = URL(fileURLWithPath: root).appendingPathComponent("public/uploads")
+        if FileManager.default.fileExists(atPath: publicUploads.deletingLastPathComponent().path),
+           (try? FileManager.default.destinationOfSymbolicLink(atPath: publicUploads.path)) == nil {
+            let entries = (try? FileManager.default.contentsOfDirectory(atPath: publicUploads.path)) ?? []
+            if entries.allSatisfy({ $0 == ".gitkeep" || $0 == ".DS_Store" }) {
+                if FileManager.default.fileExists(atPath: publicUploads.path) { try FileManager.default.removeItem(at: publicUploads) }
+                try FileManager.default.createSymbolicLink(atPath: publicUploads.path, withDestinationPath: "../data/uploads")
+            }
+        }
         let environment = URL(fileURLWithPath: root).appendingPathComponent(".env")
         if !FileManager.default.fileExists(atPath: environment.path) {
-            let database = data.appendingPathComponent("printshop.db").path
-            let uploads = data.appendingPathComponent("uploads", isDirectory: true).path
             try """
             PORT=\(profile.port)
             PSC_HOST=127.0.0.1
             PSC_AUTH=0
-            PSC_DB=\(database)
-            PSC_UPLOADS=\(uploads)
+            PSC_DB=./data/printshop.db
+            PSC_UPLOADS=./data/uploads
             PSC_SECRET=\(randomSecret())
             """.write(to: environment, atomically: true, encoding: .utf8)
         }
+        runtime.progress(.dependencies)
         try await runExecutable("npm", ["install"], root: root, log: log, timeout: 600)
-        // Seeding is optional in upstream versions; do not turn an otherwise
-        // usable install into a failure merely because this script is absent.
-        _ = await ProcessRunner.run("npm", ["run", "seed"], cwd: root, timeout: 300)
+        // No seed script is optional; an existing script that fails is a real failure.
+        let manifest = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: root).appendingPathComponent("package.json"))) as? [String: Any]
+        if (manifest?["scripts"] as? [String: String])?["seed"] != nil {
+            let text = try String(contentsOf: environment, encoding: .utf8)
+            var dbPath = text.components(separatedBy: .newlines).last(where: { $0.hasPrefix("PSC_DB=") })
+                .map { String($0.dropFirst(7)).trimmingCharacters(in: .whitespacesAndNewlines) } ?? "./data/printshop.db"
+            if (dbPath.hasPrefix("\"") && dbPath.hasSuffix("\"")) || (dbPath.hasPrefix("'") && dbPath.hasSuffix("'")) { dbPath = String(dbPath.dropFirst().dropLast()) }
+            let dbURL = URL(fileURLWithPath: (dbPath as NSString).isAbsolutePath ? dbPath : (root as NSString).appendingPathComponent(dbPath)).standardizedFileURL
+            let pending = URL(fileURLWithPath: root).appendingPathComponent(".servermaster-crm-seed.pending")
+            let ownedRetry = (try? String(contentsOf: pending, encoding: .utf8)) == dbURL.path
+            if !FileManager.default.fileExists(atPath: dbURL.path) || ownedRetry {
+                try dbURL.path.write(to: pending, atomically: true, encoding: .utf8)
+                runtime.progress(.demo)
+                try await runExecutable("npm", ["run", "seed"], root: root, log: log, timeout: 300)
+            } else { log.system("Keeping the existing CRM database; demo seed was not run again.") }
+            let header = try FileHandle(forReadingFrom: dbURL)
+            defer { try? header.close() }
+            guard try header.read(upToCount: 16) == Data("SQLite format 3\0".utf8) else {
+                throw RecipeError.commandFailed(String(localized: "The CRM database is not a readable SQLite file. Existing data was not overwritten."))
+            }
+            if FileManager.default.fileExists(atPath: pending.path) { try FileManager.default.removeItem(at: pending) }
+        }
+        runtime.progress(.verifying)
         guard FileManager.default.fileExists(atPath: (root as NSString).appendingPathComponent("node_modules")) else {
             throw RecipeError.commandFailed("npm install completed but node_modules was not created.")
         }
@@ -150,12 +254,15 @@ nonisolated enum WebToPrintRecipe {
         log.system("Print Shop CRM is ready in \(root).")
     }
 
-    private static func wordpressCLI(log: ConsoleLog) async throws -> URL {
+    private func wordpressCLI(log: ConsoleLog) async throws -> URL {
+        if let override = runtime.wordpressCLI { return override }
         if let installed = ShellEnvironment.shared.which("wp") {
             return URL(fileURLWithPath: installed)
         }
         guard ShellEnvironment.shared.which("php") != nil else { throw RecipeError.phpMissing }
-        let tool = AppPaths.subdir("Tools").appendingPathComponent("wp-cli.phar")
+        let directory = runtime.toolsDirectory ?? AppPaths.subdir("Tools")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let tool = directory.appendingPathComponent("wp-cli.phar")
         if !FileManager.default.fileExists(atPath: tool.path) {
             log.system("Downloading WP-CLI…")
             let source = URL(string: "https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar")!
@@ -166,24 +273,24 @@ nonisolated enum WebToPrintRecipe {
         return tool
     }
 
-    private static func command(_ wp: URL, _ args: [String], root: String) async -> CommandResult {
-        if wp.lastPathComponent == "wp" { return await ProcessRunner.run(wp.path, args, cwd: root, timeout: 300) }
-        guard let php = ShellEnvironment.shared.which("php") else {
+    private func command(_ wp: URL, _ args: [String], root: String) async -> CommandResult {
+        if wp.lastPathComponent == "wp" { return await runtime.execute(wp.path, args, root, 300) }
+        guard let php else {
             return CommandResult(exitCode: 127, stdout: "", stderr: "PHP was not found")
         }
-        return await ProcessRunner.run(php, [wp.path] + args, cwd: root, timeout: 300)
+        return await runtime.execute(php, [wp.path] + args, root, 300)
     }
 
-    private static func run(_ wp: URL, _ args: [String], root: String, log: ConsoleLog,
+    private func run(_ wp: URL, _ args: [String], root: String, log: ConsoleLog,
                             allowFailure: Bool = false) async throws {
         let result = await command(wp, args, root: root)
         if !result.combined.isEmpty { log.append(result.combined, stream: result.succeeded ? .stdout : .stderr) }
         if !allowFailure && !result.succeeded { throw RecipeError.commandFailed(result.combined) }
     }
 
-    private static func runExecutable(_ executable: String, _ args: [String], root: String,
+    private func runExecutable(_ executable: String, _ args: [String], root: String,
                                       log: ConsoleLog, timeout: TimeInterval) async throws {
-        let result = await ProcessRunner.run(executable, args, cwd: root, timeout: timeout)
+        let result = await runtime.execute(executable, args, root, timeout)
         if !result.combined.isEmpty { log.append(result.combined, stream: result.succeeded ? .stdout : .stderr) }
         if !result.succeeded { throw RecipeError.commandFailed(result.combined) }
     }
@@ -191,20 +298,21 @@ nonisolated enum WebToPrintRecipe {
     /// `wp plugin install` fails when a partially completed earlier run already
     /// downloaded the plugin. Checking first makes the recipe actually resumable
     /// and matches the Windows downloader's existing-folder behaviour.
-    private static func ensurePlugin(_ slug: String, wp: URL, root: String, log: ConsoleLog) async throws {
+    private func ensurePlugin(_ slug: String, wp: URL, root: String, log: ConsoleLog) async throws {
         let existing = await command(wp, ["plugin", "is-installed", slug], root: root)
         if existing.succeeded {
             try await run(wp, ["plugin", "activate", slug], root: root, log: log)
         } else {
-            try await run(wp, ["plugin", "install", slug, "--activate"], root: root, log: log)
+            try await run(wp, ["plugin", "install", runtime.pluginArchives[slug]?.path ?? slug, "--activate"], root: root, log: log)
         }
     }
 
-    private static func seedShowcase(_ wp: URL, root: String, log: ConsoleLog, isFreshInstall: Bool) async throws {
+    private func seedShowcase(_ wp: URL, root: String, log: ConsoleLog, isFreshInstall: Bool) async throws {
         let freshInstall = isFreshInstall ? "true" : "false"
         let php = """
         $sm_fresh_install = \(freshInstall);
         if (!class_exists('WooCommerce')) { WP_CLI::error('WooCommerce is not active.'); }
+        add_filter('pre_wp_mail', '__return_false'); // Demo orders must not send mail.
         update_option('blogname', 'Друкарня «Відбиток»');
         update_option('blogdescription', 'Онлайн-замовлення друкованої продукції');
         update_option('timezone_string', 'Europe/Kyiv');
@@ -264,11 +372,22 @@ nonisolated enum WebToPrintRecipe {
         $requirements='<h3>Вимоги до макета</h3><ul><li>PDF (PDF/X-1a) або TIFF, 300 dpi</li><li>Колірна модель CMYK, без RGB та Pantone</li><li>Вильоти 2 мм з кожного боку, важливі елементи — не ближче 3 мм до краю</li><li>Шрифти переведені в криві</li></ul><p>Перед друком дизайнер перевіряє макет і надсилає підтвердження.</p>';
 
         function sm_product($item, $categoryId, $requirements) {
-          $existing = get_page_by_path($item['slug'], OBJECT, 'product'); if ($existing) return $existing->ID;
-          $product = new WC_Product_Variable(); $product->set_name($item['name']); $product->set_slug($item['slug']); $product->set_status('publish'); $product->set_short_description($item['description']); $product->set_description('<p>'.$item['description'].'</p>'.$requirements); if($categoryId) $product->set_category_ids(array($categoryId));
-          $attributes = array(); foreach ($item['options'] as $slug=>$values) { $ids=array(); foreach($values as $value) { $term=get_term_by('slug',$value,'pa_'.$slug); if($term) $ids[]=$term->term_id; } $a=new WC_Product_Attribute(); $a->set_id(wc_attribute_taxonomy_id_by_name($slug)); $a->set_name('pa_'.$slug); $a->set_options($ids); $a->set_visible(true); $a->set_variation(true); $attributes[]=$a; }
-          $product->set_attributes($attributes); $product->set_default_attributes(array('pa_format'=>$item['options']['format'][0],'pa_papir'=>$item['options']['papir'][0],'pa_tyrazh'=>$item['options']['tyrazh'][0],'pa_obrobka'=>$item['options']['obrobka'][0])); $image=sm_image($item['slug'],$item['name'],$item['label'],$item['colour'],$item['w'],$item['h']); if($image) $product->set_image_id($image); $id=$product->save();
-          foreach($item['prices'] as $run=>$price) { $variation=new WC_Product_Variation(); $variation->set_parent_id($id); $variation->set_attributes(array('pa_format'=>'','pa_papir'=>'','pa_tyrazh'=>(string)$run,'pa_obrobka'=>'')); $variation->set_regular_price((string)$price); $variation->set_stock_status('instock'); $variation->set_status('publish'); $variation->save(); } WC_Product_Variable::sync($id); return $id;
+          $existing = get_page_by_path($item['slug'], OBJECT, 'product');
+          $product = $existing ? wc_get_product($existing->ID) : new WC_Product_Variable();
+          if (!$product || !$product->is_type('variable')) WP_CLI::error('Showcase slug belongs to a different product type: '.$item['slug']);
+          if (!$existing) {
+            $product->set_name($item['name']); $product->set_slug($item['slug']); $product->set_status('publish'); $product->set_short_description($item['description']); $product->set_description('<p>'.$item['description'].'</p>'.$requirements); if($categoryId) $product->set_category_ids(array($categoryId));
+            $attributes = array(); foreach ($item['options'] as $slug=>$values) { $ids=array(); foreach($values as $value) { $term=get_term_by('slug',$value,'pa_'.$slug); if($term) $ids[]=$term->term_id; } $a=new WC_Product_Attribute(); $a->set_id(wc_attribute_taxonomy_id_by_name($slug)); $a->set_name('pa_'.$slug); $a->set_options($ids); $a->set_visible(true); $a->set_variation(true); $attributes[]=$a; }
+            $product->set_attributes($attributes); $product->set_default_attributes(array('pa_format'=>$item['options']['format'][0],'pa_papir'=>$item['options']['papir'][0],'pa_tyrazh'=>$item['options']['tyrazh'][0],'pa_obrobka'=>$item['options']['obrobka'][0]));
+          }
+          if (!$product->get_image_id()) { $image=sm_image($item['slug'],$item['name'],$item['label'],$item['colour'],$item['w'],$item['h']); if(!$image) WP_CLI::error('Could not generate showcase artwork. Check PHP GD and uploads permissions.'); $product->set_image_id($image); }
+          $id=$product->save();
+          $runs=array(); foreach($product->get_children() as $child) { $runs[]=get_post_meta($child,'attribute_pa_tyrazh',true); }
+          foreach($item['prices'] as $run=>$price) {
+            if(in_array((string)$run,$runs,true)) continue;
+            $variation=new WC_Product_Variation(); $variation->set_parent_id($id); $variation->set_attributes(array('pa_format'=>'','pa_papir'=>'','pa_tyrazh'=>(string)$run,'pa_obrobka'=>'')); $variation->set_regular_price((string)$price); $variation->set_stock_status('instock'); $variation->set_status('publish'); $variation->save();
+          }
+          WC_Product_Variable::sync($id); return $id;
         }
         $products=array(
           array('slug'=>'vizytky','name'=>'Візитки','label'=>'90 × 50 мм','colour'=>'#3d5afe','w'=>90,'h'=>50,'description'=>'Класичні візитки на щільному папері: друк з двох боків, ламінування та скруглення кутів на вибір.','options'=>array('format'=>array('90x50','85x55'),'papir'=>array('kreid-300','dyzain-290','lion-250'),'tyrazh'=>array('100','500','1000'),'obrobka'=>array('bez','lam-mat','lam-hlianets','kuty')),'prices'=>array('100'=>350,'500'=>890,'1000'=>1290)),
@@ -291,10 +410,10 @@ nonisolated enum WebToPrintRecipe {
             array('Андрій','Мельник','Театр «Сцена»','scena@example.local','+380937778899','Одеса','plakaty','50',array('format'=>'a2','papir'=>'foto-200','obrobka'=>'bez'),'completed','Афіші вистави.','Видано клієнту.',3),
             array('Марія','Шевченко','Пекарня «Колосок»','kolosok@example.local','+380665556677','Київ','nalipky','1000',array('format'=>'70x70','papir'=>'samoklei-mat','obrobka'=>'porizka'),'processing','Наліпки на коробки, контурна порізка по колу.','У порізці.',0)
           );
-          foreach($orders as $o) { $post=get_page_by_path($o[6],OBJECT,'product'); if(!$post) continue; $product=wc_get_product($post->ID); $variation=null; foreach($product->get_children() as $childId) { $child=wc_get_product($childId); if($child && get_post_meta($childId,'attribute_pa_tyrazh',true)===$o[7]) { $variation=$child; break; } } if(!$variation) continue;
-            $order=wc_create_order(array('customer_note'=>$o[10])); $chosen=array('attribute_pa_tyrazh'=>$o[7]); foreach($o[8] as $slug=>$value) $chosen['attribute_pa_'.$slug]=$value; $order->add_product($variation,1,array('variation'=>$chosen));
+          foreach($orders as $o) { $key='servermaster-demo-'.$o[6].'-'.$o[3]; $done=wc_get_order((int)get_option($key,0)); if($done) continue; $post=get_page_by_path($o[6],OBJECT,'product'); if(!$post) continue; $product=wc_get_product($post->ID); $variation=null; foreach($product->get_children() as $childId) { $child=wc_get_product($childId); if($child && get_post_meta($childId,'attribute_pa_tyrazh',true)===$o[7]) { $variation=$child; break; } } if(!$variation) continue;
+            wc_transaction_query('start'); try { $order=wc_create_order(array('customer_note'=>$o[10])); $chosen=array('attribute_pa_tyrazh'=>$o[7]); foreach($o[8] as $slug=>$value) $chosen['attribute_pa_'.$slug]=$value; $order->add_product($variation,1,array('variation'=>$chosen));
             $address=array('first_name'=>$o[0],'last_name'=>$o[1],'company'=>$o[2],'email'=>$o[3],'phone'=>$o[4],'city'=>$o[5],'country'=>'UA','address_1'=>'Відділення Нової Пошти №1'); $order->set_address($address,'billing'); $order->set_address($address,'shipping'); $order->set_payment_method('cod'); $order->set_payment_method_title('Оплата при отриманні');
-            $shipping=new WC_Order_Item_Shipping(); $shipping->set_method_title('Нова Пошта'); $shipping->set_method_id('flat_rate'); $shipping->set_total(80); $order->add_item($shipping); $order->set_date_created(time()-$o[12]*DAY_IN_SECONDS-3600); $order->calculate_totals(false); $order->update_status($o[9],'Демо-замовлення ServerMaster.'); $order->add_order_note($o[11]); }
+            $shipping=new WC_Order_Item_Shipping(); $shipping->set_method_title('Нова Пошта'); $shipping->set_method_id('flat_rate'); $shipping->set_total(80); $order->add_item($shipping); $order->set_date_created(time()-$o[12]*DAY_IN_SECONDS-3600); $order->calculate_totals(false); $order->update_status($o[9],'Демо-замовлення ServerMaster.'); $order->add_order_note($o[11]); $order->update_meta_data('_servermaster_demo_key',$key); $order->save(); update_option($key,$order->get_id(),false); wc_transaction_query('commit'); } catch (Throwable $error) { wc_transaction_query('rollback'); throw $error; } }
           update_option('servermaster_showcase_orders','yes');
         }
         WP_CLI::success('Друкарня «Відбиток» готова.');
@@ -302,25 +421,19 @@ nonisolated enum WebToPrintRecipe {
         try await run(wp, ["eval", php], root: root, log: log)
     }
 
-    private static func stateURL(in root: String) -> URL {
+    private func stateURL(in root: String) -> URL {
         URL(fileURLWithPath: root).appendingPathComponent(".servermaster-recipe.json")
     }
 
-    private static func readState(in root: String) -> RecipeState? {
-        let url = stateURL(in: root)
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(RecipeState.self, from: data)
-    }
-
-    private static func writeState(_ state: RecipeState, in root: String) throws {
+    private func writeState(_ state: RecipeState, in root: String) throws {
         let data = try JSONEncoder().encode(state)
         try data.write(to: stateURL(in: root), options: .atomic)
     }
 
-    private static func databaseName(in root: String) -> String? {
+    private func databaseName(in root: String) -> String? {
         let config = URL(fileURLWithPath: root).appendingPathComponent("wp-config.php")
         guard let text = try? String(contentsOf: config, encoding: .utf8) else { return nil }
-        let pattern = #"define\(\s*['\"]DB_NAME['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)"#
+        let pattern = #"\bdefine\s*\(\s*['\"]DB_NAME['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)"#
         guard let expression = try? NSRegularExpression(pattern: pattern),
               let match = expression.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
               let range = Range(match.range(at: 1), in: text)
@@ -328,7 +441,7 @@ nonisolated enum WebToPrintRecipe {
         return String(text[range])
     }
 
-    private static func writeConfig(in root: String, database: DatabaseService, name: String, user: String,
+    private func writeConfig(in root: String, database: DatabaseService, name: String, user: String,
                                     password: String, showcase: Bool) throws {
         let destination = URL(fileURLWithPath: root).appendingPathComponent("wp-config.php")
         guard !FileManager.default.fileExists(atPath: destination.path) else { return }
@@ -341,31 +454,33 @@ nonisolated enum WebToPrintRecipe {
         try config.write(to: destination, atomically: true, encoding: .utf8)
     }
 
-    private static func suggestedName(_ name: String) -> String {
-        let safe = name.lowercased().map { $0.isLetter || $0.isNumber ? $0 : "_" }
+    private func suggestedName(_ name: String) -> String {
+        let safe = name.lowercased().map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "_" }
         return String(safe).trimmingCharacters(in: CharacterSet(charactersIn: "_")) + "_w2p"
     }
-    private static func uniqueDatabaseName(_ base: String, taken: Set<String>) -> String {
-        let trimmed = String(base.prefix(58))
+    private func uniqueDatabaseName(_ base: String, taken: Set<String>) -> String {
+        let trimmed = String(base.lowercased().map { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_") ? $0 : "_" }.prefix(58))
         var candidate = trimmed; var suffix = 2
         while taken.contains(candidate) { candidate = String(trimmed.prefix(58)) + "_\(suffix)"; suffix += 1 }
         return candidate
     }
-    private static func randomSecret() -> String { SHA256.hash(data: Data(UUID().uuidString.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined() }
+    private func randomSecret() -> String { SHA256.hash(data: Data(UUID().uuidString.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined() }
 
-    enum RecipeError: LocalizedError { case unsupported, missingWordPress, missingPrintShop, printShopEntryMissing(String), webToPrintPluginMissing, databaseUnavailable, databaseCreation(String), phpMissing, npmMissing, wpCLIUnavailable, commandFailed(String)
+    enum RecipeError: LocalizedError { case alreadyPreparing, unsupported, missingProjectFolder, missingWordPress, missingPrintShop, printShopEntryMissing(String), webToPrintPluginMissing, databaseUnavailable, databaseCreation(String), phpMissing, npmMissing, wpCLIUnavailable, commandFailed(String)
         var errorDescription: String? { switch self {
-        case .unsupported: return "This project has no macOS setup recipe."
-        case .missingWordPress: return "WordPress files are missing. Download the project into an empty folder first."
-        case .missingPrintShop: return "Print Shop CRM files are missing. Download the project into an empty folder first."
-        case .printShopEntryMissing(let entry): return "Print Shop CRM entry file was not found: \(entry)"
-        case .webToPrintPluginMissing: return "WooCommerce or Printcart Integration was not installed completely."
-        case .databaseUnavailable: return "MariaDB could not start."
-        case .databaseCreation(let message): return message.isEmpty ? "Could not create the WordPress database." : message
-        case .phpMissing: return "PHP is required to prepare WordPress."
-        case .npmMissing: return "npm is required to prepare Print Shop CRM."
-        case .wpCLIUnavailable: return "WP-CLI could not be downloaded."
-        case .commandFailed(let message): return message.isEmpty ? "A WordPress setup command failed." : message
+        case .missingProjectFolder: return String(localized: "Choose an existing project folder before preparing it.")
+        case .alreadyPreparing: return String(localized: "This project is already being prepared. Wait for it to finish.")
+        case .unsupported: return String(localized: "This project has no macOS setup recipe.")
+        case .missingWordPress: return String(localized: "WordPress files are missing. Download the project into an empty folder first.")
+        case .missingPrintShop: return String(localized: "Print Shop CRM files are missing. Download the project into an empty folder first.")
+        case .printShopEntryMissing(let entry): return String(localized: "Print Shop CRM entry file was not found: \(entry)")
+        case .webToPrintPluginMissing: return String(localized: "WooCommerce or Printcart Integration was not installed completely.")
+        case .databaseUnavailable: return String(localized: "MariaDB could not start.")
+        case .databaseCreation(let message): return message.isEmpty ? String(localized: "Could not create the WordPress database.") : message
+        case .phpMissing: return String(localized: "PHP is required to prepare WordPress.")
+        case .npmMissing: return String(localized: "npm is required to prepare Print Shop CRM.")
+        case .wpCLIUnavailable: return String(localized: "WP-CLI could not be downloaded.")
+        case .commandFailed(let message): return message.isEmpty ? String(localized: "A WordPress setup command failed.") : message
         } }
     }
 }

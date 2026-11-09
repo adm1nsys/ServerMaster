@@ -23,9 +23,17 @@ struct DatabaseBrowserSheet: View {
     @State private var isWorking = false
     @State private var showEditor = false
     @State private var columns: [DatabaseService.ColumnInfo] = []
-    @State private var editing: (row: Int, column: Int)?
+    @State private var editing: (row: Int, column: Int, revision: UUID)?
     @State private var editText = ""
-    @State private var deleteRow: Int?
+    @State private var editNull = false
+    @State private var isTablePreview = false
+    @State private var queryRevision = UUID()
+    @State private var resultRevision = UUID()
+    @State private var resultTableName: String?
+    @State private var pageOffset = 0
+    @State private var hasNextPage = false
+    private let pageSize = 100
+    @State private var deleteRow: (index: Int, revision: UUID)?
 
     private var db: DatabaseService { model.database }
 
@@ -55,7 +63,7 @@ struct DatabaseBrowserSheet: View {
             get: { deleteRow != nil },
             set: { if !$0 { deleteRow = nil } })) {
             Button("Delete", role: .destructive) {
-                if let index = deleteRow { Task { await removeRow(index) } }
+                if let target = deleteRow { Task { await removeRow(target.index, revision: target.revision) } }
                 deleteRow = nil
             }
             Button("Cancel", role: .cancel) { deleteRow = nil }
@@ -79,6 +87,7 @@ struct DatabaseBrowserSheet: View {
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
+            .disabled(isWorking)
             .help("Refresh")
         }
         .padding(.horizontal, 16)
@@ -98,9 +107,21 @@ struct DatabaseBrowserSheet: View {
             .tag(table.name)
         }
         .listStyle(.inset)
+        .disabled(isWorking)
         .onChange(of: selectedTable) { _, name in
-            guard let name else { return }
-            Task { await preview(name) }
+            queryRevision = UUID()
+            isTablePreview = false
+            resultTableName = nil
+            editing = nil
+            deleteRow = nil
+            guard let name else {
+                result = .init()
+                columns = []
+                isWorking = false
+                return
+            }
+            pageOffset = 0
+            Task { await preview(name, offset: 0) }
         }
         .overlay {
             if tables.isEmpty && !isWorking {
@@ -131,7 +152,8 @@ struct DatabaseBrowserSheet: View {
     /// Only a table preview with a primary key can be edited: an arbitrary query
     /// may return anything at all, and a row cannot be identified there.
     private var canEdit: Bool {
-        selectedTable != nil && columns.contains(where: \.isPrimaryKey)
+        !isWorking && isTablePreview && selectedTable != nil && resultTableName == selectedTable
+            && resultRevision == queryRevision && columns.contains(where: \.isPrimaryKey)
             && !result.columns.isEmpty
             && columns.filter(\.isPrimaryKey).allSatisfy { key in
                 result.columns.contains(key.name)
@@ -156,6 +178,7 @@ struct DatabaseBrowserSheet: View {
             ContentUnavailableView("Pick a table", systemImage: "tablecells",
                                    description: Text("The table list is on the left. Or switch on the SQL query."))
         } else {
+            let sourceRevision = resultRevision
             VStack(spacing: 0) {
                 if selectedTable != nil {
                     editingBar
@@ -182,7 +205,8 @@ struct DatabaseBrowserSheet: View {
                             GridRow {
                                 if canEdit {
                                     Button {
-                                        deleteRow = rowIndex
+                                        guard canEdit, sourceRevision == queryRevision else { return }
+                                        deleteRow = (rowIndex, sourceRevision)
                                     } label: {
                                         Image(systemName: "minus.circle")
                                             .font(.caption2)
@@ -204,30 +228,49 @@ struct DatabaseBrowserSheet: View {
     }
 
     @ViewBuilder
-    private func cell(row: Int, column: Int, value: String) -> some View {
+    private func cell(row: Int, column: Int, value: String?) -> some View {
         let name = column < result.columns.count ? result.columns[column] : ""
         let info = columns.first { $0.name == name }
+        let sourceRevision = resultRevision
         let editable = canEdit && !(info?.isPrimaryKey ?? false) && !(info?.isAutoIncrement ?? false)
 
         if let editing, editing.row == row, editing.column == column {
-            TextField("", text: $editText)
-                .font(.system(.caption, design: .monospaced))
-                .glassField()
-                .frame(minWidth: 90)
-                .onSubmit { Task { await commitEdit() } }
-                .onExitCommand { self.editing = nil }
+            HStack(spacing: 6) {
+                TextField("", text: $editText)
+                    .font(.system(.caption, design: .monospaced))
+                    .glassField()
+                    .frame(minWidth: 90)
+                    .disabled(editNull || isWorking)
+                    .onSubmit { Task { await commitEdit() } }
+                    .onExitCommand { self.editing = nil }
+                if info?.isNullable == true {
+                    Toggle("SQL NULL", isOn: $editNull)
+                        .toggleStyle(.checkbox)
+                        .disabled(isWorking)
+                }
+                Button {
+                    Task { await commitEdit() }
+                } label: { Image(systemName: "checkmark") }
+                .help("Save cell")
+                .disabled(isWorking)
+                Button { self.editing = nil } label: { Image(systemName: "xmark") }
+                    .help("Cancel")
+                    .disabled(isWorking)
+            }
         } else {
-            Text(value.count > 120 ? String(value.prefix(120)) + "…" : value)
+            let display = value ?? "NULL"
+            Text(display.count > 120 ? String(display.prefix(120)) + "…" : display)
                 .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(value == "NULL" ? .tertiary : .primary)
+                .foregroundStyle(value == nil ? .tertiary : .primary)
                 .textSelection(.enabled)
                 .lineLimit(1)
                 .padding(.vertical, 1)
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) {
-                    guard editable else { return }
-                    editText = value == "NULL" ? "" : value
-                    editing = (row, column)
+                    guard editable, canEdit, sourceRevision == queryRevision else { return }
+                    editText = value ?? ""
+                    editNull = value == nil
+                    editing = (row, column, sourceRevision)
                 }
                 .help(editable ? String(localized: "Double-click to edit")
                                : String(localized: "Read-only field"))
@@ -264,6 +307,12 @@ struct DatabaseBrowserSheet: View {
             Text(result.message)
                 .font(.caption).foregroundStyle(.secondary)
             Spacer()
+            if isTablePreview, let table = selectedTable {
+                Button("Previous") { Task { await preview(table, offset: max(0, pageOffset - pageSize)) } }
+                    .disabled(isWorking || pageOffset == 0)
+                Button("Next") { Task { await preview(table, offset: pageOffset + pageSize) } }
+                    .disabled(isWorking || !hasNextPage)
+            }
             if !result.rows.isEmpty {
                 Button("Copy as CSV") { copyCSV() }
                     .buttonStyle(.link)
@@ -278,17 +327,19 @@ struct DatabaseBrowserSheet: View {
     // MARK: - Actions
 
     private func commitEdit() async {
-        guard let editing, let table = selectedTable else { return }
+        guard !isWorking, isTablePreview, let editing, let table = selectedTable,
+              resultTableName == table, editing.revision == resultRevision, resultRevision == queryRevision,
+              result.columns.indices.contains(editing.column), result.rows.indices.contains(editing.row) else { return }
         let columnName = result.columns[editing.column]
         guard let info = columns.first(where: { $0.name == columnName }) else { return }
 
-        // An empty string in a NULL-able field means NULL, precisely.
-        let value = editText.isEmpty && info.isNullable ? "NULL" : editText
-        let key = keyColumns.compactMap { column -> (DatabaseService.ColumnInfo, String)? in
+        let value: String? = editNull ? nil : editText
+        let key = keyColumns.compactMap { column -> (DatabaseService.ColumnInfo, String?)? in
             guard let index = result.columns.firstIndex(of: column.name),
                   index < result.rows[editing.row].count else { return nil }
             return (column, result.rows[editing.row][index])
         }
+        guard key.count == keyColumns.count else { return }
 
         isWorking = true
         let outcome = await db.update(table: table, in: database,
@@ -303,7 +354,8 @@ struct DatabaseBrowserSheet: View {
     }
 
     private func addRow() async {
-        guard let table = selectedTable else { return }
+        guard !isWorking, isTablePreview, let table = selectedTable,
+              resultTableName == table, resultRevision == queryRevision else { return }
         isWorking = true
         let outcome = await db.insertRow(table: table, in: database, columns: columns)
         if outcome.succeeded {
@@ -314,13 +366,15 @@ struct DatabaseBrowserSheet: View {
         }
     }
 
-    private func removeRow(_ index: Int) async {
-        guard let table = selectedTable, index < result.rows.count else { return }
-        let key = keyColumns.compactMap { column -> (DatabaseService.ColumnInfo, String)? in
+    private func removeRow(_ index: Int, revision: UUID) async {
+        guard !isWorking, isTablePreview, let table = selectedTable, resultTableName == table,
+              revision == resultRevision, revision == queryRevision, result.rows.indices.contains(index) else { return }
+        let key = keyColumns.compactMap { column -> (DatabaseService.ColumnInfo, String?)? in
             guard let position = result.columns.firstIndex(of: column.name),
                   position < result.rows[index].count else { return nil }
             return (column, result.rows[index][position])
         }
+        guard key.count == keyColumns.count else { return }
         isWorking = true
         let outcome = await db.delete(table: table, in: database, key: key)
         if outcome.succeeded {
@@ -332,23 +386,64 @@ struct DatabaseBrowserSheet: View {
     }
 
     private func load() async {
+        guard !isWorking else { return }
         isWorking = true
         tables = await db.tables(in: database)
-        isWorking = false
+        if let table = selectedTable, tables.contains(where: { $0.name == table }) {
+            await preview(table)
+        } else {
+            selectedTable = nil
+            result = .init()
+            columns = []
+            isTablePreview = false
+            pageOffset = 0
+            isWorking = false
+        }
     }
 
-    private func preview(_ table: String) async {
+    private func preview(_ table: String, offset requestedOffset: Int? = nil) async {
+        guard selectedTable == table else { return }
+        let revision = UUID()
+        queryRevision = revision
+        let offset = requestedOffset ?? pageOffset
         isWorking = true
+        isTablePreview = false
+        resultTableName = nil
         editing = nil
-        columns = await db.columns(of: table, in: database)
-        result = await db.preview(table: table, in: database)
-        sql = "SELECT * FROM `\(table)` LIMIT 100;"
+        deleteRow = nil
+        let schema = await db.columns(of: table, in: database)
+        var rows = await db.preview(table: table, in: database, limit: pageSize + 1, offset: offset)
+        guard queryRevision == revision, selectedTable == table else { return }
+        hasNextPage = rows.succeeded && rows.rows.count > pageSize
+        rows.rows = Array(rows.rows.prefix(pageSize))
+        pageOffset = offset
+        if rows.succeeded {
+            rows.message = rows.rows.isEmpty ? String(localized: "No rows")
+                : String(localized: "Rows \(offset + 1)–\(offset + rows.rows.count)")
+        }
+        columns = schema
+        result = rows
+        resultRevision = revision
+        resultTableName = table
+        isTablePreview = rows.succeeded
+        let keys = schema.filter(\.isPrimaryKey).map { "`" + $0.name.replacingOccurrences(of: "`", with: "``") + "`" }
+        let order = keys.isEmpty ? "" : " ORDER BY " + keys.joined(separator: ", ")
+        sql = "SELECT * FROM `\(table.replacingOccurrences(of: "`", with: "``"))`\(order) LIMIT \(pageSize) OFFSET \(offset);"
         isWorking = false
     }
 
     private func execute() async {
+        guard !isWorking else { return }
+        let revision = UUID()
+        queryRevision = revision
         isWorking = true
-        result = await db.run(sql: sql, database: database)
+        isTablePreview = false
+        resultTableName = nil
+        editing = nil
+        deleteRow = nil
+        let outcome = await db.run(sql: sql, database: database)
+        guard queryRevision == revision else { return }
+        result = outcome
         if result.succeeded { tables = await db.tables(in: database) }
         isWorking = false
     }
@@ -357,7 +452,8 @@ struct DatabaseBrowserSheet: View {
         var lines = [result.columns.joined(separator: ",")]
         for row in result.rows {
             lines.append(row.map { field in
-                field.contains(",") || field.contains("\"")
+                guard let field else { return "NULL" }
+                return field.isEmpty || field == "NULL" || field.contains(",") || field.contains("\"") || field.contains("\n") || field.contains("\r")
                     ? "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""
                     : field
             }.joined(separator: ","))

@@ -114,9 +114,9 @@ final class AppModel {
     /// Launch order, which sets the tab order in the console.
     private(set) var runningOrder: [UUID] = []
 
-    let dependencies = DependencyChecker()
+    let dependencies: DependencyChecker
     let updates = UpdateChecker()
-    let database = DatabaseService()
+    let database: DatabaseService
     let adminPanel = DatabaseAdminPanel()
     let templates = TemplateStore()
     /// Where installing something writes its output, wherever it was started from.
@@ -146,10 +146,14 @@ final class AppModel {
     private(set) var isBootstrapping = true
     private(set) var bootstrapStage = String(localized: "Starting…")
     private(set) var bootstrapProgress: Double = 0
+    /// Mirrors the Windows first-run choice. It is calculated before `load()`
+    /// writes the harmless starter profile, so an entirely new installation
+    /// still gets a useful choice instead of silently receiving a preset.
+    private(set) var needsFirstSetup = false
 
     // MARK: Shutdown
     nonisolated struct ShutdownItem: Identifiable, Sendable {
-        enum Status: Sendable { case waiting, stopping, stopped, forced }
+        enum Status: Equatable, Sendable { case waiting, stopping, stopped, forced, failed }
         let id: UUID
         var name: String
         var status: Status = .waiting
@@ -177,22 +181,126 @@ final class AppModel {
     /// at most three automatic attempts in one minute.
     private var crashRestartTasks: [UUID: Task<Void, Never>] = [:]
     private var crashRestartAttempts: [UUID: [Date]] = [:]
+    private var startRequests: [UUID: UUID] = [:]
+    private(set) var recipePreparations: [UUID: RecipePreparation] = [:]
+    @ObservationIgnored private var recipeTasks: [UUID: Task<Bool, Never>] = [:]
+    @ObservationIgnored private let recipeRunner: RecipePreparation.Runner
+    var isPreparingProjects: Bool { recipePreparations.values.contains { $0.isWorking } }
+    private(set) var isCleaningLogs = false
+    @ObservationIgnored private var logCleanupTask: Task<LogRetention.Result, Never>?
+    var logsDirectory: URL { applicationStore.directory.appendingPathComponent("Logs", isDirectory: true) }
+    private(set) var stoppingAll = false
+    private(set) var stopAllErrors: [String] = []
+    private(set) var scheduledBackupInProgress = false
+    private(set) var restoreInProgress = false
 
-    init() {
+    var backupOperationInProgress: Bool {
+        restoreInProgress || scheduledBackupInProgress || (snapshotStore?.isWorking ?? false)
+    }
+
+    var canStopAllServers: Bool {
+        activeCount > 0 || !crashRestartTasks.isEmpty || !startRequests.isEmpty || servers.values.contains { $0.state.isActive || $0.state == .stopping || $0.stopFailure != nil }
+    }
+
+    /// Reserve the restore barrier before awaiting stop; all launch entry points
+    /// use startServer, including menu bar, widget and automatic recovery.
+    func restoreSnapshot(_ snapshot: Snapshot, parts: Set<SnapshotStore.RestoreOption>,
+                         into profile: ServerProfile) async -> (profile: ServerProfile, problems: [String]) {
+        guard !backupOperationInProgress, !isShuttingDown, !stoppingAll else {
+            return (profile, [String(localized: "Wait for the current backup operation to finish.")])
+        }
+        guard let batch = snapshots.beginBatch() else {
+            return (profile, [String(localized: "Wait for the current backup operation to finish.")])
+        }
+        restoreInProgress = true
+        defer { restoreInProgress = false; snapshots.endBatch(batch) }
+        let stopErrors = await stopAll()
+        guard stopErrors.isEmpty else { return (profile, stopErrors) }
+        guard !isShuttingDown, !Task.isCancelled else {
+            return (profile, [String(localized: "The operation was cancelled.")])
+        }
+        return await snapshots.restore(snapshot, parts: parts, into: profile, database: database, batch: batch)
+    }
+
+    func restoreDatabaseSnapshot(_ snapshot: Snapshot) async -> String? {
+        guard !backupOperationInProgress, !isShuttingDown, !stoppingAll else {
+            return String(localized: "Wait for the current backup operation to finish.")
+        }
+        guard let batch = snapshots.beginBatch() else {
+            return String(localized: "Wait for the current backup operation to finish.")
+        }
+        restoreInProgress = true
+        defer { restoreInProgress = false; snapshots.endBatch(batch) }
+        let stopErrors = await stopAll()
+        guard stopErrors.isEmpty else { return stopErrors.joined(separator: "\n") }
+        guard !isShuttingDown, !Task.isCancelled else { return String(localized: "The operation was cancelled.") }
+        return await snapshots.restoreDatabase(snapshot, database: database, batch: batch)
+    }
+
+    @discardableResult
+    func setBackupDestination(_ path: String) -> Bool {
+        let previousDestination = snapshots.destinationPath
+        guard !backupOperationInProgress, !stoppingAll, !isShuttingDown, snapshots.setDestination(path) else {
+            notify(String(localized: "Wait for the current backup operation to finish."), isError: true)
+            return false
+        }
+        var updated = settings
+        updated.backupDestination = path
+        do { try applicationStore.save(updated, to: applicationStore.settingsFile) }
+        catch {
+            _ = snapshots.setDestination(previousDestination)
+            notify(error.localizedDescription, isError: true)
+            return false
+        }
+        settings.backupDestination = path
+        return true
+    }
+
+    private let applicationStore: ApplicationStore
+    private let integrationsEnabled: Bool
+    private var bootstrapTask: Task<Void, Never>?
+    private let environmentStartup = StartupWork()
+    private let dependencyStartup = StartupWork()
+    private let certificateStartup = StartupWork()
+    private let updateStartup = StartupWork()
+
+    /// A supplied storage directory is an isolated workspace: no shared widget /
+    /// CLI registry or process environment writes. Used by lifecycle regression tests.
+    init(applicationDirectory: URL? = nil, dependencies: DependencyChecker? = nil, database: DatabaseService? = nil,
+         recipeRunner: RecipePreparation.Runner? = nil) {
+        self.recipeRunner = recipeRunner ?? { template, profile, database, log, runtime in
+            try await WebToPrintRecipe.prepare(template: template, profile: profile, database: database, log: log, runtime: runtime)
+        }
+        self.dependencies = dependencies ?? DependencyChecker()
+        self.database = database ?? DatabaseService()
+        applicationStore = ApplicationStore(directory: applicationDirectory ?? AppPaths.support)
+        integrationsEnabled = applicationDirectory == nil
         load()
-        ShellEnvironment.shared.setExtraEntries(settings.extraPATHEntries)
+        if integrationsEnabled {
+            ShellEnvironment.shared.setExtraEntries(settings.extraPATHEntries)
+            applyNodeEnvironment()
+        } else if let applicationDirectory {
+            snapshotStore = SnapshotStore(destination: settings.backupDestination.isEmpty
+                ? applicationDirectory.appendingPathComponent("Backups").path : settings.backupDestination)
+        }
 
         if settings.restoreLastSection,
            let restored = SidebarSection(rawValue: settings.lastSection) {
             section = restored
         }
-        selectedProfileID = settings.lastSelectedProfileID
-            ?? settings.defaultProfileID
-            ?? profiles.first?.id
+        selectedProfileID = [settings.lastSelectedProfileID, settings.defaultProfileID, profiles.first?.id]
+            .compactMap { $0 }.first { id in profiles.contains { $0.id == id } }
 
         shell.setDirectory(selectedProfile?.effectiveWorkingDirectory ?? NSHomeDirectory())
         updates.repository = settings.updateRepository
         updates.versionFile = settings.updateVersionFile
+    }
+
+    func completeFirstSetup() {
+        do {
+            try applicationStore.finishFirstSetup()
+        } catch { notify(error.localizedDescription, isError: true) }
+        needsFirstSetup = false
     }
 
     /// The language is read from the settings file before the model is created.
@@ -208,6 +316,14 @@ final class AppModel {
 
     /// The sequence of startup steps — the splash screen shows it.
     func bootstrap() async {
+        if let bootstrapTask { await bootstrapTask.value; return }
+        let task = Task { @MainActor in await self.performBootstrap() }
+        bootstrapTask = task
+        await task.value
+    }
+
+    private func performBootstrap() async {
+        let budget = StartupBudget()
         func stage(_ text: String, _ progress: Double) async {
             bootstrapStage = text
             bootstrapProgress = progress
@@ -216,7 +332,7 @@ final class AppModel {
         }
 
         await stage(String(localized: "Reading the environment…"), 0.15)
-        _ = ShellEnvironment.shared.path
+        _ = await environmentStartup.run(wait: budget.remaining(upTo: 3)) { await ShellEnvironment.shared.refresh() }
         templates.load()
         commandLineTool.refresh()
         adoptExternalServers()
@@ -227,22 +343,24 @@ final class AppModel {
 
         if settings.checkDependenciesOnLaunch {
             await stage(String(localized: "Checking dependencies…"), 0.35)
-            await dependencies.checkAll()
+            _ = await dependencyStartup.run(wait: budget.remaining(upTo: 30)) { await self.dependencies.checkAll() }
         }
 
         await stage(String(localized: "Looking for forgotten servers…"), 0.6)
         reclaimPrivilegedServers()
 
         pruneRuntimeDirectories()
-        pruneOldLogs()
+        await cleanOldLogs()
 
         await stage(String(localized: "Reading certificates…"), 0.7)
-        await certificates.reload()
-        await certificates.refreshMkcertStatus()
+        _ = await certificateStartup.run(wait: budget.remaining(upTo: 10)) {
+            await self.certificates.reload()
+            await self.certificates.refreshMkcertStatus()
+        }
 
         if settings.checkUpdatesOnLaunch && updates.isConfigured {
             await stage(String(localized: "Checking for updates…"), 0.85)
-            await checkForUpdates(silently: true)
+            _ = await updateStartup.run(wait: budget.remaining(upTo: 20)) { await self.checkForUpdates(silently: true) }
         }
 
         await stage(String(localized: "Done"), 1.0)
@@ -270,17 +388,45 @@ final class AppModel {
         return profiles.first { $0.id == id }
     }
 
-    func addProfile(_ profile: ServerProfile) {
+    @discardableResult
+    func addProfile(_ profile: ServerProfile, completingFirstSetup: Bool = true) -> Bool {
+        let previousSelection = selectedProfileID
         profiles.append(profile)
         selectedProfileID = profile.id
-        saveProfiles()
+        guard saveProfiles() else {
+            profiles.removeAll { $0.id == profile.id }
+            selectedProfileID = previousSelection
+            return false
+        }
+        if completingFirstSetup && needsFirstSetup { completeFirstSetup() }
+        return true
     }
 
     func updateProfile(_ profile: ServerProfile) {
+        guard recipeTasks[profile.id] == nil else {
+            notify(String(localized: "Wait for project preparation to finish."), isError: true)
+            return
+        }
         guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
         profiles[index] = profile
         // The editor sends an edit on every keystroke — write to disk with a delay.
         scheduleProfilesSave()
+    }
+
+    func importProfiles(from url: URL) {
+        do {
+            let incoming = ProfileTransfer.appending(try ProfileTransfer.read(url), to: profiles)
+            let previous = profiles
+            let previousSelection = selectedProfileID
+            profiles.append(contentsOf: incoming)
+            selectedProfileID = incoming.first?.id
+            guard saveProfiles() else {
+                profiles = previous; selectedProfileID = previousSelection
+                return
+            }
+            if needsFirstSetup { completeFirstSetup() }
+            notify(String(localized: "Imported \(incoming.count) profiles. Review paths and commands before starting."))
+        } catch { notify(error.localizedDescription, isError: true) }
     }
 
     private func scheduleProfilesSave() {
@@ -300,16 +446,27 @@ final class AppModel {
     }
 
     func deleteProfile(_ profile: ServerProfile) {
+        guard recipeTasks[profile.id] == nil else {
+            notify(String(localized: "Wait for project preparation to finish."), isError: true)
+            return
+        }
+        cancelCrashRestart(for: profile.id)
+        startRequests.removeValue(forKey: profile.id)
         // Order matters. Stop the server first: otherwise the process is orphaned,
         // keeps holding the port, and the interface can no longer reach it.
         // Only then remove the working files — otherwise we would rip the config
         // out from under a still-running nginx.
-        if let controller = servers[profile.id], controller.state.isActive {
+        if let controller = servers[profile.id] {
             controller.stopImmediately()
+            guard controller.processIdentifier == nil, !controller.isPrivileged else {
+                notify(controller.stopFailure ?? String(localized: "Could not stop the server. Check Console and Ports."), isError: true)
+                return
+            }
         }
         runningOrder.removeAll { $0 == profile.id }
         publishStatus()
         servers[profile.id] = nil
+        recipePreparations.removeValue(forKey: profile.id)
         removeRuntimeArtifacts(for: profile)
         profiles.removeAll { $0.id == profile.id }
         if settings.defaultProfileID == profile.id { settings.defaultProfileID = nil }
@@ -322,18 +479,36 @@ final class AppModel {
     /// Otherwise Runtime accumulates junk from long-deleted profiles.
     private func removeRuntimeArtifacts(for profile: ServerProfile) {
         let key = String(profile.id.uuidString.prefix(8))
-        let runtime = AppPaths.support.appendingPathComponent("Runtime", isDirectory: true)
+        let runtime = applicationStore.directory.appendingPathComponent("Runtime", isDirectory: true)
         for prefix in ["nginx", "caddy", "php", "root"] {
             let path = runtime.appendingPathComponent("\(prefix)-\(key)", isDirectory: true)
             try? FileManager.default.removeItem(at: path)
         }
     }
 
-    func duplicateProfile(_ profile: ServerProfile) {
-        let copy = profile.duplicated()
-        profiles.append(copy)
-        selectedProfileID = copy.id
-        saveProfiles()
+    func suggestedProfilePort(startingAt preferred: Int = 8080, host: String = "127.0.0.1") -> Int? {
+        var excluded = Set(profiles.map(\.port) + reserver.reservations.map(\.port))
+        excluded.formUnion([database.port, settings.databaseAdminPort])
+        if integrationsEnabled { excluded.formUnion(RunRegistry.all().map(\.port)) }
+        return PortScanner.availablePort(startingAt: preferred, excluding: excluded, host: host)
+    }
+
+    func isProfilePortAvailable(_ port: Int, host: String = "127.0.0.1") -> Bool {
+        !profiles.contains { $0.port == port } && !reserver.isReserved(port)
+            && port != database.port && port != settings.databaseAdminPort
+            && PortScanner.isPortFree(port, host: host)
+    }
+
+    @discardableResult
+    func duplicateProfile(_ profile: ServerProfile) -> Bool {
+        var copy = profile.duplicated()
+        let preferred = (1024..<65535).contains(profile.port) ? profile.port + 1 : 8080
+        guard let port = suggestedProfilePort(startingAt: preferred, host: profile.host) else {
+            notify(String(localized: "No free profile port was found. Release a port and try again."), isError: true)
+            return false
+        }
+        copy.port = port
+        return addProfile(copy)
     }
 
     func makeDefault(_ profile: ServerProfile) {
@@ -347,7 +522,7 @@ final class AppModel {
     /// The profile's controller. Created on first use.
     func controller(for profileID: UUID) -> ServerController {
         if let existing = servers[profileID] { return existing }
-        let controller = ServerController()
+        let controller = ServerController(runtimeRoot: integrationsEnabled ? nil : applicationStore.directory.appendingPathComponent("Runtime"))
         controller.onUnexpectedExit = { [weak self] profile, code in
             guard let self else { return }
             self.notify(String(localized: "Server “\(profile.name)” exited unexpectedly (code \(String(code)))."), isError: true)
@@ -372,6 +547,13 @@ final class AppModel {
         servers[profileID]?.state.isActive ?? false
     }
 
+    /// A stop error still needs an accessible Stop action, even after the
+    /// original process exited and another listener took its endpoint.
+    func canStopServer(_ profileID: UUID) -> Bool {
+        guard let controller = servers[profileID] else { return false }
+        return controller.state.isActive || controller.state.isBusy || controller.processIdentifier != nil || controller.stopFailure != nil
+    }
+
     /// Profiles whose servers are running or starting right now.
     var activeProfiles: [ServerProfile] {
         runningOrder.compactMap { id in profiles.first { $0.id == id } }
@@ -390,6 +572,7 @@ final class AppModel {
     private var lastPublishedExtras: (database: Bool, panel: String?)?
 
     func publishStatus() {
+        guard integrationsEnabled else { return }
         let entries = profiles.map { profile -> StatusSnapshot.Entry in
             let state = self.state(of: profile.id)
             var detail: String?
@@ -492,25 +675,43 @@ final class AppModel {
     }
 
     func runScheduledBackupIfDue() async {
-        guard settings.backupsEnabled, settings.backupEvery > 0 else { return }
+        guard settings.backupsEnabled, settings.backupEvery > 0,
+              !backupOperationInProgress, !isShuttingDown else { return }
+        guard let batch = snapshots.beginBatch() else { return }
+        scheduledBackupInProgress = true
+        defer { scheduledBackupInProgress = false; snapshots.endBatch(batch) }
         let gap = Double(settings.backupEvery) * settings.backupUnit.seconds
         if let last = settings.lastBackup, Date().timeIntervalSince(last) < gap { return }
 
         let wanted = settings.backupProfileIDs.isEmpty
             ? profiles
             : profiles.filter { settings.backupProfileIDs.contains($0.id) }
-        guard !wanted.isEmpty else { return }
+        guard !wanted.isEmpty || settings.backupAllDatabases else { return }
 
+        var completed = true
+        var created = false
         for profile in wanted {
-            await snapshots.take(profile: profile,
-                                 database: settings.backupIncludesDatabase ? database : nil,
-                                 trigger: .scheduled)
+            let snapshot = await snapshots.take(profile: profile,
+                                                database: settings.backupIncludesDatabase ? database : nil,
+                                                trigger: .scheduled, batch: batch)
+            created = created || snapshot != nil
+            completed = completed && snapshot != nil && snapshots.lastError == nil
         }
-        if settings.backupAllDatabases, database.state == .running {
+        if settings.backupAllDatabases {
+            guard database.state == .running else {
+                notify(String(localized: "Database not included: MariaDB was stopped."), isError: true)
+                return
+            }
+            guard await database.reloadDatabases() else { return }
             for item in database.databases {
-                await snapshots.takeDatabase(named: item.name, database: database, trigger: .scheduled)
+                let snapshot = await snapshots.takeDatabase(named: item.name, database: database, trigger: .scheduled, batch: batch)
+                created = created || snapshot != nil
+                completed = completed && snapshot != nil && snapshots.lastError == nil
             }
         }
+        // A failed batch must not prune good backups or move the success time.
+        guard completed, created, !Task.isCancelled, !isShuttingDown else { return }
+        snapshots.endBatch(batch)
         snapshots.prune(keep: settings.backupsToKeep)
         settings.lastBackup = Date()
         saveSettings()
@@ -627,6 +828,32 @@ final class AppModel {
     }
 
     func startServer(profile: ServerProfile) async {
+        guard !isShuttingDown, !stoppingAll, !Task.isCancelled,
+              profiles.contains(where: { $0.id == profile.id }),
+              startRequests[profile.id] == nil else { return }
+        guard !isPreparingProjects else {
+            notify(String(localized: "Wait for project preparation to finish."), isError: true)
+            return
+        }
+        guard !backupOperationInProgress else {
+            notify(String(localized: "Wait for the current backup operation to finish."), isError: true)
+            return
+        }
+        let request = UUID()
+        startRequests[profile.id] = request
+        defer {
+            if startRequests[profile.id] == request { startRequests.removeValue(forKey: profile.id) }
+        }
+        if !profile.validationErrors.isEmpty {
+            let controller = controller(for: profile.id)
+            await controller.start(profile: profile, settings: settings)
+            if case .failed(let message) = controller.state { notify(message, isError: true) }
+            return
+        }
+        guard !dependencies.isManagingPackages else {
+            notify(String(localized: "Wait for the current dependency operation to finish."), isError: true)
+            return
+        }
         if reserver.isReserved(profile.port) {
             notify(String(localized: "Port \(String(profile.port)) is reserved inside the app. Release the reservation before starting."), isError: true)
             return
@@ -637,26 +864,41 @@ final class AppModel {
             return
         }
 
-        // A PHP site almost always needs a database — bring it up as well.
-        if profile.engine.typicallyNeedsDatabase,
-           database.isInstalled,
-           !database.state.isActive {
-            await database.start()
-            if case .failed(let message) = database.state {
-                notify(String(localized: "The database did not start: \(message)"), isError: true)
+        if profile.needsDatabase, database.state != .running {
+            while database.state.isBusy {
+                guard startRequests[profile.id] == request, !isShuttingDown, !Task.isCancelled else { return }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            guard startRequests[profile.id] == request, !isShuttingDown, !Task.isCancelled else { return }
+            if database.state != .running { await database.start() }
+            guard startRequests[profile.id] == request, !isShuttingDown, !Task.isCancelled else { return }
+            guard database.state == .running else {
+                let detail: String
+                if case .failed(let message) = database.state { detail = message }
+                else { detail = String(localized: "The database server is not running.") }
+                let message = String(localized: "The database did not start: \(detail)")
+                controller(for: profile.id).failToStart(profile: profile, message: message)
+                notify(message, isError: true)
+                publishStatus()
+                return
             }
         }
 
+        guard startRequests[profile.id] == request, !isShuttingDown,
+              !backupOperationInProgress, !Task.isCancelled,
+              profiles.contains(where: { $0.id == profile.id }) else { return }
         let controller = controller(for: profile.id)
-        guard !controller.state.isActive else { return }
+        guard !controller.state.isActive, controller.state != .stopping else { return }
 
         if !runningOrder.contains(profile.id) { runningOrder.append(profile.id) }
         await controller.start(profile: profile, settings: settings)
 
+        guard startRequests[profile.id] == request, !isShuttingDown,
+              profiles.contains(where: { $0.id == profile.id }) else { return }
         if case .failed(let message) = controller.state {
             runningOrder.removeAll { $0 == profile.id }
             notify(message, isError: true)
-        } else if let pid = controller.processIdentifier {
+        } else if integrationsEnabled, let pid = controller.processIdentifier {
             // Written down where the command line tool can see it, so a server
             // started here can be stopped there and the two stay one system.
             RunRegistry.record(RunRecord(id: profile.id.uuidString,
@@ -673,37 +915,80 @@ final class AppModel {
         publishStatus()
     }
 
-    func stopServer(profileID: UUID) async {
+    @discardableResult
+    func stopServer(profileID: UUID) async -> Bool {
+        startRequests.removeValue(forKey: profileID)
         cancelCrashRestart(for: profileID)
-        // A server the terminal started has no controller here, but it is still
-        // ours to stop — the registry knows where it is.
-        guard let controller = servers[profileID] else {
-            if let record = RunRegistry.find(profileID: profileID) {
-                _ = await RunRegistry.stop(record)
+        guard let controller = servers[profileID],
+              controller.state.isActive || controller.state.isBusy || controller.processIdentifier != nil || controller.stopFailure != nil else {
+            if integrationsEnabled, let record = RunRegistry.find(profileID: profileID) {
+                let result = await RunRegistry.stop(record)
+                if case .refused(let message) = result {
+                    if !stoppingAll { notify(message, isError: true) }
+                    return false
+                }
                 runningOrder.removeAll { $0 == profileID }
                 publishStatus()
             }
-            return
+            return true
         }
-        await controller.stop(settings: settings)
-        RunRegistry.forget(profileID)
-        runningOrder.removeAll { $0 == profileID }
+        let stopped = await controller.stop(settings: settings)
+        if stopped || controller.processIdentifier == nil {
+            if integrationsEnabled { RunRegistry.forget(profileID) }
+            runningOrder.removeAll { $0 == profileID }
+        }
+        if !stopped, !stoppingAll, let message = controller.stopFailure { notify(message, isError: true) }
         publishStatus()
+        return stopped
     }
 
     func restartServer(profile: ServerProfile) async {
         cancelCrashRestart(for: profile.id)
-        await stopServer(profileID: profile.id)
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        guard await stopServer(profileID: profile.id), !stoppingAll, !isShuttingDown else { return }
+        let request = UUID()
+        startRequests[profile.id] = request
+        try? await Task.sleep(for: .milliseconds(400))
+        guard startRequests[profile.id] == request, !Task.isCancelled else { return }
+        startRequests.removeValue(forKey: profile.id)
         await startServer(profile: profile)
     }
 
-    func stopAll() async {
-        for id in runningOrder { await stopServer(profileID: id) }
+    @discardableResult
+    func stopAll() async -> [String] {
+        if stoppingAll {
+            while stoppingAll {
+                guard !Task.isCancelled else { return [String(localized: "The operation was cancelled.")] }
+                try? await Task.sleep(for: .milliseconds(25))
+            }
+            return stopAllErrors
+        }
+        stoppingAll = true
+        stopAllErrors = []
+        defer { stoppingAll = false }
+        cancelAllCrashRestarts()
+        let ids = Set(runningOrder + Array(startRequests.keys) + Array(servers.keys))
+        startRequests.removeAll()
+        for id in ids {
+            if !(await stopServer(profileID: id)) {
+                let name = profiles.first { $0.id == id }?.name ?? id.uuidString
+                let message = servers[id]?.stopFailure ?? String(localized: "Could not stop the server. Check Console and Ports.")
+                stopAllErrors.append("\(name): \(message)")
+            }
+        }
+        if !stopAllErrors.isEmpty { notify(stopAllErrors.joined(separator: "\n"), isError: true) }
+        return stopAllErrors
+    }
+
+    private func cancelAllCrashRestarts() {
+        for task in crashRestartTasks.values { task.cancel() }
+        crashRestartTasks.removeAll()
+        crashRestartAttempts.removeAll()
     }
 
     private func scheduleCrashRestart(for profile: ServerProfile) {
-        guard settings.restartOnCrash, crashRestartTasks[profile.id] == nil else { return }
+        guard !isShuttingDown, !backupOperationInProgress,
+              profiles.contains(where: { $0.id == profile.id }),
+              settings.restartOnCrash, crashRestartTasks[profile.id] == nil else { return }
         let now = Date()
         let recent = (crashRestartAttempts[profile.id] ?? []).filter { now.timeIntervalSince($0) < 60 }
         guard recent.count < 3 else {
@@ -715,15 +1000,18 @@ final class AppModel {
         crashRestartAttempts[profile.id] = recent + [now]
         notify(String(localized: "Server “\(profile.name)” exited unexpectedly. Restarting in \(String(Int(delay))) seconds…"), isError: true)
         crashRestartTasks[profile.id] = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            guard !Task.isCancelled, let self,
+            do { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
+            catch { return }
+            guard let self else { return }
+            self.crashRestartTasks.removeValue(forKey: profile.id)
+            guard !Task.isCancelled, !self.isShuttingDown, !self.backupOperationInProgress,
+                  self.profiles.contains(where: { $0.id == profile.id }),
                   self.settings.restartOnCrash,
                   self.state(of: profile.id) == .stopped || {
                       if case .failed = self.state(of: profile.id) { return true }
                       return false
                   }()
             else { return }
-            self.crashRestartTasks.removeValue(forKey: profile.id)
             await self.startServer(profile: profile)
         }
     }
@@ -735,10 +1023,13 @@ final class AppModel {
 
     /// Synchronous shutdown of every server when the application quits.
     func stopAllImmediately() {
+        isShuttingDown = true
+        cancelAllCrashRestarts()
+        startRequests.removeAll()
         flushPendingSaves()
         for tab in terminals { tab.session.terminate() }
         for controller in servers.values { controller.stopImmediately() }
-        for id in runningOrder { RunRegistry.forget(id) }
+        if integrationsEnabled { for id in runningOrder { RunRegistry.forget(id) } }
         adminPanel.stopSynchronously()
         database.stopImmediately()
         runningOrder.removeAll()
@@ -779,7 +1070,7 @@ final class AppModel {
     /// Called after adopting servers, so a live session is not wiped out.
     private func pruneRuntimeDirectories() {
         let fm = FileManager.default
-        let runtime = AppPaths.support.appendingPathComponent("Runtime", isDirectory: true)
+        let runtime = applicationStore.directory.appendingPathComponent("Runtime", isDirectory: true)
         guard let entries = try? fm.contentsOfDirectory(atPath: runtime.path) else { return }
 
         let known = Set(profiles.map { String($0.id.uuidString.prefix(8)) })
@@ -878,31 +1169,43 @@ final class AppModel {
                               directory: directory)
     }
 
-    /// Every server launch creates its own log file — without cleanup they pile
-    /// up without limit. Prune by retention period, leaving alone the files
-    /// being written to right now.
-    private func pruneOldLogs() {
-        let days = settings.logRetentionDays
-        guard days > 0 else { return }
-
-        let fm = FileManager.default
-        let cutoff = Date().addingTimeInterval(-Double(days) * 24 * 3600)
-        let inUse = Set(servers.values.compactMap { $0.log.fileURL })
-        guard let files = try? fm.contentsOfDirectory(at: AppPaths.logs,
-                                                      includingPropertiesForKeys: [.contentModificationDateKey])
-        else { return }
-
-        var removed = 0
-        for file in files where !inUse.contains(file) {
-            let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?
-                .contentModificationDate
-            guard let modified, modified < cutoff else { continue }
-            try? fm.removeItem(at: file)
-            removed += 1
+    /// Shared by startup and Settings. Disk traversal runs away from the UI;
+    /// concurrent callers join the same cleanup rather than racing deletions.
+    @discardableResult
+    func cleanOldLogs(showNotification: Bool = false) async -> LogRetention.Result {
+        let result: LogRetention.Result
+        if let logCleanupTask {
+            result = await logCleanupTask.value
+        } else {
+            isCleaningLogs = true
+            let directory = logsDirectory
+            let days = settings.logRetentionDays
+            let logs = Array(servers.values.map(\.log)) + [shell.log, installLog, database.log]
+                + recipePreparations.values.map(\.log)
+            let active = Set(logs.filter(\.isFileLogging).compactMap(\.fileURL))
+            let task = Task.detached(priority: .utility) {
+                LogRetention.clean(directory: directory, days: days, activeFiles: active)
+            }
+            logCleanupTask = task
+            result = await task.value
+            logCleanupTask = nil
+            isCleaningLogs = false
+            if result.removed > 0 {
+                shell.log.system(String(localized: "Old log files removed: \(String(result.removed))"))
+            }
+            if result.failureCount > 0 {
+                shell.log.system(String(localized: "Log cleanup failures: \(String(result.failureCount))"))
+                for problem in result.problems { shell.log.system(problem) }
+            }
         }
-        if removed > 0 {
-            shell.log.system(String(localized: "Old log files removed: \(String(removed))"))
+        if result.failureCount > 0 {
+            notify(String(localized: "Logs removed: \(String(result.removed)). Cleanup failures: \(String(result.failureCount)). See the console for details."), isError: true)
+        } else if showNotification {
+            if result.disabled { notify(String(localized: "Log cleanup is disabled. Set a retention period above zero.")) }
+            else if result.removed == 0 { notify(String(localized: "No old logs found.")) }
+            else { notify(String(localized: "Old log files removed: \(String(result.removed))")) }
         }
+        return result
     }
 
     // MARK: - Updates
@@ -920,6 +1223,7 @@ final class AppModel {
     }
 
     func checkForUpdates(silently: Bool) async {
+        guard !updates.state.isChecking else { return }
         // A newer version overrides an earlier “later”.
         if !settings.dismissedUpdateVersion.isEmpty {
             let hidden = settings.dismissedUpdateVersion
@@ -938,6 +1242,10 @@ final class AppModel {
     // MARK: - Database
 
     func startDatabase() async {
+        guard !dependencies.isManagingPackages else {
+            notify(String(localized: "Wait for the current dependency operation to finish."), isError: true)
+            return
+        }
         await database.start()
         defer { publishStatus() }
         if case .failed(let message) = database.state {
@@ -946,6 +1254,10 @@ final class AppModel {
     }
 
     func stopDatabase() async {
+        guard !isPreparingProjects else {
+            notify(String(localized: "Wait for project preparation to finish."), isError: true)
+            return
+        }
         // The panel serves this database and must not outlive it.
         adminPanel.stop()
         await database.stop()
@@ -954,50 +1266,130 @@ final class AppModel {
 
     /// Brings the database up if needed and creates the database a new profile
     /// asked for, so the person can go straight to the CMS installer.
-    func prepareDatabase(named name: String, for profile: ServerProfile) async {
-        if database.state != .running {
-            await database.start()
+    @discardableResult
+    func prepareDatabase(named name: String, for profile: ServerProfile, password: String? = nil) async -> Bool {
+        guard !Task.isCancelled, !isShuttingDown else { return false }
+        if let password, password.isEmpty {
+            notify(String(localized: "Enter a database password or generate one."), isError: true)
+            return false
         }
+        guard !dependencies.isManagingPackages else {
+            notify(String(localized: "Wait for the current dependency operation to finish."), isError: true)
+            return false
+        }
+        while database.state.isBusy {
+            guard !Task.isCancelled, !isShuttingDown else { return false }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        guard !Task.isCancelled, !isShuttingDown else { return false }
+        if database.state != .running { await database.start() }
         guard database.state == .running else {
             notify(String(localized: "The database did not start; create it later on the Database screen."),
                    isError: true)
-            return
+            return false
         }
         if database.databases.contains(where: { $0.name == name }) {
             notify(String(localized: "Database “\(name)” already exists — use it in the installer."))
-            return
+            return true
         }
         // One account per database, named after it: a CMS installer wants a user
         // and a password, and reusing root would tie every site together.
         let result = await database.createDatabase(name: name,
                                                    user: name,
-                                                   password: DatabaseAdminPanel.generatedPassword(length: 16))
+                                                   password: password ?? DatabaseAdminPanel.generatedPassword(length: 16))
         if result.succeeded {
             notify(String(localized: "Database “\(name)” is ready for “\(profile.name)”."))
         } else {
             notify(result.stderr.isEmpty ? String(localized: "Could not create the database.") : result.stderr,
                    isError: true)
         }
+        return result.succeeded
     }
 
-    /// Applies a product recipe only after its profile exists in the model. A
-    /// failed recipe leaves the downloaded folder and profile intact so the user
-    /// can read the console, repair a dependency and run it again.
-    func prepareProjectRecipe(_ template: ProfileTemplate, profileID: UUID) async {
-        guard let index = profiles.firstIndex(where: { $0.id == profileID }) else { return }
-        let profile = profiles[index]
-        do {
-            let outcome = try await WebToPrintRecipe.prepare(template: template, profile: profile,
-                                                              database: database, log: installLog)
-            guard let current = profiles.firstIndex(where: { $0.id == profileID }) else { return }
-            if let databaseName = outcome.databaseName {
-                profiles[current].databaseName = databaseName
-            }
-            saveProfiles()
-            notify(String(localized: "Web-to-Print is ready. Open the profile to see the local store."))
-        } catch {
-            notify(String(localized: "Web-to-Print was not fully prepared: \(error.localizedDescription)"), isError: true)
+    func recipeTemplate(for profile: ServerProfile) -> ProfileTemplate? {
+        if let template = templates.all.first(where: { $0.id == profile.templateId && RecipePreparation.supports($0) }) { return template }
+        if let previous = recipePreparations[profile.id]?.template,
+           previous.id == profile.templateId { return previous }
+        return nil
+    }
+
+    private func projectHasRunningServer(_ profile: ServerProfile) -> Bool {
+        let root = URL(fileURLWithPath: AppPaths.expand(profile.rootPath)).resolvingSymlinksInPath().path
+        let isSameProject: (ServerProfile) -> Bool = {
+            let path = $0.rootPath.isEmpty ? $0.effectiveWorkingDirectory : AppPaths.expand($0.rootPath)
+            return URL(fileURLWithPath: path).resolvingSymlinksInPath().path == root
         }
+        if servers.values.contains(where: { server in
+            (server.state.isActive || server.state.isBusy || server.processIdentifier != nil)
+                && server.activeProfile.map(isSameProject) == true
+        }) { return true }
+        if integrationsEnabled {
+            let running = Set(RunRegistry.all().map(\.id))
+            return profiles.contains { running.contains($0.id.uuidString) && isSameProject($0) }
+        }
+        return false
+    }
+
+    /// One task per saved profile; repeated UI requests join the same attempt.
+    @discardableResult
+    func prepareProjectRecipe(_ template: ProfileTemplate, profileID: UUID, databasePassword: String? = nil) async -> Bool {
+        if let existing = recipeTasks[profileID] { return await existing.value }
+        guard let profile = profiles.first(where: { $0.id == profileID }),
+              RecipePreparation.supports(template), template.id == profile.templateId else { return false }
+        guard !isShuttingDown, !stoppingAll, startRequests.isEmpty,
+              !backupOperationInProgress, !dependencies.isManagingPackages, !dependencies.isChecking else {
+            notify(String(localized: "Wait for the current operation before preparing this project."), isError: true)
+            return false
+        }
+        guard !projectHasRunningServer(profile) else {
+            notify(String(localized: "Stop all servers using this project folder before preparing it."), isError: true)
+            return false
+        }
+        let operation = recipePreparations[profileID] ?? RecipePreparation(template: template)
+        recipePreparations[profileID] = operation
+        operation.log.limit = settings.consoleBufferLines
+        operation.begin(template: template)
+        let task = Task { @MainActor in
+            defer { self.recipeTasks.removeValue(forKey: profileID) }
+            do {
+                try await self.dependencies.managePackages {
+                    guard !self.isShuttingDown, !self.projectHasRunningServer(profile),
+                          let batch = self.snapshots.beginBatch() else {
+                        throw RuntimePackages.Failure(message: String(localized: "Wait for the current operation before preparing this project."))
+                    }
+                    defer { self.snapshots.endBatch(batch) }
+                    var runtime = WebToPrintRecipe.Runtime()
+                    runtime.toolsDirectory = self.applicationStore.directory.appendingPathComponent("Tools")
+                    runtime.privateDirectory = self.applicationStore.directory.appendingPathComponent("RecipeCredentials")
+                    runtime.databasePassword = databasePassword
+                    runtime.progress = { step in operation.advance(step) }
+                    let outcome = try await self.recipeRunner(template, profile, self.database, operation.log, runtime)
+                    guard let index = self.profiles.firstIndex(where: { $0.id == profileID }),
+                          self.profiles[index] == profile else {
+                        throw RuntimePackages.Failure(message: String(localized: "The profile changed during preparation. Project files were kept; review the saved profile before retrying."))
+                    }
+                    if let name = outcome.databaseName {
+                        self.profiles[index].databaseName = name
+                        guard self.saveProfiles() else {
+                            self.profiles[index] = profile
+                            throw RuntimePackages.Failure(message: String(localized: "The project was prepared, but its profile could not be saved. Fix the data folder permissions and retry."))
+                        }
+                    }
+                }
+                operation.finish()
+                let message = String(localized: "Project “\(profile.name)” is prepared. Open its profile to start it.")
+                self.installLog.system(message)
+                self.notify(message)
+                return true
+            } catch {
+                operation.fail(error.localizedDescription)
+                self.installLog.append("\(profile.name): \(error.localizedDescription)", stream: .stderr)
+                self.notify(String(localized: "Project preparation did not finish: \(error.localizedDescription)"), isError: true)
+                return false
+            }
+        }
+        recipeTasks[profileID] = task
+        return await task.value
     }
 
     /// Opens the web admin panel, starting it if it is not up yet.
@@ -1020,7 +1412,7 @@ final class AppModel {
 
     /// Whether the waiting window should be shown before quitting.
     var needsGracefulShutdown: Bool {
-        settings.stopServerOnQuit && (activeCount > 0 || database.state.isActive)
+        isPreparingProjects || (settings.stopServerOnQuit && (canStopAllServers || database.state.isActive))
     }
 
     /// Stops the servers one by one, showing progress,
@@ -1028,9 +1420,13 @@ final class AppModel {
     func beginShutdown(completion: @escaping () -> Void) {
         guard !isShuttingDown else { return }
         isShuttingDown = true
+        cancelAllCrashRestarts()
+        startRequests.removeAll()
         shutdownTookTooLong = false
 
-        let running = activeProfiles
+        let running = profiles.filter { profile in
+            isActive(profile.id) || servers[profile.id]?.state == .stopping || servers[profile.id]?.stopFailure != nil
+        }
         shutdownItems = running.map { ShutdownItem(id: $0.id, name: $0.name) }
         shutdownProgress = 0
 
@@ -1042,22 +1438,28 @@ final class AppModel {
         }
 
         Task { @MainActor in
+            let preparations = Array(self.recipeTasks.values)
+            for preparation in preparations { _ = await preparation.value }
+            if !self.settings.stopServerOnQuit {
+                self.flushPendingSaves()
+                self.saveSettings()
+                timeout.cancel()
+                completion()
+                return
+            }
+            self.adminPanel.stop()
             for (index, profile) in running.enumerated() {
                 self.updateShutdown(profile.id, status: .stopping,
                                     detail: String(localized: "stopping…"))
 
                 let controller = self.servers[profile.id]
                 let wasPrivileged = controller?.isPrivileged ?? false
-                await self.stopServer(profileID: profile.id)
-
-                let stillAlive = controller?.state.isActive ?? false
+                let stopped = await self.stopServer(profileID: profile.id)
                 self.updateShutdown(profile.id,
-                                    status: stillAlive ? .forced : .stopped,
-                                    detail: stillAlive
-                                            ? String(localized: "force stopped")
-                                            : (wasPrivileged
-                                               ? String(localized: "stopped (root)")
-                                               : String(localized: "stopped")))
+                                    status: stopped ? .stopped : .failed,
+                                    detail: stopped
+                                        ? (wasPrivileged ? String(localized: "stopped (root)") : String(localized: "stopped"))
+                                        : (controller?.stopFailure ?? String(localized: "Could not stop the server. Check Console and Ports.")))
                 self.shutdownProgress = Double(index + 1) / Double(max(1, running.count))
             }
 
@@ -1077,6 +1479,11 @@ final class AppModel {
             self.reserver.releaseAll()
             self.saveSettings()
             timeout.cancel()
+
+            if self.shutdownItems.contains(where: { $0.status == .failed }) {
+                self.shutdownTookTooLong = true
+                return
+            }
 
             // A short pause so the checkmarks are visible.
             try? await Task.sleep(nanoseconds: 350_000_000)
@@ -1116,7 +1523,7 @@ final class AppModel {
     }
 
     func killPort(_ entry: PortEntry, signal: KillSignal) async {
-        let result = await PortScanner.kill(pid: entry.pid, signal: signal)
+        let result = await PortScanner.terminate(entry, signal: signal)
         if result.succeeded {
             notify(String(localized: "Process \(entry.command) (PID \(String(entry.pid))) terminated."))
         } else {
@@ -1131,7 +1538,7 @@ final class AppModel {
     }
 
     func killPortAsAdmin(_ entry: PortEntry, signal: KillSignal) async {
-        let result = await PortScanner.killAsAdmin(pid: entry.pid, signal: signal)
+        let result = await PortScanner.terminate(entry, signal: signal, asAdministrator: true)
         notify(result.succeeded
                ? String(localized: "Process \(String(entry.pid)) terminated with administrator rights.")
                : String(localized: "Failed: \(result.combined)"),
@@ -1171,63 +1578,74 @@ final class AppModel {
     // MARK: - Storage
 
     func load() {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-
-        if let data = try? Data(contentsOf: AppPaths.settingsFile),
-           let decoded = try? decoder.decode(AppSettings.self, from: data) {
-            settings = decoded
-        }
-
-        if let data = try? Data(contentsOf: AppPaths.profilesFile),
-           let decoded = try? decoder.decode([ServerProfile].self, from: data) {
-            profiles = decoded
-        }
-
-        // Settings saved before these fields existed arrive empty.
-        let defaults = AppSettings()
-        var migrated = false
-        if settings.updateRepository.isEmpty { settings.updateRepository = defaults.updateRepository; migrated = true }
-        if settings.updateVersionFile.isEmpty || settings.updateVersionFile == "lastversion.txt" {
-            settings.updateVersionFile = defaults.updateVersionFile
-            migrated = true
-        }
-        if migrated { saveSettings() }
-
-        if profiles.isEmpty {
-            profiles = Self.seedProfiles()
-            settings.defaultProfileID = profiles.first?.id
-            saveProfiles()
-            saveSettings()
-        }
+        let loaded = applicationStore.load(starter: Self.seedProfiles)
+        settings = loaded.settings
+        profiles = loaded.profiles
+        needsFirstSetup = loaded.needsFirstSetup
+        if !loaded.errors.isEmpty { banner = Banner(text: loaded.errors.joined(separator: "\n"), isError: true) }
     }
 
-    func saveProfiles() {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        if let data = try? encoder.encode(profiles) {
-            try? data.write(to: AppPaths.profilesFile, options: .atomic)
-            // Remember our own write, or the watcher would read it back as a
-            // change from outside and announce it.
+    @discardableResult
+    func saveProfiles() -> Bool {
+        do {
+            try applicationStore.save(profiles, to: applicationStore.profilesFile)
             profilesFileStamp = profilesFileModified()
-        }
+            return true
+        } catch { notify(error.localizedDescription, isError: true); return false }
     }
 
     func saveSettings() {
         settings.lastSection = section.rawValue
         settings.lastSelectedProfileID = selectedProfileID
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        if let data = try? encoder.encode(settings) {
-            try? data.write(to: AppPaths.settingsFile, options: .atomic)
+        do { try applicationStore.save(settings, to: applicationStore.settingsFile) }
+        catch { notify(error.localizedDescription, isError: true) }
+        if integrationsEnabled {
+            ShellEnvironment.shared.setExtraEntries(settings.extraPATHEntries)
+            applyNodeEnvironment()
         }
-        ShellEnvironment.shared.setExtraEntries(settings.extraPATHEntries)
         if updates.repository != settings.updateRepository {
             updates.repository = settings.updateRepository
         }
         updates.versionFile = settings.updateVersionFile
+    }
+
+    private func applyNodeEnvironment() {
+        let version = settings.managedNodeVersion
+        let directory = NodeReleases.validVersion(version)
+            ? NodeReleases.defaultRoot.appendingPathComponent(version + "/bin").path : nil
+        ShellEnvironment.shared.setManagedNodeDirectory(directory)
+    }
+
+    func installMissingRequirements(for profile: ServerProfile, template: ProfileTemplate? = nil) async throws {
+        try await dependencies.installMissing(for: profile,
+            template: template ?? templates.all.first { $0.id == profile.templateId },
+            log: installLog, canChange: { self.runtimeChangesAllowed })
+    }
+
+    var runtimeChangesAllowed: Bool {
+        !isPreparingProjects && !backupOperationInProgress && !isShuttingDown && activeCount == 0 && !servers.values.contains { $0.state == .stopping || $0.processIdentifier != nil }
+            && !database.state.isActive && !database.state.isBusy
+            && !adminPanel.isRunning && adminPanel.state != .starting
+    }
+
+    func selectNodeRelease(_ version: String) async throws {
+        try await dependencies.managePackages {
+            try await dependencies.nodeReleases.select(version, canChange: { self.runtimeChangesAllowed }, commit: { selected, directory in
+                var updated = self.settings
+                updated.managedNodeVersion = selected
+                // Persist successfully before changing the in-memory selection or PATH.
+                try self.applicationStore.save(updated, to: self.applicationStore.settingsFile)
+                self.settings = updated
+                ShellEnvironment.shared.setManagedNodeDirectory(directory)
+            }, log: installLog)
+        }
+    }
+
+    func removeNodeRelease(_ version: String) async throws {
+        try await dependencies.managePackages {
+            try dependencies.nodeReleases.remove(version, activeVersion: settings.managedNodeVersion,
+                                                   canChange: { self.runtimeChangesAllowed })
+        }
     }
 
     func revealSupportFolder() {
@@ -1236,7 +1654,9 @@ final class AppModel {
 
     func resetSettings() {
         let keepDefault = settings.defaultProfileID
+        let keepNode = settings.managedNodeVersion
         settings = AppSettings()
+        if !runtimeChangesAllowed || dependencies.isManagingPackages { settings.managedNodeVersion = keepNode }
         settings.defaultProfileID = keepDefault
         saveSettings()
         notify(String(localized: "Settings reset to defaults."))
@@ -1245,7 +1665,7 @@ final class AppModel {
     // MARK: - Starter profiles
 
     /// One neutral profile so the application does not open empty.
-    private static func seedProfiles() -> [ServerProfile] {
+    nonisolated private static func seedProfiles() -> [ServerProfile] {
         var sites = ServerProfile()
         sites.name = String(localized: "Local static site")
         sites.engine = .httpServer

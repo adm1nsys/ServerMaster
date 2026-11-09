@@ -22,6 +22,7 @@ struct NewProfileSheet: View {
     enum Stage: Equatable {
         case gallery
         case questions(ProfileTemplate)
+        case created(UUID)
     }
 
     @State private var stage: Stage = .gallery
@@ -34,6 +35,9 @@ struct NewProfileSheet: View {
     @State private var phpVersion = ""
     @State private var createDatabase = true
     @State private var databaseName = ""
+    @State private var databasePassword = ""
+    @State private var showDatabasePassword = false
+    @State private var preparation = NewProfilePreparation()
     @State private var httpsEnabled = false
     @State private var command = ""
     @State private var entryFile = "server.js"
@@ -41,6 +45,18 @@ struct NewProfileSheet: View {
     @State private var problem: String?
     @State private var downloader = ProjectDownloader()
     @State private var clock = WaitingClock()
+    @State private var preparingProfile = false
+
+    /// The first-run assistant already knows the kind of site the person
+    /// picked. Opening the normal wizard at that template preserves one shared
+    /// flow instead of maintaining a second, subtly different creation path.
+    private let initialTemplateID: String?
+    private let onCancel: (() -> Void)?
+
+    init(initialTemplateID: String? = nil, onCancel: (() -> Void)? = nil) {
+        self.initialTemplateID = initialTemplateID
+        self.onCancel = onCancel
+    }
 
     private var store: TemplateStore { model.templates }
 
@@ -49,9 +65,21 @@ struct NewProfileSheet: View {
             switch stage {
             case .gallery:                 gallery
             case .questions(let template): questions(for: template)
+            case .created(let id):         completion(for: id)
             }
         }
         .frame(width: 640, height: 560)
+        .interactiveDismissDisabled(preparingProfile || preparation.isStarting || isDownloading)
+        .onDisappear {
+            if case .created = stage, model.needsFirstSetup { model.completeFirstSetup() }
+        }
+        .onAppear {
+            guard stage == .gallery,
+                  let initialTemplateID,
+                  let template = store.all.first(where: { $0.id == initialTemplateID })
+            else { return }
+            begin(template)
+        }
     }
 
     // MARK: - Gallery
@@ -67,7 +95,9 @@ struct NewProfileSheet: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Cancel") { dismiss() }
+                Button("Cancel") {
+                    if let onCancel { onCancel() } else { dismiss() }
+                }
                     .keyboardShortcut(.cancelAction)
             }
             .padding(16)
@@ -185,7 +215,10 @@ struct NewProfileSheet: View {
             if Features.isOn(.templateSharing) { Button("Export…") { export([template]) } }
             if template.isUserDefined {
                 Divider()
-                Button("Delete template", role: .destructive) { store.remove(template) }
+                Button("Delete template", role: .destructive) {
+                    do { try store.remove(template) }
+                    catch { model.notify(error.localizedDescription, isError: true) }
+                }
             }
         }
     }
@@ -193,7 +226,8 @@ struct NewProfileSheet: View {
     // MARK: - Questions
 
     private func questions(for template: ProfileTemplate) -> some View {
-        let asked = template.questions.filter { shouldAsk($0, in: template) }
+        let filtered = template.setupQuestions.filter { shouldAsk($0, in: template) }
+        let asked: [TemplateQuestion] = filtered.isEmpty ? [.folder] : filtered
         let current = asked.indices.contains(step) ? asked[step] : .folder
 
         return VStack(spacing: 0) {
@@ -222,7 +256,10 @@ struct NewProfileSheet: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    ProfileRequirementsView(profile: draftProfile(from: template), template: template)
+                        .disabled(preparingProfile || isDownloading)
                     questionBody(current, template: template)
+                        .disabled(preparingProfile)
                     if let problem {
                         Label(problem, systemImage: "exclamationmark.triangle")
                             .font(.callout).foregroundStyle(.orange)
@@ -240,7 +277,7 @@ struct NewProfileSheet: View {
                     problem = nil
                     if step == 0 { stage = .gallery } else { step -= 1 }
                 }
-                .disabled(isDownloading)
+                .disabled(isDownloading || preparingProfile)
                 Spacer()
                 Button(step == asked.count - 1 ? "Create" : "Next") {
                     advance(asked: asked, template: template)
@@ -249,7 +286,8 @@ struct NewProfileSheet: View {
                 // Moving on mid-download leaves a half-unpacked folder behind
                 // and a profile pointed at it, which looks exactly like a broken
                 // download and is much harder to explain.
-                .disabled(!isAnswered(current, template: template) || isDownloading)
+                .disabled(!isAnswered(current, template: template) || isDownloading || preparingProfile || model.dependencies.isManagingPackages)
+                if preparingProfile { ProgressView().controlSize(.small) }
             }
             .padding(12)
         }
@@ -294,7 +332,7 @@ struct NewProfileSheet: View {
                 // For something like Joomla the honest answer to an empty folder
                 // is not “make a placeholder page” but “fetch the actual thing”.
                 if Features.isOn(.projectDownloads),
-                   let project = DownloadableProject.forTemplate(template.id),
+                   let project = DownloadableProject.forTemplate(template),
                    !folder.trimmingCharacters(in: .whitespaces).isEmpty {
                     Divider()
                     downloadRow(project)
@@ -305,7 +343,7 @@ struct NewProfileSheet: View {
                 // afterwards, once the failure has already happened.
                 if !folder.trimmingCharacters(in: .whitespaces).isEmpty,
                    folderLooksEmpty(for: template),
-                   !(Features.isOn(.projectDownloads) && DownloadableProject.forTemplate(template.id) != nil) {
+                   !(Features.isOn(.projectDownloads) && DownloadableProject.forTemplate(template) != nil) {
                     let starters = StarterFiles.available(for: draftProfile(from: template))
                     if !starters.isEmpty {
                         Divider()
@@ -382,9 +420,24 @@ struct NewProfileSheet: View {
         case .database:
             ask("Does it need a database?", String(localized: "A MariaDB of its own, on its own port. Any MySQL you already have is untouched.")) {
                 Toggle("Create a database for this project", isOn: $createDatabase)
+                    .disabled(template.packageKind == "wordpress-w2p")
                 if createDatabase {
                     TextField("", text: $databaseName, prompt: Text("Database name"))
                         .glassField()
+                    HStack {
+                        Group {
+                            if showDatabasePassword {
+                                TextField("Database password", text: $databasePassword)
+                            } else {
+                                SecureField("Database password", text: $databasePassword)
+                            }
+                        }
+                        .glassField()
+                        Button(showDatabasePassword ? "Hide" : "Show") { showDatabasePassword.toggle() }
+                        Button("Generate") { databasePassword = DatabaseAdminPanel.generatedPassword(length: 16) }
+                    }
+                    Text("Credentials are saved in Keychain when available; otherwise they are kept for this session.")
+                        .font(.caption).foregroundStyle(.secondary)
                     Text("Latin letters, digits and underscores. The installer of your CMS will ask for this name.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -393,6 +446,10 @@ struct NewProfileSheet: View {
         case .https:
             ask("Over HTTPS?", String(localized: "A certificate is generated for you. The browser warns about it unless mkcert is installed.")) {
                 Toggle("Serve over HTTPS", isOn: $httpsEnabled)
+                if template.settings.engine.requiresHTTPSProxy && httpsEnabled {
+                    Text("HTTPS for this engine also requires Caddy. Install it on the Dependencies screen.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
 
         case .command:
@@ -429,7 +486,7 @@ struct NewProfileSheet: View {
         case .folder:    return !folder.trimmingCharacters(in: .whitespaces).isEmpty
         case .name:      return !name.trimmingCharacters(in: .whitespaces).isEmpty
         case .port:      return port > 0 && port < 65536
-        case .database:  return !createDatabase || !databaseName.trimmingCharacters(in: .whitespaces).isEmpty
+        case .database:  return !createDatabase || (!databaseName.trimmingCharacters(in: .whitespaces).isEmpty && !databasePassword.isEmpty)
         case .command:   return !command.trimmingCharacters(in: .whitespaces).isEmpty
         case .entryFile: return !entryFile.trimmingCharacters(in: .whitespaces).isEmpty
         default:         return true
@@ -506,8 +563,13 @@ struct NewProfileSheet: View {
 
     /// The profile as it would be, used to work out which starter files fit.
     private func draftProfile(from template: ProfileTemplate) -> ServerProfile {
-        var profile = template.makeProfile(name: name, port: port, root: AppPaths.expand(folder))
-        profile.nodeEntryFile = entryFile
+        var profile = template.makeProfile(name: name.trimmingCharacters(in: .whitespaces), port: port, root: AppPaths.expand(folder))
+        profile.phpVersion = phpVersion
+        if profile.engine.supportsHTTPS { profile.httpsEnabled = httpsEnabled }
+        if profile.engine == .nodeScript { profile.nodeEntryFile = entryFile }
+        if profile.engine == .custom { profile.customCommand = command }
+        if template.packageKind != "wordpress-w2p" { profile.needsDatabase = createDatabase }
+        if createDatabase { profile.databaseName = databaseName.trimmingCharacters(in: .whitespacesAndNewlines) }
         return profile
     }
 
@@ -543,21 +605,25 @@ struct NewProfileSheet: View {
         folder = ""
         name = template.title
         port = suggestedPort()
-        phpVersion = template.phpVersion
+        phpVersion = template.makeProfile(name: template.title, port: port, root: "").phpVersion
         createDatabase = template.needsDatabase
         databaseName = suggestedDatabaseName(for: template)
-        httpsEnabled = false
-        command = ""
+        databasePassword = DatabaseAdminPanel.generatedPassword(length: 16)
+        showDatabasePassword = false
+        preparation = NewProfilePreparation()
+        httpsEnabled = template.settings.httpsEnabled
+        command = template.settings.customCommand
         entryFile = template.settings.nodeEntryFile
         stage = .questions(template)
     }
 
     private func advance(asked: [TemplateQuestion], template: ProfileTemplate) {
+        guard !preparingProfile, asked.indices.contains(step) else { return }
         problem = nil
 
         // Checked as the person moves on, not after everything is filled in:
         // a taken port found at the end means re-reading three screens.
-        if asked[step] == .port, !PortScanner.isPortFree(port, host: "127.0.0.1") {
+        if asked[step] == .port, !model.isProfilePortAvailable(port) {
             problem = String(localized: "Port \(String(port)) is already in use. Pick another one.")
             return
         }
@@ -570,55 +636,144 @@ struct NewProfileSheet: View {
             step += 1
             return
         }
-        finish(template)
+        preparingProfile = true
+        Task {
+            defer { preparingProfile = false }
+            await finish(template)
+        }
     }
 
-    private func finish(_ template: ProfileTemplate) {
-        var profile = template.makeProfile(name: name.trimmingCharacters(in: .whitespaces),
-                                           port: port,
-                                           root: AppPaths.expand(folder))
-        profile.phpVersion = phpVersion
-        if template.settings.engine.supportsHTTPS { profile.httpsEnabled = httpsEnabled }
-        if template.settings.engine == .custom { profile.customCommand = command }
-        if template.settings.engine == .nodeScript { profile.nodeEntryFile = entryFile }
-        if template.packageKind == "printshopcrm" {
-            profile.workingDirectory = profile.rootPath
-            profile.environment = [EnvVar(key: "PSC_HOST", value: "127.0.0.1"),
-                                   EnvVar(key: "PSC_AUTH", value: "0")]
+    private func finish(_ template: ProfileTemplate) async {
+        var profile = draftProfile(from: template)
+        guard model.isProfilePortAvailable(profile.port, host: profile.host) else {
+            problem = String(localized: "Port \(String(profile.port)) is already in use. Pick another one.")
+            return
+        }
+        guard !createDatabase || !databasePassword.isEmpty else {
+            problem = String(localized: "Enter a database password or generate one.")
+            return
         }
 
-        model.addProfile(profile)
+        // Templates carry TLS intent but never machine-specific private keys.
+        // Fulfil the wizard's certificate promise before adding the profile.
+        if profile.httpsEnabled && profile.engine.supportsHTTPS {
+            do {
+                let certificateName = "profile-\(profile.id.uuidString)"
+                let domains = "localhost,127.0.0.1,::1"
+                let pair: CertificatePair
+                if model.certificates.mkcert.trustedInSystem {
+                    pair = try await model.certificates.generateWithMkcert(name: certificateName, domains: domains)
+                } else {
+                    pair = try await model.certificates.generateSelfSigned(
+                        name: certificateName, domains: domains,
+                        days: model.settings.certificateDefaultDays)
+                }
+                profile.certificatePath = pair.certificatePath
+                profile.privateKeyPath = pair.privateKeyPath
+            } catch {
+                problem = error.localizedDescription
+                return
+            }
+        }
+
+        guard model.addProfile(profile, completingFirstSetup: false) else {
+            problem = String(localized: "The profile could not be saved. Check the data folder permissions.")
+            return
+        }
         model.selectedProfileID = profile.id
 
-        if template.packageKind == "wordpress-w2p" || template.packageKind == "printshopcrm" {
-            Task { await model.prepareProjectRecipe(template, profileID: profile.id) }
-        } else if createDatabase && !databaseName.trimmingCharacters(in: .whitespaces).isEmpty {
-            let wanted = databaseName.trimmingCharacters(in: .whitespaces)
-            Task { await model.prepareDatabase(named: wanted, for: profile) }
+        stage = .created(profile.id)
+        defer { databasePassword = "" }
+        let wanted = createDatabase ? databaseName.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        await preparation.prepare(profileID: profile.id, template: template,
+                                  databaseName: wanted.isEmpty ? nil : wanted,
+                                  password: createDatabase ? databasePassword : nil, using: model)
+    }
+
+    private func completion(for id: UUID) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Label("Profile saved", systemImage: "checkmark.circle.fill")
+                .font(.title2).foregroundStyle(.green)
+            Text(model.profile(with: id)?.name ?? "")
+                .font(.title3).fontWeight(.semibold)
+            switch preparation.phase {
+            case .idle, .preparing:
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text(model.recipePreparations[id].map { operation in
+                        if case .preparing(let step) = operation.phase { return step.title }
+                        return String(localized: "Preparing the project…")
+                    } ?? String(localized: "Preparing the project…"))
+                }
+            case .ready:
+                Text("Ready. Start the server now or return to it later.")
+                    .foregroundStyle(.secondary)
+            case .failed(let message):
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+                Text("Profile saved, but preparation did not finish. Open its profile to retry.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if let message = preparation.startFailure {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+            }
+            Spacer()
+            HStack {
+                Button("Open profile") {
+                    model.selectedProfileID = id
+                    model.section = .profiles
+                    closeWizard()
+                }
+                .disabled(preparingProfile || preparation.isStarting)
+                Button("Done") { closeWizard() }
+                    .disabled(preparingProfile || preparation.isStarting)
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                if preparation.canStart {
+                    Button(startTitle(for: id)) {
+                        Task {
+                            if await preparation.start(using: model) { closeWizard() }
+                        }
+                    }
+                    .keyboardShortcut(.defaultAction)
+                }
+                if preparation.isStarting { ProgressView().controlSize(.small) }
+            }
         }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func startTitle(for id: UUID) -> LocalizedStringKey {
+        (model.profile(with: id)?.openBrowserOnStart == true || model.settings.openBrowserOnStart)
+            ? "Start and open" : "Start server"
+    }
+
+    private func closeWizard() {
+        if model.needsFirstSetup { model.completeFirstSetup() }
         dismiss()
     }
 
     private func createEmpty() {
         var profile = ServerProfile()
         profile.name = String(localized: "Profile \(String(model.profiles.count + 1))")
-        profile.port = suggestedPort()
-        model.addProfile(profile)
+        guard let port = model.suggestedProfilePort() else {
+            model.notify(String(localized: "No free profile port was found. Release a port and try again."), isError: true)
+            return
+        }
+        profile.port = port
+        guard model.addProfile(profile) else {
+            problem = String(localized: "The profile could not be saved. Check the data folder permissions.")
+            return
+        }
         model.selectedProfileID = profile.id
         dismiss()
     }
 
     // MARK: - Helpers
 
-    private func suggestedPort() -> Int {
-        let used = Set(model.profiles.map(\.port))
-        var candidate = 8080
-        while used.contains(candidate) || !PortScanner.isPortFree(candidate, host: "127.0.0.1") {
-            candidate += 1
-            if candidate > 9100 { break }
-        }
-        return candidate
-    }
+    private func suggestedPort() -> Int { model.suggestedProfilePort() ?? 0 }
 
     private func suggestedDatabaseName(for template: ProfileTemplate) -> String {
         guard template.needsDatabase else { return "" }

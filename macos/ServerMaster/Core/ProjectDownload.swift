@@ -55,6 +55,12 @@ nonisolated struct DownloadableProject: Sendable {
         directArchiveURL: URL(string: "https://wordpress.org/latest.zip"),
         wrapperFolder: "wordpress")
 
+    static let wordpress = DownloadableProject(
+        id: "wordpress", title: "WordPress",
+        repository: "", majorVersion: "", assetContains: [], guide: .wordpress,
+        directArchiveURL: URL(string: "https://wordpress.org/latest.zip"),
+        wrapperFolder: "wordpress")
+
     static let printShopCRM = DownloadableProject(
         id: "printshopcrm", title: "Print Shop CRM",
         repository: "", majorVersion: "", assetContains: [], guide: .index,
@@ -62,10 +68,19 @@ nonisolated struct DownloadableProject: Sendable {
         wrapperFolder: "printshopcrm-main")
 
     /// What a template can offer to download, if anything.
+    static func forTemplate(_ template: ProfileTemplate) -> DownloadableProject? {
+        // Metadata survives duplication and cross-platform import; IDs do not.
+        let kind = template.packageKind.trimmingCharacters(in: .whitespacesAndNewlines)
+        if kind.isEmpty { return forTemplate(template.id) }
+        if kind == "wordpress-w2p" { return webToPrint }
+        return forTemplate(kind)
+    }
+
     static func forTemplate(_ id: String) -> DownloadableProject? {
         switch id {
         case "joomla5": return joomla5
         case "joomla6": return joomla6
+        case "wordpress": return wordpress
         case "web-to-print-store", "web-to-print-showcase": return webToPrint
         case "printshopcrm": return printShopCRM
         default:        return nil

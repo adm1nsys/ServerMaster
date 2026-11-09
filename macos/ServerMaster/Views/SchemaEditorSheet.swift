@@ -50,6 +50,7 @@ struct SchemaEditorSheet: View {
     @State private var replacing: String?          // the column being changed
     @State private var newIndex = false
     @State private var newUser = false
+    @State private var changingPassword: DatabaseUser?
     @State private var confirming: Confirmation?
 
     private struct Confirmation: Identifiable {
@@ -106,7 +107,14 @@ struct SchemaEditorSheet: View {
         }
         .sheet(isPresented: $newUser) {
             UserSheet { name, host, password in
-                await apply { await model.database.createUser(name, host: host, password: password) }
+                let result = await apply { await model.database.createUser(name, host: host, password: password) }
+                return result
+            }
+        }
+        .sheet(item: $changingPassword) { user in
+            AccountPasswordSheet(user: user) { password in
+                let result = await apply { await model.database.setPassword(of: user, to: password) }
+                return result
             }
         }
         .alert(confirming?.title ?? "", isPresented: .init(
@@ -370,25 +378,33 @@ struct SchemaEditorSheet: View {
                         .padding(4)
                     } label: { Label("What it may do", systemImage: "checklist") }
 
+                    if user.isProtected {
+                        Label("This system or ServerMaster account cannot be changed here.", systemImage: "lock.fill")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
                     HStack(spacing: 8) {
                         Button("Grant everything on \(database)") {
                             Task { await apply { await model.database.grant("ALL PRIVILEGES", on: database, to: user) } }
                         }
                         Button("Read only on \(database)") {
-                            Task { await apply { await model.database.grant("SELECT", on: database, to: user) } }
+                            Task { await apply { await model.database.makeReadOnly(on: database, for: user) } }
                         }
                         Button("Revoke on \(database)") {
                             Task { await apply { await model.database.revokeAll(on: database, from: user) } }
                         }
                     }
+                    .disabled(user.isProtected || busy)
 
                     Divider()
+                    Button("Change password…") { changingPassword = user }
+                        .disabled(user.isProtected || busy)
                     Button("Remove this account…", role: .destructive) {
                         confirming = Confirmation(
                             title: String(localized: "Remove \(user.name)@\(user.host)?"),
                             cost: String(localized: "Anything connecting with it stops working — a site's configuration file usually names one."),
                             run: { await model.database.dropUser(user) })
                     }
+                    .disabled(user.isProtected || busy)
                 }
                 .padding(16)
             }
@@ -400,10 +416,14 @@ struct SchemaEditorSheet: View {
 
     // MARK: - Doing things
 
-    private func apply(_ action: @escaping () async -> CommandResult) async {
+    @discardableResult
+    private func apply(_ action: @escaping () async -> CommandResult) async -> CommandResult {
+        guard !busy else {
+            return CommandResult(exitCode: 1, stdout: "", stderr: String(localized: "Wait for the current database operation to finish."))
+        }
         busy = true
+        defer { busy = false }
         let result = await action()
-        busy = false
         isError = !result.succeeded
         message = result.succeeded
             ? String(localized: "Done.")
@@ -411,6 +431,7 @@ struct SchemaEditorSheet: View {
         await reload()
         await loadStructure()
         await loadGrants()
+        return result
     }
 
     private func renameTable(_ name: String) {

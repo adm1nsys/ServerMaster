@@ -57,6 +57,7 @@ final class HealthCheck {
     /// Checks the given profiles at once rather than one after another. Five
     /// sites checked in sequence is five timeouts long in the bad case.
     func run(_ profiles: [ServerProfile]) async {
+        guard !isRunning else { return }
         guard !profiles.isEmpty else {
             results = []
             return
@@ -78,56 +79,16 @@ final class HealthCheck {
         results = collected.sorted { order[$0.id, default: 0] < order[$1.id, default: 0] }
     }
 
-    private static func check(_ profile: ServerProfile) async -> HealthResult {
-        guard let url = URL(string: profile.address) else {
+    static func check(_ profile: ServerProfile) async -> HealthResult {
+        guard let url = HTTPStartup.address(for: profile) else {
             return HealthResult(id: profile.id, name: profile.name, address: profile.address,
-                                status: nil, elapsed: 0, server: nil,
-                                problem: String(localized: "the address cannot be read"))
+                status: nil, elapsed: 0, server: nil, problem: String(localized: "the address cannot be read"))
         }
-
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 6
-        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        // HEAD would be lighter, and plenty of PHP sites answer it with a 501.
-        request.httpMethod = "GET"
-
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 6
-        // A self-signed certificate is the normal case for a local site, and
-        // refusing to look at it would make this check useless exactly where it
-        // is needed. Only ever aimed at an address the person configured.
-        let session = URLSession(configuration: configuration,
-                                 delegate: LocallyTrusting(), delegateQueue: nil)
-
         let started = Date()
-        do {
-            let (_, response) = try await session.data(for: request)
-            let elapsed = Date().timeIntervalSince(started)
-            guard let http = response as? HTTPURLResponse else {
-                return HealthResult(id: profile.id, name: profile.name, address: profile.address,
-                                    status: nil, elapsed: elapsed, server: nil,
-                                    problem: String(localized: "answered, but not with HTTP"))
-            }
-            return HealthResult(id: profile.id, name: profile.name, address: profile.address,
-                                status: http.statusCode, elapsed: elapsed,
-                                server: http.value(forHTTPHeaderField: "Server"), problem: nil)
-        } catch {
-            return HealthResult(id: profile.id, name: profile.name, address: profile.address,
-                                status: nil, elapsed: Date().timeIntervalSince(started),
-                                server: nil,
-                                problem: (error as NSError).localizedDescription)
-        }
-    }
-}
-
-/// Accepts the certificate a local server presents, self-signed included.
-private final class LocallyTrusting: NSObject, URLSessionDelegate, @unchecked Sendable {
-    func urlSession(_ session: URLSession,
-                    didReceive challenge: URLAuthenticationChallenge) async
-    -> (URLSession.AuthChallengeDisposition, URLCredential?) {
-        guard let trust = challenge.protectionSpace.serverTrust else {
-            return (.performDefaultHandling, nil)
-        }
-        return (.useCredential, URLCredential(trust: trust))
+        let response = await HTTPStartup.inspect(url: url,
+            certificatePath: profile.scheme == "https" ? profile.certificatePath : nil, timeout: 6)
+        return HealthResult(id: profile.id, name: profile.name, address: profile.address,
+            status: response.status, elapsed: Date().timeIntervalSince(started),
+            server: response.server, problem: response.problem)
     }
 }

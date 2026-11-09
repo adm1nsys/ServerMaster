@@ -29,7 +29,8 @@ nonisolated struct PortEntry: Identifiable, Hashable, Sendable {
 
     var localURL: URL? {
         guard proto == "TCP" else { return nil }
-        let host = (address == "*" || address == "::" ) ? "127.0.0.1" : address
+        let wildcard = address == "*" || address == "::" || address == "0.0.0.0"
+        let host = wildcard ? (family == "IPv6" || address == "::" ? "::1" : "127.0.0.1") : address
         return URL(string: "http://\(host.contains(":") ? "[\(host)]" : host):\(String(port))")
     }
 }
@@ -55,60 +56,145 @@ nonisolated enum PortScanner {
     static func processesListening(onPort port: Int) async -> [PortEntry] {
         let entries = await runLSOF(arguments: ["-nP", "-F", "pcuLtn", "-iTCP:\(String(port))", "-sTCP:LISTEN"], proto: "TCP")
         let visible = dedupe(entries.filter { $0.port == port })
-        // macOS deliberately withholds root-owned sockets from an ordinary
-        // lsof invocation. A bind check still knows the truth, so surface a
-        // non-killable entry rather than claiming that the port is free.
-        guard visible.isEmpty, !isPortFree(port, host: "127.0.0.1") else { return visible }
-        return [hiddenEntry(port: port)]
+        // macOS can withhold root-owned sockets from an ordinary lsof
+        // invocation. netstat still exposes their listening endpoints.
+        guard visible.isEmpty else { return visible }
+        // A root-owned TIME_WAIT socket can prevent a user bind even after
+        // the listener has gone. It is not a process that can be terminated.
+        let listeners = await runNetstatListeners()
+        return listeners.filter { $0.port == port }.map { hiddenEntry(port: port, address: $0.address) }
     }
 
-    /// Whether the port is free (by trying to take it ourselves).
-    ///
-    /// Both the requested address and the wildcard are checked: with SO_REUSEADDR a
-    /// bind to 127.0.0.1 succeeds even when someone is already listening on 0.0.0.0
-    /// on the same port, so one check is not enough.
+    /// Check the requested address and its wildcard in the same address family.
+    /// Resolving a hostname must not silently replace an IPv6 address with IPv4.
     static func isPortFree(_ port: Int, host: String) -> Bool {
-        guard port > 0, port < 65536 else { return false }
-        return canBind(port: port, address: resolve(host)) && canBind(port: port, address: INADDR_ANY)
-    }
-
-    private static func resolve(_ host: String) -> in_addr_t {
-        switch host {
-        case "0.0.0.0", "":
-            return INADDR_ANY
-        case "localhost":
-            return inet_addr("127.0.0.1")
-        default:
-            let resolved = inet_addr(host)
-            // Not an IPv4 literal (a host name or IPv6) — a bind check will not work.
-            return resolved == INADDR_NONE ? INADDR_ANY : resolved
+        guard (1...65535).contains(port) else { return false }
+        let host = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        var hints = addrinfo()
+        hints.ai_family = AF_UNSPEC
+        hints.ai_socktype = SOCK_STREAM
+        hints.ai_flags = AI_PASSIVE
+        var result: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(host.isEmpty || host == "*" ? nil : host, String(port), &hints, &result) == 0,
+              let first = result else { return false }
+        defer { freeaddrinfo(first) }
+        var cursor: UnsafeMutablePointer<addrinfo>? = first
+        var checked = false
+        while let item = cursor {
+            let info = item.pointee
+            if info.ai_family == AF_INET || info.ai_family == AF_INET6 {
+                checked = true
+                guard canBind(info.ai_addr, length: info.ai_addrlen, family: info.ai_family) else { return false }
+                if info.ai_family == AF_INET6 {
+                    var wildcard = sockaddr_in6()
+                    wildcard.sin6_family = sa_family_t(AF_INET6)
+                    wildcard.sin6_port = in_port_t(UInt16(port).bigEndian)
+                    let free = withUnsafePointer(to: &wildcard) {
+                        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                            canBind($0, length: socklen_t(MemoryLayout<sockaddr_in6>.size), family: AF_INET6)
+                        }
+                    }
+                    guard free else { return false }
+                } else {
+                    var wildcard = sockaddr_in()
+                    wildcard.sin_family = sa_family_t(AF_INET)
+                    wildcard.sin_port = in_port_t(UInt16(port).bigEndian)
+                    let free = withUnsafePointer(to: &wildcard) {
+                        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                            canBind($0, length: socklen_t(MemoryLayout<sockaddr_in>.size), family: AF_INET)
+                        }
+                    }
+                    guard free else { return false }
+                }
+            }
+            cursor = info.ai_next
         }
+        return checked
     }
 
-    private static func canBind(port: Int, address: in_addr_t) -> Bool {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
+    /// Suggestions are unprivileged ports and never return a known occupied
+    /// or reserved endpoint. Binding is checked again when a server starts.
+    static func availablePort(startingAt preferred: Int = 8080, excluding: Set<Int> = [], host: String = "127.0.0.1") -> Int? {
+        let start = (1024...65535).contains(preferred) ? preferred : 8080
+        var candidate = start
+        repeat {
+            if !excluding.contains(candidate), isPortFree(candidate, host: host) { return candidate }
+            candidate = candidate == 65535 ? 1024 : candidate + 1
+        } while candidate != start
+        return nil
+    }
+
+    private static func canBind(_ address: UnsafePointer<sockaddr>?, length: socklen_t, family: Int32) -> Bool {
+        guard let address else { return false }
+        let fd = socket(family, SOCK_STREAM, 0)
         guard fd >= 0 else { return false }
         defer { close(fd) }
-
-        // SO_REUSEADDR is needed so that recently closed sockets in TIME_WAIT
-        // do not look like a taken port.
         var yes: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size))
+        if family == AF_INET6 {
+            setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &yes, socklen_t(MemoryLayout<Int32>.size))
+        }
+        return Darwin.bind(fd, address, length) == 0 && Darwin.listen(fd, 1) == 0
+    }
 
-        var addr = sockaddr_in()
-        addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_port = in_port_t(UInt16(port).bigEndian)
-        addr.sin_addr.s_addr = address
-
-        let result = withUnsafePointer(to: &addr) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { rebound in
-                Darwin.bind(fd, rebound, socklen_t(MemoryLayout<sockaddr_in>.size))
+    static func listener(_ entry: PortEntry, matchesHost host: String) -> Bool {
+        let host = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        if host.isEmpty || host == "*" { return true }
+        var hints = addrinfo()
+        hints.ai_family = AF_UNSPEC
+        hints.ai_socktype = SOCK_STREAM
+        var result: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(host, nil, &hints, &result) == 0, let first = result else {
+            return true // An unresolved address cannot prove that the endpoint is free.
+        }
+        defer { freeaddrinfo(first) }
+        var cursor: UnsafeMutablePointer<addrinfo>? = first
+        while let item = cursor {
+            let info = item.pointee
+            defer { cursor = info.ai_next }
+            let family = info.ai_family == AF_INET6 ? "IPv6" : "IPv4"
+            guard entry.family == family else { continue }
+            if entry.address == "*" || entry.address == "0.0.0.0" || entry.address == "::" { return true }
+            var address = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            if getnameinfo(info.ai_addr, info.ai_addrlen, &address, socklen_t(address.count), nil, 0, NI_NUMERICHOST) == 0 {
+                let numeric = String(cString: address)
+                if entry.address == numeric || host == "0.0.0.0" || host == "::" { return true }
             }
         }
-        return result == 0
+        return false
     }
 
     // MARK: - Process management
+
+    /// A saved row is not authority to kill a PID that no longer owns its socket.
+    static func stillOwnsEndpoint(_ entry: PortEntry) async -> Bool {
+        guard entry.pid > 1, entry.pid != getpid() else { return false }
+        let current = await scan(includeUDP: entry.proto == "UDP")
+        return current.contains { $0.pid == entry.pid && $0.port == entry.port &&
+            $0.proto == entry.proto && $0.address == entry.address && $0.family == entry.family }
+    }
+
+    static func terminate(_ entry: PortEntry, signal: KillSignal,
+                          asAdministrator: Bool = false) async -> CommandResult {
+        guard await stillOwnsEndpoint(entry) else {
+            return CommandResult(exitCode: 1, stdout: "", stderr: String(localized:
+                "This process no longer owns the selected port. Refresh the list before trying again."))
+        }
+        if asAdministrator {
+            // Check again *after* the authorization prompt, inside the elevated
+            // command. Shell-quote the endpoint; only validated numeric PID/port
+            // and the closed KillSignal enum are interpolated as command syntax.
+            let host = entry.address.contains(":") ? "[\(entry.address)]" : entry.address
+            let endpoint = "n\(host):\(entry.port)"
+            let quoted = "'" + endpoint.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
+            let proto = entry.proto == "UDP" ? "UDP" : "TCP"
+            let listening = proto == "TCP" ? " -sTCP:LISTEN" : ""
+            let command = "/usr/sbin/lsof -nP -a -p \(entry.pid) -i\(proto):\(entry.port)\(listening) -Fpn | /usr/bin/grep -Fqx -- \(quoted) && /bin/kill -\(signal.rawValue) \(entry.pid)"
+            return await ProcessRunner.runAsAdmin(command,
+                prompt: String(localized: "ServerMaster wants to terminate process \(String(entry.pid))."))
+        }
+        return await kill(pid: entry.pid, signal: signal)
+    }
 
     static func kill(pid: Int32, signal: KillSignal) async -> CommandResult {
         guard pid > 0 else { return CommandResult(exitCode: 1, stdout: "", stderr: "The process owner is hidden by macOS.") }
@@ -140,7 +226,11 @@ nonisolated enum PortScanner {
     /// dangerous gap where the Ports screen said “free” while Apache held it.
     private static func runNetstatListeners() async -> [(address: String, port: Int)] {
         let result = await ProcessRunner.run("/usr/sbin/netstat", ["-an", "-p", "tcp"], timeout: 20)
-        return result.stdout.split(separator: "\n").compactMap { raw in
+        return parseNetstatListeners(result.stdout)
+    }
+
+    static func parseNetstatListeners(_ output: String) -> [(address: String, port: Int)] {
+        output.split(separator: "\n").compactMap { raw in
             let fields = raw.split(whereSeparator: { $0 == " " || $0 == "\t" })
             guard fields.count >= 6, fields[0].hasPrefix("tcp"), fields.last == "LISTEN" else { return nil }
             let endpoint = String(fields[3])
@@ -160,7 +250,7 @@ nonisolated enum PortScanner {
     private static func hiddenEntry(port: Int, address: String = "127.0.0.1") -> PortEntry {
         PortEntry(pid: 0, command: String(localized: "Process hidden by macOS"),
                   user: String(localized: "unknown (administrator-owned possible)"),
-                  proto: "TCP", family: "IPv4", address: address, port: port)
+                  proto: "TCP", family: address.contains(":") ? "IPv6" : "IPv4", address: address, port: port)
     }
 
     static func parse(_ output: String, proto: String) -> [PortEntry] {

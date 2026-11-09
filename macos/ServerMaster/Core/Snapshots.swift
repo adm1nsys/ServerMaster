@@ -59,7 +59,21 @@ nonisolated struct Snapshot: Codable, Sendable, Identifiable, Equatable {
         kind = (try? container.decode(Kind.self, forKey: .kind)) ?? .profile
         profileID = try? container.decode(UUID.self, forKey: .profileID)
         profileName = (try? container.decode(String.self, forKey: .profileName)) ?? "—"
-        taken = (try? container.decode(Date.self, forKey: .taken)) ?? .distantPast
+        if let date = try? container.decode(Date.self, forKey: .taken) {
+            taken = date
+        } else if let number = try? container.decode(Double.self, forKey: .taken), number.isFinite {
+            // Legacy JSONEncoder dates use seconds since Apple's reference date.
+            taken = Date(timeIntervalSinceReferenceDate: number)
+        } else if let raw = try? container.decode(String.self, forKey: .taken) {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            guard let date = formatter.date(from: raw) ?? ISO8601DateFormatter().date(from: raw) else {
+                throw DecodingError.dataCorruptedError(forKey: .taken, in: container, debugDescription: "Invalid snapshot date")
+            }
+            taken = date
+        } else {
+            throw DecodingError.dataCorruptedError(forKey: .taken, in: container, debugDescription: "Missing snapshot date")
+        }
         trigger = (try? container.decode(Trigger.self, forKey: .trigger)) ?? .manual
         includesSite = (try? container.decode(Bool.self, forKey: .includesSite)) ?? false
         includesDatabase = (try? container.decode(Bool.self, forKey: .includesDatabase)) ?? false
@@ -116,8 +130,28 @@ nonisolated enum BackupInterval: String, Codable, CaseIterable, Sendable, Identi
 final class SnapshotStore {
 
     private(set) var snapshots: [Snapshot] = []
-    private(set) var isWorking = false
+    private var operationActive = false
+    private var batchID: UUID?
+    var isWorking: Bool { operationActive || batchID != nil }
+
+    /// A batch reserves the store across awaits between individual operations.
+    func beginBatch() -> UUID? {
+        guard !isWorking else { return nil }
+        let id = UUID()
+        batchID = id
+        return id
+    }
+
+    func endBatch(_ id: UUID) {
+        guard batchID == id, !operationActive else { return }
+        batchID = nil
+    }
+
+    private func canBeginOperation(batch: UUID?) -> Bool {
+        !operationActive && (batchID == nil ? batch == nil : batchID == batch)
+    }
     private(set) var lastError: String?
+    private(set) var lastPreservedSitePath: String?
 
     /// Where backups go. Documents by default: somewhere a person already knows
     /// how to find, and somewhere Time Machine already covers.
@@ -126,18 +160,25 @@ final class SnapshotStore {
             .appendingPathComponent("ServerMaster Backups").path
     }
 
+    var destinationPath: String { destination.path }
     private var destination: URL
     private let log: ConsoleLog?
+    private var indexLoadFailed = false
+    private var storageAccess: SiteFileAccess?
 
     init(destination: String, log: ConsoleLog? = nil) {
-        self.destination = URL(fileURLWithPath: AppPaths.expand(destination), isDirectory: true)
+        self.destination = SnapshotFileSafety.normalized(URL(fileURLWithPath: AppPaths.expand(destination), isDirectory: true))
         self.log = log
         reload()
     }
 
-    func setDestination(_ path: String) {
-        destination = URL(fileURLWithPath: AppPaths.expand(path), isDirectory: true)
+    @discardableResult
+    func setDestination(_ path: String) -> Bool {
+        guard !isWorking else { return false }
+        destination = SnapshotFileSafety.normalized(URL(fileURLWithPath: AppPaths.expand(path), isDirectory: true))
+        storageAccess = nil
         reload()
+        return true
     }
 
     // MARK: - Reading what is there
@@ -147,15 +188,31 @@ final class SnapshotStore {
     private var indexFile: URL { destination.appendingPathComponent("snapshots.json") }
 
     func reload() {
-        guard let data = try? Data(contentsOf: indexFile),
-              let decoded = try? JSONDecoder().decode([Snapshot].self, from: data) else {
+        guard !isWorking else { return }
+        lastError = nil
+        indexLoadFailed = false
+        do {
+            guard try SnapshotFileSafety.exists(destination) else { snapshots = []; return }
+            let scope = try storageScope(create: false)
+            guard try SnapshotFileSafety.exists(indexFile) else { snapshots = []; return }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let decoded = try decoder.decode([Snapshot].self, from: SnapshotFileSafety.readFile(indexFile, scope: scope, maximum: 64 * 1024 * 1024))
+            guard decoded.allSatisfy({ Self.validID($0.id) }), Set(decoded.map(\.id)).count == decoded.count else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            var found: [Snapshot] = []
+            for snapshot in decoded where try SnapshotFileSafety.exists(folder(for: snapshot)) {
+                let folder = try scope.checked(folder(for: snapshot))
+                _ = try SnapshotFileSafety.directory(folder)
+                found.append(snapshot)
+            }
+            snapshots = found.sorted { $0.taken > $1.taken }
+        } catch {
             snapshots = []
-            return
+            indexLoadFailed = true
+            lastError = String(localized: "Could not read the backup index. It has not been overwritten: \(error.localizedDescription)")
         }
-        // A folder someone deleted by hand should not stay in the list.
-        snapshots = decoded
-            .filter { FileManager.default.fileExists(atPath: folder(for: $0).path) }
-            .sorted { $0.taken > $1.taken }
     }
 
     func snapshots(for profileID: UUID) -> [Snapshot] {
@@ -163,16 +220,62 @@ final class SnapshotStore {
     }
 
     func folder(for snapshot: Snapshot) -> URL {
-        destination.appendingPathComponent(snapshot.folderName, isDirectory: true)
+        destination.appendingPathComponent(Self.validID(snapshot.id) ? snapshot.folderName : ".invalid-snapshot", isDirectory: true)
     }
 
-    private func writeIndex() {
+    private func storageScope(create: Bool) throws -> SiteFileAccess {
+        _ = try SnapshotFileSafety.directory(destination, allowMissing: create)
+        if create { try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]) }
+        if let storageAccess {
+            _ = try storageAccess.checked(destination)
+            return storageAccess
+        }
+        let scope = try SiteFileAccess(root: destination)
+        storageAccess = scope
+        return scope
+    }
+
+    private func verified(_ supplied: Snapshot) throws -> (snapshot: Snapshot, folder: URL, scope: SiteFileAccess) {
+        guard Self.validID(supplied.id), !indexLoadFailed,
+              let snapshot = snapshots.first(where: { $0.id == supplied.id }) else { throw SnapshotFileSafety.Failure.path }
+        let scope = try storageScope(create: false)
+        let folder = try scope.checked(folder(for: snapshot))
+        _ = try SnapshotFileSafety.directory(folder)
+        return (snapshot, folder, scope)
+    }
+
+    private func writeIndex(_ entries: [Snapshot]) throws {
+        guard !indexLoadFailed else { throw CocoaError(.fileReadCorruptFile) }
+        let scope = try storageScope(create: true)
+        if try SnapshotFileSafety.exists(indexFile) { _ = try SnapshotFileSafety.regularFile(indexFile, scope: scope) }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        guard let data = try? encoder.encode(snapshots) else { return }
-        try? FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
-        try? data.write(to: indexFile, options: .atomic)
+        let data = try encoder.encode(entries)
+        try data.write(to: indexFile, options: .atomic)
+    }
+
+    private static func validID(_ id: String) -> Bool {
+        !id.isEmpty && id != "." && id != ".." && !id.contains("/") && !id.contains("\\") && !id.contains("\0")
+    }
+
+    private func register(_ snapshot: Snapshot, folder: URL) -> Bool {
+        let updated = [snapshot] + snapshots
+        do {
+            try writeIndex(updated)
+            snapshots = updated
+            return true
+        } catch {
+            removeNewFolder(folder)
+            lastError = String(localized: "Could not save the backup index. The new snapshot was not added: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func removeNewFolder(_ folder: URL) {
+        if let scope = storageAccess, let checked = try? scope.checked(folder) {
+            try? FileManager.default.removeItem(at: checked)
+        }
     }
 
     // MARK: - Taking one
@@ -181,18 +284,23 @@ final class SnapshotStore {
     func take(profile: ServerProfile,
               database: DatabaseService?,
               trigger: Snapshot.Trigger = .manual,
-              note: String? = nil) async -> Snapshot? {
+              note: String? = nil, batch: UUID? = nil) async -> Snapshot? {
 
-        isWorking = true
-        defer { isWorking = false }
+        guard canBeginOperation(batch: batch), !indexLoadFailed else { return nil }
+        operationActive = true
+        defer { operationActive = false }
         lastError = nil
 
         let stamp = Self.stamp.string(from: Date())
-        let id = "\(Self.slug(profile.name))-\(stamp)"
+        let id = "\(Self.slug(profile.name))-\(stamp)-\(UUID().uuidString)"
         let folder = destination.appendingPathComponent(id, isDirectory: true)
 
         do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            if !profile.rootPath.isEmpty {
+                _ = try SnapshotFileSafety.project(URL(fileURLWithPath: AppPaths.expand(profile.rootPath)), storage: destination)
+            }
+            _ = try storageScope(create: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         } catch {
             lastError = String(localized: "Could not write to \(destination.path): \(error.localizedDescription)")
             return nil
@@ -201,8 +309,13 @@ final class SnapshotStore {
         // 1. The profile itself. Small, and the part most worth having.
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let data = try? encoder.encode(profile) {
-            try? data.write(to: folder.appendingPathComponent("profile.json"), options: .atomic)
+        do {
+            let data = try encoder.encode(profile)
+            try data.write(to: folder.appendingPathComponent("profile.json"), options: .atomic)
+        } catch {
+            removeNewFolder(folder)
+            lastError = String(localized: "Could not save the profile backup: \(error.localizedDescription)")
+            return nil
         }
 
         // 2. The site. ditto keeps resource forks and permissions, which matter
@@ -211,24 +324,40 @@ final class SnapshotStore {
         let root = AppPaths.expand(profile.rootPath)
         if !profile.rootPath.isEmpty, FileManager.default.fileExists(atPath: root) {
             let archive = folder.appendingPathComponent("site.zip")
-            let result = await ProcessRunner.run("/usr/bin/ditto",
-                                                 ["-c", "-k", "--sequesterRsrc", "--keepParent",
-                                                             root, archive.path])
-            siteSaved = result.succeeded
-            if !siteSaved { lastError = result.stderr }
+            let source = SnapshotFileSafety.normalized(URL(fileURLWithPath: root))
+            let staging = folder.appendingPathComponent(".site-source-\(UUID().uuidString)")
+            do {
+                try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+                let copy = staging.appendingPathComponent(source.lastPathComponent)
+                try await Task.detached { try SnapshotFileSafety.copyProject(source, to: copy) }.value
+                let result = await ProcessRunner.run("/usr/bin/ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", copy.path, archive.path], timeout: 600)
+                guard result.succeeded else { throw SnapshotFileSafety.Failure.extraction }
+                _ = try await Task.detached { try SnapshotArchive.inspect(archive) }.value
+                try FileManager.default.removeItem(at: staging)
+                siteSaved = true
+            } catch {
+                removeNewFolder(folder)
+                lastError = error.localizedDescription
+                return nil
+            }
         }
 
         // 3. The database, when the profile names one and it is running.
         var databaseSaved = false
         let databaseName = profile.databaseName.isEmpty ? nil : profile.databaseName
-        if let databaseName, let database, database.state == .running {
-            let dump = folder.appendingPathComponent("database.sql")
-            databaseSaved = await database.dump(databaseName, to: dump.path)
-            if !databaseSaved {
-                lastError = String(localized: "The database “\(databaseName)” could not be dumped.")
+        if let databaseName, let database {
+            if database.state != .running {
+                lastError = String(localized: "Database not included: MariaDB was stopped.")
+            } else {
+                let dump = folder.appendingPathComponent("database.sql")
+                databaseSaved = await database.dump(databaseName, to: dump.path)
+                if !databaseSaved {
+                    lastError = String(localized: "The database “\(databaseName)” could not be dumped.")
+                }
             }
         }
 
+        let snapshotNote = [note, lastError].compactMap { $0 }.joined(separator: "\n")
         let snapshot = Snapshot(id: id,
                                 profileID: profile.id,
                                 profileName: profile.name,
@@ -238,11 +367,10 @@ final class SnapshotStore {
                                 includesDatabase: databaseSaved,
                                 databaseName: databaseSaved ? databaseName : nil,
                                 bytes: Self.size(of: folder),
-                                note: note)
+                                note: snapshotNote.isEmpty ? nil : snapshotNote)
 
-        snapshots.insert(snapshot, at: 0)
-        writeIndex()
-        log?.system(String(localized: "Snapshot of “\(profile.name)” taken."))
+        guard register(snapshot, folder: folder) else { return nil }
+        log?.system(lastError ?? String(localized: "Snapshot of “\(profile.name)” taken."))
         return snapshot
     }
 
@@ -251,9 +379,10 @@ final class SnapshotStore {
     @discardableResult
     func takeDatabase(named name: String,
                       database: DatabaseService,
-                      trigger: Snapshot.Trigger = .manual) async -> Snapshot? {
-        isWorking = true
-        defer { isWorking = false }
+                      trigger: Snapshot.Trigger = .manual, batch: UUID? = nil) async -> Snapshot? {
+        guard canBeginOperation(batch: batch), !indexLoadFailed else { return nil }
+        operationActive = true
+        defer { operationActive = false }
         lastError = nil
 
         guard database.state == .running else {
@@ -261,10 +390,11 @@ final class SnapshotStore {
             return nil
         }
 
-        let id = "db-\(Self.slug(name))-\(Self.stamp.string(from: Date()))"
+        let id = "db-\(Self.slug(name))-\(Self.stamp.string(from: Date()))-\(UUID().uuidString)"
         let folder = destination.appendingPathComponent(id, isDirectory: true)
         do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            _ = try storageScope(create: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         } catch {
             lastError = String(localized: "Could not write to \(destination.path): \(error.localizedDescription)")
             return nil
@@ -272,7 +402,7 @@ final class SnapshotStore {
 
         let dump = folder.appendingPathComponent("database.sql")
         guard await database.dump(name, to: dump.path) else {
-            try? FileManager.default.removeItem(at: folder)
+            removeNewFolder(folder)
             lastError = String(localized: "The database “\(name)” could not be dumped.")
             return nil
         }
@@ -287,8 +417,7 @@ final class SnapshotStore {
                                 includesDatabase: true,
                                 databaseName: name,
                                 bytes: Self.size(of: folder))
-        snapshots.insert(snapshot, at: 0)
-        writeIndex()
+        guard register(snapshot, folder: folder) else { return nil }
         log?.system(String(localized: "Snapshot of database “\(name)” taken."))
         return snapshot
     }
@@ -296,24 +425,26 @@ final class SnapshotStore {
     /// Puts a database snapshot back. The dump was written with `--databases`,
     /// so it recreates the database as it was — including dropping what is
     /// there now, which is the whole point and worth saying out loud in the UI.
-    func restoreDatabase(_ snapshot: Snapshot, database: DatabaseService) async -> String? {
-        isWorking = true
-        defer { isWorking = false }
-
-        guard let name = snapshot.databaseName else {
+    func restoreDatabase(_ snapshot: Snapshot, database: DatabaseService, batch: UUID? = nil) async -> String? {
+        guard canBeginOperation(batch: batch) else { return String(localized: "Wait for the current backup operation to finish.") }
+        operationActive = true
+        defer { operationActive = false }
+        let item: (snapshot: Snapshot, folder: URL, scope: SiteFileAccess)
+        do { item = try verified(snapshot) }
+        catch { return error.localizedDescription }
+        guard item.snapshot.includesDatabase, let name = item.snapshot.databaseName else {
             return String(localized: "This snapshot has no database in it.")
         }
         guard database.state == .running else {
             return String(localized: "The database server is not running.")
         }
-        let dump = folder(for: snapshot).appendingPathComponent("database.sql")
-        guard FileManager.default.fileExists(atPath: dump.path) else {
-            return String(localized: "The dump file is missing from the snapshot folder.")
-        }
+        let dump: URL
+        do { dump = try SnapshotFileSafety.regularFile(item.folder.appendingPathComponent("database.sql"), scope: item.scope) }
+        catch { return error.localizedDescription }
         guard await database.load(dump.path, into: name) else {
             return String(localized: "The database “\(name)” could not be restored.")
         }
-        log?.system(String(localized: "Database “\(name)” restored from \(Self.readable.string(from: snapshot.taken))."))
+        log?.system(String(localized: "Database “\(name)” restored from \(Self.readable.string(from: item.snapshot.taken))."))
         return nil
     }
 
@@ -336,71 +467,78 @@ final class SnapshotStore {
     func restore(_ snapshot: Snapshot,
                  parts: Set<RestoreOption>,
                  into profile: ServerProfile,
-                 database: DatabaseService?) async -> (profile: ServerProfile, problems: [String]) {
-
-        isWorking = true
-        defer { isWorking = false }
+                 database: DatabaseService?, batch: UUID? = nil) async -> (profile: ServerProfile, problems: [String]) {
+        guard canBeginOperation(batch: batch) else { return (profile, [String(localized: "Wait for the current backup operation to finish.")]) }
+        operationActive = true
+        defer { operationActive = false }
+        lastPreservedSitePath = nil
 
         var restored = profile
         var problems: [String] = []
-        let folder = folder(for: snapshot)
+        let item: (snapshot: Snapshot, folder: URL, scope: SiteFileAccess)
+        do { item = try verified(snapshot) }
+        catch { return (profile, [error.localizedDescription]) }
+        let trusted = item.snapshot
+        let folder = item.folder
 
         if parts.contains(.settings) {
             let file = folder.appendingPathComponent("profile.json")
-            if let data = try? Data(contentsOf: file),
-               let saved = try? JSONDecoder().decode(ServerProfile.self, from: data) {
+            do {
+                let data = try SnapshotFileSafety.readFile(file, scope: item.scope, maximum: 8 * 1024 * 1024)
+                let profiles = try ProfileTransfer.decode(data)
+                guard profiles.count == 1, let saved = profiles.first else { throw SnapshotFileSafety.Failure.path }
                 // The id stays as it is: this is the same profile being put back,
                 // not a second one, and everything else refers to it by id.
                 var incoming = saved
                 incoming.id = profile.id
+                // Restore into the project selected now; saved JSON cannot redirect file writes.
+                incoming.rootPath = profile.rootPath
+                let oldRoot = URL(fileURLWithPath: AppPaths.expand(saved.rootPath)).standardizedFileURL
+                let working = URL(fileURLWithPath: saved.effectiveWorkingDirectory).standardizedFileURL
+                if SnapshotFileSafety.contains(oldRoot, working) {
+                    var adapted = URL(fileURLWithPath: AppPaths.expand(profile.rootPath))
+                    for component in working.pathComponents.dropFirst(oldRoot.pathComponents.count) { adapted.appendPathComponent(component) }
+                    incoming.workingDirectory = adapted.path
+                } else { incoming.workingDirectory = profile.workingDirectory }
                 restored = incoming
-            } else {
-                problems.append(String(localized: "The saved settings could not be read."))
+            } catch {
+                return (profile, [String(localized: "The saved settings could not be read.") + " " + error.localizedDescription])
             }
         }
 
-        if parts.contains(.site), snapshot.includesSite {
-            let archive = folder.appendingPathComponent("site.zip")
-            let root = URL(fileURLWithPath: AppPaths.expand(restored.rootPath))
-            let parent = root.deletingLastPathComponent()
-            let staging = parent.appendingPathComponent(".servermaster-restore-\(UUID().uuidString.prefix(8))")
-
-            // Unpacked beside the site and swapped in at the end. Unpacking over
-            // the live folder is how a restore that fails halfway leaves neither
-            // the old site nor the new one.
-            let unpack = await ProcessRunner.run("/usr/bin/ditto",
-                                                 ["-x", "-k", archive.path, staging.path])
-            if unpack.succeeded {
-                let unpacked = (try? FileManager.default.contentsOfDirectory(at: staging,
-                                                                            includingPropertiesForKeys: nil))?
-                    .first(where: { $0.hasDirectoryPath })
-                if let unpacked {
-                    let aside = parent.appendingPathComponent(root.lastPathComponent + ".before-restore")
-                    try? FileManager.default.removeItem(at: aside)
-                    try? FileManager.default.moveItem(at: root, to: aside)
-                    do {
-                        try FileManager.default.moveItem(at: unpacked, to: root)
-                        try? FileManager.default.removeItem(at: aside)
-                    } catch {
-                        // Put the old one back rather than leave nothing there.
-                        try? FileManager.default.moveItem(at: aside, to: root)
-                        problems.append(String(localized: "The site could not be put back: \(error.localizedDescription)"))
-                    }
-                } else {
-                    problems.append(String(localized: "The saved site is empty."))
-                }
-            } else {
-                problems.append(String(localized: "The saved site could not be unpacked."))
+        // Reject known missing/linked DB components before replacing any project files.
+        if parts.contains(.database) {
+            guard trusted.includesDatabase, let database, database.state == .running else {
+                return (profile, [String(localized: "Start the database and choose a snapshot that includes its dump.")])
             }
-            try? FileManager.default.removeItem(at: staging)
+            do { _ = try SnapshotFileSafety.regularFile(folder.appendingPathComponent("database.sql"), scope: item.scope) }
+            catch { return (profile, [error.localizedDescription]) }
         }
 
-        if parts.contains(.database), snapshot.includesDatabase,
-           let name = snapshot.databaseName, let database {
+        if parts.contains(.site) {
+            guard trusted.includesSite else { return (profile, [String(localized: "This snapshot does not contain the selected backup component.")]) }
+            do {
+                let archive = try SnapshotFileSafety.regularFile(folder.appendingPathComponent("site.zip"), scope: item.scope)
+                let previous = try await SnapshotFileSafety.restoreSite(archive: archive, into: URL(fileURLWithPath: AppPaths.expand(profile.rootPath)), storage: destination)
+                lastPreservedSitePath = previous?.path
+                if let previous { log?.system(String(localized: "Previous project files were kept at \(previous.path).")) }
+            } catch {
+                if case SnapshotFileSafety.Failure.rollback(let path) = error { lastPreservedSitePath = path }
+                return (profile, [error.localizedDescription])
+            }
+        }
+
+        if parts.contains(.database) {
+            guard trusted.includesDatabase, let name = trusted.databaseName, let database else {
+                return (restored, [String(localized: "This snapshot does not contain the selected backup component.")])
+            }
             if database.state != .running {
                 problems.append(String(localized: "The database server is not running."))
-            } else if await !database.load(folder.appendingPathComponent("database.sql").path, into: name) {
-                problems.append(String(localized: "The database “\(name)” could not be restored."))
+            } else {
+                do {
+                    let dump = try SnapshotFileSafety.regularFile(folder.appendingPathComponent("database.sql"), scope: item.scope)
+                    if await !database.load(dump.path, into: name) { problems.append(String(localized: "The database “\(name)” could not be restored.")) }
+                } catch { problems.append(error.localizedDescription) }
             }
         }
 
@@ -413,9 +551,25 @@ final class SnapshotStore {
     // MARK: - Removing
 
     func delete(_ snapshot: Snapshot) {
-        try? FileManager.default.removeItem(at: folder(for: snapshot))
-        snapshots.removeAll { $0.id == snapshot.id }
-        writeIndex()
+        guard !isWorking, !indexLoadFailed, Self.validID(snapshot.id), snapshots.contains(where: { $0.id == snapshot.id }) else { return }
+        let pending = destination.appendingPathComponent(".servermaster-delete-\(UUID().uuidString)")
+        do {
+            let item = try verified(snapshot)
+            let original = item.folder
+            try FileManager.default.moveItem(at: original, to: pending)
+            do {
+                let updated = snapshots.filter { $0.id != snapshot.id }
+                try writeIndex(updated)
+                snapshots = updated
+            } catch {
+                try FileManager.default.moveItem(at: pending, to: original)
+                throw error
+            }
+            try FileManager.default.removeItem(at: pending)
+            lastError = nil
+        } catch {
+            lastError = String(localized: "Could not delete the snapshot: \(error.localizedDescription)")
+        }
     }
 
     /// Keeps the newest `keep` scheduled snapshots per profile. Manual ones are

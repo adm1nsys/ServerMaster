@@ -104,6 +104,8 @@ nonisolated struct AppSettings: Codable, Sendable, Equatable {
 
     // Environment
     var extraPATHEntries: [String] = ["/opt/homebrew/bin", "/usr/local/bin"]
+    /// Empty means the original System/login/Homebrew environment.
+    var managedNodeVersion: String = ""
 
     // Appearance
     /// The moving mesh behind every screen. Off means a plain window.
@@ -203,6 +205,7 @@ nonisolated struct AppSettings: Codable, Sendable, Equatable {
         defaultKillSignal = container.value(.defaultKillSignal, default: defaults.defaultKillSignal)
         portReservationsEnabled = container.value(.portReservationsEnabled, default: defaults.portReservationsEnabled)
         extraPATHEntries = container.value(.extraPATHEntries, default: defaults.extraPATHEntries)
+        managedNodeVersion = container.value(.managedNodeVersion, default: defaults.managedNodeVersion)
         backgroundEnabled = container.value(.backgroundEnabled, default: defaults.backgroundEnabled)
         backgroundHue = container.value(.backgroundHue, default: defaults.backgroundHue)
         backgroundSpeed = container.value(.backgroundSpeed, default: defaults.backgroundSpeed)

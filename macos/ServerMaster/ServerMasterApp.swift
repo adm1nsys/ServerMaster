@@ -109,7 +109,7 @@ struct ServerMasterApp: App {
                     }
                 }
                 .keyboardShortcut(".", modifiers: [.command])
-                .disabled(model.selectedProfileID.map { !model.isActive($0) } ?? true)
+                .disabled(model.selectedProfileID.map { !model.canStopServer($0) } ?? true)
 
                 Button("Restart") {
                     if let profile = model.selectedProfile {
@@ -132,7 +132,7 @@ struct ServerMasterApp: App {
                     Task { await model.stopAll() }
                 }
                 .keyboardShortcut(".", modifiers: [.command, .shift])
-                .disabled(model.activeCount == 0)
+                .disabled(!model.canStopAllServers)
 
                 Divider()
 

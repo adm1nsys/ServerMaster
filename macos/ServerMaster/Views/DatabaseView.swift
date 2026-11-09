@@ -23,6 +23,8 @@ struct DatabaseView: View {
     @State private var showLog = false
     @State private var browsing: String?
     @State private var editingSchema: String?
+    @State private var credentialDetails: DatabaseCredentialDetails?
+    @State private var readingCredentials = false
 
     private var db: DatabaseService { model.database }
     private var panel: DatabaseAdminPanel { model.adminPanel }
@@ -71,6 +73,9 @@ struct DatabaseView: View {
         }
         .frame(maxWidth: .infinity)
         .task { await db.refreshState() }
+        .sheet(item: $credentialDetails) { details in
+            DatabaseCredentialsSheet(details: details)
+        }
         .sheet(item: Binding(get: { editingSchema.map { BrowseTarget(name: $0) } },
                              set: { editingSchema = $0?.name })) { target in
             SchemaEditorSheet(database: target.name).environment(model)
@@ -344,6 +349,29 @@ struct DatabaseView: View {
                                 NSPasteboard.general.setString(item.name, forType: .string)
                             }
                             .modifier(ChipStyle())
+                            Button("Credentials") {
+                                // Read only on an explicit user action, never
+                                // during row rendering or background refresh.
+                                guard !readingCredentials else { return }
+                                readingCredentials = true
+                                Task {
+                                    defer { readingCredentials = false }
+                                    let details: DatabaseCredentialDetails
+                                    do {
+                                        details = DatabaseCredentialDetails(
+                                            database: item.name, host: db.host, port: db.port,
+                                            credential: try await db.validatedSavedCredentials(for: item.name),
+                                            sessionOnly: db.hasSessionOnlyCredentials(for: item.name))
+                                    } catch {
+                                        details = DatabaseCredentialDetails(
+                                            database: item.name, host: db.host, port: db.port,
+                                            credential: nil, error: error.localizedDescription)
+                                    }
+                                    credentialDetails = details
+                                }
+                            }
+                            .modifier(ChipStyle())
+                            .disabled(readingCredentials)
                             Button("Delete") { dropCandidate = item }
                                 .modifier(ChipStyle())
                                 .foregroundStyle(.red)
@@ -452,13 +480,28 @@ struct DatabaseView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         let name = newName.trimmingCharacters(in: .whitespaces)
+        let user = newUser
+        let password = newPassword
         importing = true
         Task {
-            let outcome = await model.database.importDump(from: url, into: name,
-                                                          user: newUser, password: newPassword)
-            importing = false
-            model.notify(outcome.message, isError: !outcome.succeeded)
-            if outcome.succeeded { newName = "" }
+            defer { importing = false }
+            do {
+                let outcome = try await db.importDumpConfirmingReplacement(from: url, into: name,
+                                                                           user: user, password: password) { target in
+                    let alert = NSAlert()
+                    alert.messageText = String(localized: "Import into “\(target)”?")
+                    alert.informativeText = String(localized: "The SQL file can replace existing tables and data. Create a snapshot first if you need to keep them.")
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: String(localized: "Cancel"))
+                    alert.addButton(withTitle: String(localized: "Import"))
+                    return alert.runModal() == .alertSecondButtonReturn
+                }
+                guard let outcome else { return }
+                model.notify(outcome.message, isError: !outcome.succeeded)
+                if outcome.succeeded { newName = "" }
+            } catch {
+                model.notify(error.localizedDescription, isError: true)
+            }
         }
     }
 }

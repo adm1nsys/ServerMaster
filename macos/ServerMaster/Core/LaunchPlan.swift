@@ -20,10 +20,19 @@ nonisolated struct LaunchPlan: Sendable {
     var sidecars: [SidecarPlan] = []
     /// Additional files to write before starting.
     var extraFiles: [(path: String, contents: String)] = []
+    /// A supervised multi-process engine announces actual listener readiness.
+    var readinessFile: String? = nil
+    var portLeases: [RuntimePortLease] = []
 
     var displayCommand: String {
-        ([executable] + arguments).map { arg in
-            arg.contains(" ") ? "\"\(arg)\"" : arg
+        let displayed = arguments.enumerated().map { index, argument in
+            if index > 0, arguments[index - 1] == "--password" { return "********" }
+            if argument.hasPrefix("--password=") { return "--password=********" }
+            return argument
+        }
+        return ([executable] + displayed).map { argument in
+            argument.contains(where: { $0.isWhitespace }) || argument.contains("\"")
+                ? "\"" + argument.replacingOccurrences(of: "\"", with: "\\\"") + "\"" : argument
         }.joined(separator: " ")
     }
 }
@@ -53,7 +62,12 @@ nonisolated enum LaunchPlanBuilder {
         }
     }
 
-    static func build(for profile: ServerProfile) throws -> LaunchPlan {
+    static func build(for profile: ServerProfile, runtimeRoot: URL? = nil) throws -> LaunchPlan {
+        let errors = profile.validationErrors
+        guard errors.isEmpty else { throw BuildError.invalid(errors.joined(separator: "\n")) }
+        if profile.httpsEnabled && profile.engine.requiresHTTPSProxy {
+            return try buildBuiltinHTTPS(for: profile, runtimeRoot: runtimeRoot)
+        }
         let root = AppPaths.expand(profile.rootPath)
         let cwd = profile.effectiveWorkingDirectory
         let env = profile.environmentDictionary
@@ -86,7 +100,7 @@ nonisolated enum LaunchPlanBuilder {
             env2["PORT"] = env2["PORT"] ?? String(profile.port)
             env2["HOST"] = env2["HOST"] ?? profile.host
             return LaunchPlan(executable: try require("node"),
-                              arguments: [profile.resolvedNodeEntry] + extra,
+                              arguments: (profile.templateId == "printshopcrm" ? ["--env-file-if-exists=.env"] : []) + [profile.resolvedNodeEntry] + extra,
                               workingDirectory: cwd, environment: env2, generatedConfig: nil)
 
         case .pythonHTTP:
@@ -97,10 +111,18 @@ nonisolated enum LaunchPlanBuilder {
                               workingDirectory: cwd, environment: env, generatedConfig: nil)
 
         case .phpBuiltIn:
-            var args = ["-S", "\(profile.host):\(String(profile.port))", "-t", root]
+            var args = phpConfigurationArguments(profile) + ["-S", "\(profile.host):\(String(profile.port))", "-t", root]
             args += extra
+            var router: (path: String, contents: String)?
+            if PhpSiteCompatibility.isJoomla(root: root) {
+                let path = (runtimeRoot?.appendingPathComponent("php-\(profile.id.uuidString)")
+                    ?? AppPaths.subdir("Runtime/php-\(profile.id.uuidString)"))
+                    .appendingPathComponent("joomla-router.php").path
+                router = (path, PhpSiteCompatibility.router)
+                args.append(path)
+            }
             return LaunchPlan(executable: try requirePHP(profile: profile), arguments: args,
-                              workingDirectory: cwd, environment: env, generatedConfig: nil)
+                              workingDirectory: cwd, environment: env, generatedConfig: router)
 
         case .nginx:
             let prefix = AppPaths.subdir("Runtime/nginx-\(profile.id.uuidString.prefix(8))").path
@@ -124,15 +146,18 @@ nonisolated enum LaunchPlanBuilder {
                               errorPagesDirectory: profile.customErrorPages ? prefix : nil)
 
         case .apache, .apachePHP:
-            let prefix = AppPaths.subdir("Runtime/apache-\(profile.id.uuidString.prefix(8))").path
+            let prefix = runtimeRoot?.appendingPathComponent("apache-\(profile.id.uuidString)").path
+                ?? AppPaths.subdir("Runtime/apache-\(profile.id.uuidString.prefix(8))").path
             AppPaths.ensure(URL(fileURLWithPath: prefix + "/logs"))
 
             var sidecars: [SidecarPlan] = []
             var apacheFiles: [(path: String, contents: String)] = []
             var fpmPort: Int?
+            var lease: RuntimePortLease?
             if profile.engine == .apachePHP {
                 let phpFpmBinary = try requirePHPFPM(profile: profile)
-                let port = freePort(startingAt: 9000)
+                lease = try RuntimePortLease.acquire(excluding: profile.port)
+                let port = lease!.port
                 fpmPort = port
                 let fpmConfigPath = prefix + "/php-fpm.conf"
                 sidecars.append(SidecarPlan(
@@ -163,21 +188,28 @@ nonisolated enum LaunchPlanBuilder {
             // and stopped the same way as every other engine.
             var args = ["-f", configPath, "-D", "FOREGROUND"]
             args += extra
-            return LaunchPlan(executable: try requireApache(), arguments: args,
+            let primary = LaunchPlan(executable: try requireApache(), arguments: args,
                               workingDirectory: cwd, environment: env,
                               generatedConfig: generated.map { (path: $0.0, contents: $0.1) },
                               errorPagesDirectory: profile.customErrorPages ? prefix : nil,
                               sidecars: sidecars,
                               extraFiles: apacheFiles)
+            if let lease, let sidecar = sidecars.first {
+                return try supervisePHP(primary: primary, sidecar: sidecar, lease: lease,
+                                        directory: prefix, publicPort: profile.port)
+            }
+            return primary
 
         case .phpFpm:
-            let prefix = AppPaths.subdir("Runtime/php-\(profile.id.uuidString.prefix(8))").path
+            let prefix = runtimeRoot?.appendingPathComponent("php-\(profile.id.uuidString)").path
+                ?? AppPaths.subdir("Runtime/php-\(profile.id.uuidString.prefix(8))").path
             AppPaths.ensure(URL(fileURLWithPath: prefix + "/logs"))
 
             let phpFpmBinary = try requirePHPFPM(profile: profile)
             // A free port is chosen for nginx to talk to php-fpm —
             // so several PHP sites do not get in each other's way.
-            let fpmPort = freePort(startingAt: 9000)
+            let lease = try RuntimePortLease.acquire(excluding: profile.port)
+            let fpmPort = lease.port
             let fpmConfigPath = prefix + "/php-fpm.conf"
             let fpmConfig = ConfigTemplates.phpFPM(for: profile, prefix: prefix, port: fpmPort)
 
@@ -204,12 +236,14 @@ nonisolated enum LaunchPlanBuilder {
 
             var args = ["-p", prefix, "-c", configPath, "-g", "daemon off;"]
             args += extra
-            return LaunchPlan(executable: try require("nginx"), arguments: args,
+            let primary = LaunchPlan(executable: try require("nginx"), arguments: args,
                               workingDirectory: cwd, environment: env,
                               generatedConfig: generated.map { (path: $0.0, contents: $0.1) },
                               errorPagesDirectory: profile.customErrorPages ? prefix : nil,
                               sidecars: [sidecar],
                               extraFiles: [(path: fpmConfigPath, contents: fpmConfig)])
+            return try supervisePHP(primary: primary, sidecar: sidecar, lease: lease,
+                                    directory: prefix, publicPort: profile.port)
 
         case .caddy:
             var generated: (String, String)?
@@ -241,15 +275,70 @@ nonisolated enum LaunchPlanBuilder {
             guard let resolved else { throw BuildError.toolNotFound(command) }
             var env2 = env
             env2["PORT"] = env2["PORT"] ?? String(profile.port)
+            env2["HOST"] = env2["HOST"] ?? profile.host
             return LaunchPlan(executable: resolved,
                               arguments: splitArguments(profile.customArguments) + extra,
                               workingDirectory: cwd, environment: env2, generatedConfig: nil)
         }
     }
 
-    /// Apache ships with macOS, so the system copy is preferred and nothing needs
-    /// installing. Homebrew's httpd is accepted when it is there.
-    private static func requireApache() throws -> String {
+    /// Per-process configuration: never change the shared PHP installation's ini.
+    static func phpConfigurationArguments(_ profile: ServerProfile) -> [String] {
+        ["-d", "memory_limit=\(profile.phpMemoryLimit.trimmingCharacters(in: .whitespaces))",
+         "-d", "upload_max_filesize=\(profile.phpUploadMaxFilesize.trimmingCharacters(in: .whitespaces))",
+         "-d", "post_max_size=\(profile.phpUploadMaxFilesize.trimmingCharacters(in: .whitespaces))",
+         "-d", "max_execution_time=\(profile.phpMaxExecutionTime)",
+         "-d", "max_input_time=\(profile.phpMaxExecutionTime)",
+         "-d", "display_errors=\(profile.phpDisplayErrors ? "1" : "0")",
+         "-d", "log_errors=1"]
+    }
+
+    private static func buildBuiltinHTTPS(for profile: ServerProfile, runtimeRoot: URL?) throws -> LaunchPlan {
+        let caddy = try require("caddy")
+        for path in [profile.certificatePath, profile.privateKeyPath] {
+            guard !path.isEmpty, FileManager.default.isReadableFile(atPath: AppPaths.expand(path)) else {
+                throw BuildError.invalid(String(localized: "HTTPS requires a readable certificate and private key."))
+            }
+        }
+        let extra = splitArguments(profile.extraArguments)
+        let overridesListener = extra.contains { argument in
+            switch profile.engine {
+            case .pythonHTTP: argument.hasPrefix("--b") || argument.hasPrefix("-b")
+            case .phpBuiltIn: argument.hasPrefix("-S") || argument.hasPrefix("--server")
+            default: false
+            }
+        }
+        guard !overridesListener else {
+            throw BuildError.invalid(String(localized: "Remove custom listen arguments: ServerMaster manages the HTTPS backend address."))
+        }
+        let lease = try RuntimePortLease.acquire(excluding: profile.port)
+        let port = lease.port
+        var backendProfile = profile
+        backendProfile.httpsEnabled = false
+        backendProfile.host = "127.0.0.1"
+        backendProfile.port = port
+        if profile.engine == .nodeScript {
+            // User PORT/HOST values must not redirect the private listener.
+            backendProfile.environment.removeAll { $0.key == "PORT" || $0.key == "HOST" }
+        } else {
+            backendProfile.extraArguments = ""
+        }
+        var backend = try build(for: backendProfile, runtimeRoot: runtimeRoot)
+        // Keep the forced bind/root options last even if a runtime accepts an
+        // abbreviated or duplicate command-line option.
+        if profile.engine != .nodeScript {
+            backend.arguments.insert(contentsOf: extra, at: profile.engine == .pythonHTTP ? 4 : 0)
+        }
+        let directory = (runtimeRoot?.appendingPathComponent("https-\(profile.id.uuidString)")
+            ?? AppPaths.subdir("Runtime/https-\(profile.id.uuidString)")).path
+        var plan = try BuiltinHTTPS.wrap(profile: profile, backend: backend, caddy: caddy,
+                                        backendPort: port, directory: directory)
+        plan.portLeases = [lease]
+        return plan
+    }
+
+    /// Apache modules and ServerRoot must come from the same installation.
+    static func requireApache() throws -> String {
         // One decision for the binary, its modules and its ServerRoot — mixing
         // installations loads the wrong modules and Apache refuses to start.
         if let installation = ApacheInstallation.resolve() { return installation.binary }
@@ -258,12 +347,12 @@ nonisolated enum LaunchPlanBuilder {
     }
 
     /// The php interpreter of the chosen version — for the built-in server.
-    private static func requirePHP(profile: ServerProfile) throws -> String {
+    static func requirePHP(profile: ServerProfile) throws -> String {
         try requirePHPBinary(version: profile.phpVersion, name: "php", folder: "bin")
     }
 
     /// php-fpm of the chosen version: brew puts them in /opt/homebrew/opt/php@X.Y/sbin.
-    private static func requirePHPFPM(profile: ServerProfile) throws -> String {
+    static func requirePHPFPM(profile: ServerProfile) throws -> String {
         try requirePHPBinary(version: profile.phpVersion, name: "php-fpm", folder: "sbin")
     }
 
@@ -293,14 +382,20 @@ nonisolated enum LaunchPlanBuilder {
         throw BuildError.invalid(String(localized: "\(name) \(version) was not found. Install it: brew install php@\(version)"))
     }
 
-    /// A free TCP port for nginx to talk to php-fpm.
-    private static func freePort(startingAt start: Int) -> Int {
-        var port = start
-        while port < 65535 {
-            if PortScanner.isPortFree(port, host: "127.0.0.1") { return port }
-            port += 1
-        }
-        return start
+    private static func supervisePHP(primary: LaunchPlan, sidecar: SidecarPlan,
+                                     lease: RuntimePortLease, directory: String, publicPort: Int) throws -> LaunchPlan {
+        let backend = LaunchPlan(executable: sidecar.executable, arguments: sidecar.arguments,
+                                 workingDirectory: sidecar.workingDirectory, environment: sidecar.environment, generatedConfig: nil)
+        let ready = directory + "/ready"
+        let script = directory + "/supervisor.sh"
+        var files = primary.extraFiles
+        if let config = primary.generatedConfig { files.append(config) }
+        return LaunchPlan(executable: "/bin/bash", arguments: [script],
+            workingDirectory: primary.workingDirectory, environment: primary.environment,
+            generatedConfig: (script, try BuiltinHTTPS.supervisor(backend: backend, primary: primary,
+                readyPath: ready, backendPort: lease.port, publicPort: publicPort)),
+            errorPagesDirectory: primary.errorPagesDirectory, extraFiles: files,
+            readinessFile: ready, portLeases: [lease])
     }
 
     private static func require(_ tool: String) throws -> String {

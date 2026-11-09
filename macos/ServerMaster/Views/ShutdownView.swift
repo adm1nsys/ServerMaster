@@ -26,6 +26,10 @@ struct ShutdownView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            if model.isPreparingProjects {
+                Text("Waiting for project preparation to finish…")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             ProgressView(value: model.shutdownProgress)
                 .progressViewStyle(.linear)
                 .frame(width: 280)
@@ -46,6 +50,9 @@ struct ShutdownView: View {
                             case .forced:
                                 Image(systemName: "exclamationmark.circle.fill")
                                     .foregroundStyle(.orange)
+                            case .failed:
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.red)
                             }
                             Text(item.name)
                                 .font(.callout)

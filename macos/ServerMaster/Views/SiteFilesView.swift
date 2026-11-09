@@ -25,24 +25,17 @@ struct SiteFilesView: View {
     @State private var profileID: UUID?
     @State private var entries: [Entry] = []
     @State private var showingEverything = false
-    @State private var editing: URL?
+    @State private var editing: EditTarget?
+    @State private var access: SiteFileAccess?
+    @State private var scopedProfileID: UUID?
+    @State private var scopedRootPath: String?
     @State private var renaming: Entry?
     @State private var newName = ""
     @State private var problem: String?
     /// Where we are, relative to the profile's folder. Empty is the root.
     @State private var path: [String] = []
 
-    struct Entry: Identifiable, Equatable {
-        var id: String { url.path }
-        var url: URL
-        var name: String
-        var isDirectory: Bool
-        var size: Int64
-        var modified: Date
-        var isHidden: Bool
-        /// Files worth pointing at before anything else.
-        var isConfig: Bool
-    }
+    typealias Entry = SiteFileAccess.Entry
 
     private var profile: ServerProfile? {
         model.profiles.first { $0.id == profileID } ?? model.profiles.first
@@ -54,7 +47,7 @@ struct SiteFilesView: View {
                 ScreenTitle(title: "Files",
                             subtitle: "The hidden ones, and the ones worth editing") {
                     Button {
-                        reload()
+                        reload(resetScope: true)
                     } label: {
                         Label("Refresh", systemImage: "arrow.clockwise")
                     }
@@ -88,9 +81,8 @@ struct SiteFilesView: View {
             }
             .padding(36)
         }
-        .sheet(item: Binding(get: { editing.map { EditTarget(url: $0) } },
-                             set: { editing = $0?.url })) { target in
-            FileEditorSheet(url: target.url) { reload() }
+        .sheet(item: $editing) { target in
+            FileEditorSheet(url: target.url, access: target.access) { reload() }
         }
         .alert("Rename", isPresented: Binding(get: { renaming != nil },
                                               set: { if !$0 { renaming = nil } })) {
@@ -103,7 +95,11 @@ struct SiteFilesView: View {
         .onAppear { if profileID == nil { profileID = model.profiles.first?.id }; reload() }
     }
 
-    private struct EditTarget: Identifiable { var url: URL; var id: String { url.path } }
+    private struct EditTarget: Identifiable {
+        var url: URL
+        var access: SiteFileAccess
+        var id: String { url.path }
+    }
 
     // MARK: - Which folder
 
@@ -133,7 +129,7 @@ struct SiteFilesView: View {
 
     /// The folder being shown: the profile's root plus wherever we have walked.
     private var currentFolder: URL {
-        var url = URL(fileURLWithPath: AppPaths.expand(profile?.rootPath ?? ""), isDirectory: true)
+        var url = access?.root ?? URL(fileURLWithPath: AppPaths.expand(profile?.rootPath ?? ""), isDirectory: true)
         for component in path { url.appendPathComponent(component, isDirectory: true) }
         return url
     }
@@ -221,14 +217,13 @@ struct SiteFilesView: View {
 
     private func row(_ entry: Entry) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: entry.isDirectory ? "folder" : (entry.isHidden ? "eye.slash" : "doc"))
+            Image(systemName: entry.isLink ? "link" : entry.isDirectory ? "folder" : (entry.isHidden ? "eye.slash" : "doc"))
                 .foregroundStyle(entry.isHidden ? .orange : .secondary)
                 .frame(width: 16)
 
             if entry.isDirectory {
                 Button(entry.name) {
-                    path.append(entry.name)
-                    reload()
+                    navigate(entry)
                 }
                 .modifier(ChipStyle())
                 .font(.system(.body, design: entry.isHidden ? .monospaced : .default))
@@ -246,8 +241,8 @@ struct SiteFilesView: View {
             Text(SnapshotStore.readable.string(from: entry.modified))
                 .font(.caption).foregroundStyle(.secondary)
 
-            if !entry.isDirectory {
-                Button("Edit") { editing = entry.url }
+            if entry.isRegular {
+                Button("Edit") { edit(entry) }
                     .modifier(ChipStyle())
                     .disabled(entry.size > 4_000_000)
                     .help(entry.size > 4_000_000
@@ -270,15 +265,18 @@ struct SiteFilesView: View {
                     renaming = entry
                     newName = entry.name
                 }
+                .disabled(entry.isLink)
                 // Finder refuses to make a name that starts with a dot, so the
                 // only way to turn Joomla's shipped “htaccess.txt” into a real
                 // “.htaccess” has been the terminal. It is one rename.
                 if let suggestion = Self.dottedName(for: entry.name) {
                     Button("Rename to \(suggestion)") { rename(entry, to: suggestion) }
-                } else if entry.isHidden, entry.name.count > 1 {
+                        .disabled(entry.isLink)
+                } else if entry.name.hasPrefix("."), entry.name.count > 1 {
                     Button("Remove the leading dot") {
                         rename(entry, to: String(entry.name.dropFirst()))
                     }
+                    .disabled(entry.isLink)
                 }
                 Button("Get Info") { showInfo(entry) }
                     .keyboardShortcut("i")
@@ -294,11 +292,12 @@ struct SiteFilesView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
-            if entry.isDirectory {
-                path.append(entry.name)
-                reload()
-            } else if entry.size <= 4_000_000 {
-                editing = entry.url
+            if entry.isLink {
+                NSWorkspace.shared.activateFileViewerSelecting([entry.url])
+            } else if entry.isDirectory {
+                navigate(entry)
+            } else if entry.isRegular && entry.size <= TextFileDocument.maximumBytes {
+                edit(entry)
             }
         }
     }
@@ -324,7 +323,7 @@ struct SiteFilesView: View {
         let script = """
         tell application "Finder"
             activate
-            open information window of (POSIX file "\(entry.url.path)" as alias)
+            open information window of (POSIX file \(ProcessRunner.appleScriptQuote(entry.url.path)) as alias)
         end tell
         """
         guard let apple = NSAppleScript(source: script) else { return }
@@ -339,41 +338,46 @@ struct SiteFilesView: View {
 
     // MARK: - Reading the folder
 
-    private func reload() {
+    private func reload(resetScope: Bool = false) {
         problem = nil
         entries = []
-        guard profile != nil else { return }
-        let root = currentFolder
-
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-                at: root,
-                includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey],
-                options: []) else {
-            problem = String(localized: "\(AppPaths.abbreviate(root.path)) cannot be read.")
+        guard let profile, !profile.rootPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            access = nil
             return
         }
-
-        entries = contents.map { url in
-            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey,
-                                                           .contentModificationDateKey])
-            let name = url.lastPathComponent
-            return Entry(url: url,
-                         name: name,
-                         isDirectory: values?.isDirectory ?? false,
-                         size: Int64(values?.fileSize ?? 0),
-                         modified: values?.contentModificationDate ?? .distantPast,
-                         isHidden: name.hasPrefix("."),
-                         isConfig: Self.configNames.contains(name.lowercased()))
+        do {
+            let rootPath = AppPaths.expand(profile.rootPath)
+            let scope: SiteFileAccess
+            if !resetScope, scopedProfileID == profile.id, scopedRootPath == rootPath, let current = access {
+                scope = current
+            } else {
+                scope = try SiteFileAccess(root: URL(fileURLWithPath: rootPath, isDirectory: true))
+                scopedProfileID = profile.id
+                scopedRootPath = rootPath
+            }
+            access = scope
+            entries = try scope.entries(in: currentFolder)
+        } catch {
+            problem = error.localizedDescription
         }
-        .sorted { ($0.isDirectory ? 0 : 1, $0.name.lowercased()) < ($1.isDirectory ? 0 : 1, $1.name.lowercased()) }
     }
 
-    /// Files that are not hidden but are the ones people came for.
-    private static let configNames: Set<String> = [
-        "configuration.php", "wp-config.php", "settings.php", "config.php",
-        "nginx.conf", "caddyfile", "package.json", "composer.json",
-        "docker-compose.yml", "index.php", "web.config"
-    ]
+    private func navigate(_ entry: Entry) {
+        do {
+            guard let access else { return }
+            _ = try access.checked(entry.url)
+            path.append(entry.name)
+            reload()
+        } catch { problem = error.localizedDescription }
+    }
+
+    private func edit(_ entry: Entry) {
+        do {
+            guard let access else { return }
+            let url = try access.checked(entry.url)
+            editing = EditTarget(url: url, access: access)
+        } catch { problem = error.localizedDescription }
+    }
 
     /// The dotted name a file is obviously trying to be.
     ///
@@ -393,20 +397,16 @@ struct SiteFilesView: View {
             }
         }
         // dot.env, dot-gitignore
-        if lower.hasPrefix("dot.") || lower.hasPrefix("dot-") {
+        if name.count > 4 && (lower.hasPrefix("dot.") || lower.hasPrefix("dot-")) {
             return "." + name.dropFirst(4)
         }
         return nil
     }
 
     private func rename(_ entry: Entry, to name: String) {
-        let target = entry.url.deletingLastPathComponent().appendingPathComponent(name)
-        guard !FileManager.default.fileExists(atPath: target.path) else {
-            problem = String(localized: "“\(name)” already exists in that folder.")
-            return
-        }
         do {
-            try FileManager.default.moveItem(at: entry.url, to: target)
+            guard let access else { return }
+            _ = try access.rename(entry, to: name)
             reload()
         } catch {
             problem = error.localizedDescription
@@ -415,13 +415,7 @@ struct SiteFilesView: View {
 
     private func commitRename() {
         guard let renaming else { return }
-        let trimmed = newName.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, trimmed != renaming.name,
-              !trimmed.contains("/") else {
-            self.renaming = nil
-            return
-        }
-        rename(renaming, to: trimmed)
+        rename(renaming, to: newName)
         self.renaming = nil
     }
 }

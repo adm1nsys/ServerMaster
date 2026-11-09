@@ -47,7 +47,7 @@ final class TranslationStore {
 
     /// Where imported packs live. Beside the rest of the app's data rather than
     /// inside the bundle: the bundle is replaced wholesale on every update.
-    static var folder: URL { AppPaths.subdir("Translations") }
+    nonisolated static var folder: URL { AppPaths.subdir("Translations") }
 
     init() { reload() }
 
@@ -110,7 +110,8 @@ final class TranslationStore {
             // The last header line ends the comment, so "2.0 */" arrives where
             // "2.0" was meant — and the version then never matches anything.
             if let end = value.range(of: "*/") { value = String(value[..<end.lowerBound]) }
-            return value.trimmingCharacters(in: .whitespaces)
+            let trimmed = value.trimmingCharacters(in: .whitespaces)
+            return trimmed.isEmpty ? nil : trimmed
         }
         // The language falls back to the file's own name, so a pack someone
         // renamed to uk.strings still lands in the right place.
@@ -132,17 +133,20 @@ final class TranslationStore {
                                    packVersion: "1",
                                    strings: strings)
 
-        var text = header(pack)
-        for key in strings.keys.sorted() {
-            let value = strings[key] ?? key
-            text += "\"\(escape(key))\" = \"\(escape(value))\";\n"
-        }
         do {
-            try text.write(to: url, atomically: true, encoding: .utf8)
+            try serialized(pack).write(to: url, atomically: true, encoding: .utf8)
             return true
         } catch {
             return false
         }
+    }
+
+    static func serialized(_ pack: TranslationPack) -> String {
+        var text = header(pack)
+        for key in pack.strings.keys.sorted() {
+            text += "\"\(escape(key))\" = \"\(escape(pack.strings[key] ?? key))\";\n"
+        }
+        return text
     }
 
     enum ImportResult {
@@ -188,6 +192,8 @@ final class TranslationStore {
         text.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\t", with: "\\t")
     }
 }
 

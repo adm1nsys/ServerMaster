@@ -71,7 +71,7 @@ struct MenuBarView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            if model.activeCount > 0 {
+            if model.canStopAllServers {
                 Button("Stop all") { Task { await model.stopAll() } }
                     .buttonStyle(.link)
             }
@@ -95,7 +95,7 @@ struct MenuBarView: View {
 
     private func row(_ profile: ServerProfile) -> some View {
         let state = model.state(of: profile.id)
-        let active = model.isActive(profile.id)
+        let active = model.canStopServer(profile.id)
 
         return HStack(spacing: 8) {
             StatusDot(state: state)
@@ -142,6 +142,7 @@ struct MenuBarView: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Start")
+                .disabled(state.isBusy || model.backupOperationInProgress || model.isShuttingDown || model.stoppingAll)
             }
 
             if active, let url = URL(string: profile.address) {
@@ -190,6 +191,7 @@ struct MenuBarView: View {
                         Task { await model.openAdminPanel() }
                     }
                     .buttonStyle(.link)
+                    .disabled(model.adminPanel.state == .starting || model.isShuttingDown)
                 }
             }
         }

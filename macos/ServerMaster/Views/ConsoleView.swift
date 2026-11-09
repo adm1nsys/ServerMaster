@@ -158,7 +158,7 @@ struct ConsoleView: View {
                     Image(systemName: symbol).font(.caption)
                 }
                 Text(title).lineLimit(1)
-                if case .server(let id) = target, model.isActive(id) {
+                if case .server(let id) = target, model.canStopServer(id) {
                     Button {
                         Task { await model.stopServer(profileID: id) }
                     } label: {
@@ -275,6 +275,9 @@ struct ConsoleView: View {
                 // The file this tab is writing to. It used to be a caption in
                 // the strip along the bottom; here it is something you can act
                 // on rather than only read.
+                if let log = currentLog {
+                    Text(log.fileLoggingStatus)
+                }
                 if let url = currentLog?.fileURL {
                     Button("Reveal \(url.lastPathComponent)") {
                         NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -350,7 +353,7 @@ struct ConsoleView: View {
         case .server(let id):
             if let profile = model.profiles.first(where: { $0.id == id }),
                let controller = model.existingController(for: id) {
-                if controller.state.isActive {
+                if model.canStopServer(id) {
                     consoleButton("Stop", "stop.fill") {
                         Task { await model.stopServer(profileID: id) }
                     }

@@ -333,6 +333,8 @@ nonisolated enum ConfigTemplates {
         ServerName localhost
         Listen \(profile.host):\(String(profile.port))
         PidFile \(quote(prefix + "/httpd.pid"))
+        User "#\(getuid())"
+        Group "#\(getgid())"
 
         # Apache would otherwise create its mutexes in /var/run, which needs root.
         DefaultRuntimeDir \(quote(prefix))
@@ -480,6 +482,8 @@ nonisolated enum ConfigTemplates {
         daemonize = no
 
         [www]
+        user = \(getuid())
+        group = \(getgid())
         listen = 127.0.0.1:\(String(port))
         listen.allowed_clients = 127.0.0.1
         pm = dynamic

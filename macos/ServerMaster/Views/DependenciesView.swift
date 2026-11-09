@@ -11,6 +11,7 @@ struct DependenciesView: View {
     @State private var installing: String?
 
     @State private var showInstallLog = false
+    @State private var managing: Dependency?
 
     var body: some View {
         ScrollView {
@@ -83,6 +84,9 @@ struct DependenciesView: View {
             //.frame(maxWidth: 900, alignment: .leading)
         }
         .frame(maxWidth: .infinity)
+        .sheet(item: $managing) { dependency in
+            RuntimePackagesSheet(dependency: dependency).environment(model)
+        }
         .task {
             if model.dependencies.lastCheck == nil {
                 await model.dependencies.checkAll()
@@ -145,7 +149,7 @@ struct DependenciesView: View {
     private func phpRow(_ version: String) -> some View {
         let installed = model.dependencies.phpVersions.first { $0.version == version }
         let busy = model.dependencies.installingPHP.contains(version)
-        let usedBy = model.profiles.filter { $0.phpVersion == version }
+        let usedBy = model.dependencies.profilesUsingPHP(formula: "php@" + version, profiles: model.profiles)
 
         return HStack(spacing: 10) {
             Circle()
@@ -175,10 +179,13 @@ struct DependenciesView: View {
             } else if installed != nil {
                 // Removing a version a profile depends on would break it silently.
                 Button("Remove") {
-                    Task { _ = await model.dependencies.uninstallPHP(version: version, log: model.installLog) }
+                    Task {
+                        _ = await model.dependencies.uninstallPHP(version: version, profiles: model.profiles,
+                            log: model.installLog, canChange: { model.runtimeChangesAllowed })
+                    }
                 }
                 .modifier(ChipStyle())
-                .disabled(!usedBy.isEmpty)
+                .disabled(!usedBy.isEmpty || !model.runtimeChangesAllowed || model.dependencies.isManagingPackages)
                 .help(usedBy.isEmpty ? String(localized: "Remove this version")
                                      : String(localized: "Profiles still use this version"))
             } else {
@@ -197,6 +204,8 @@ struct DependenciesView: View {
         glassPanel(
             VStack(alignment: .leading, spacing: 10) {
                 PanelHeader(title: "Configuration readiness", symbol: "square.grid.2x2")
+                Text("HTTPS for Python and PHP built-in additionally requires Caddy.")
+                    .font(.caption).foregroundStyle(.secondary)
                 VStack(spacing: 0) {
                     ForEach(Array(ServerEngine.allCases.enumerated()), id: \.element.id) { index, engine in
                         if index > 0 { Divider() }
@@ -278,13 +287,20 @@ struct DependenciesView: View {
             Spacer(minLength: 8)
 
             VStack(alignment: .trailing, spacing: 4) {
+                if RuntimePackages.supports(dependency.command) {
+                    Button("Manage…") {
+                        showInstallLog = true
+                        managing = dependency
+                    }
+                        .disabled(model.dependencies.isManagingPackages || installing != nil)
+                }
                 if status.checking || installing == dependency.command {
                     ProgressView().controlSize(.small)
                 } else if !status.installed && dependency.command != "lsof" {
                     Button("Install") {
                         install(dependency)
                     }
-                    .disabled(installing != nil)
+                    .disabled(installing != nil || model.dependencies.isManagingPackages)
                 }
                 Button {
                     Task { await model.dependencies.check(command: dependency.command) }

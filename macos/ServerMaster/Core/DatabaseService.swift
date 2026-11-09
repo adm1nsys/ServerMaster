@@ -58,14 +58,84 @@ final class DatabaseService {
 
     private var process: Process?
     private var logTail: Process?
+    private var creatingDatabase = false
+    private let runtimeOverride: URL?
+    private let socketOverride: String?
+    private let credentialAccess: DatabaseCredentialAccess
+    /// If Keychain rejects a new credential, keep it only until this process
+    /// exits so wizard-generated passwords can still be copied by the user.
+    private var sessionOnlyCredentials: [String: DatabaseCredentialStore.Credential] = [:]
 
-    var dataDirectory: String { AppPaths.subdir("Database/data").path }
-    var runtimeDirectory: String { AppPaths.subdir("Database").path }
+    init(runtimeDirectory: URL? = nil, socketPath: String? = nil, port: Int = 3307,
+         credentials: DatabaseCredentialAccess = .system) {
+        self.runtimeOverride = runtimeDirectory
+        self.socketOverride = socketPath
+        self.port = port
+        self.credentialAccess = credentials
+    }
+
+    func savedCredentials(for database: String) throws -> DatabaseCredentialStore.Credential? {
+        if let credential = sessionOnlyCredentials[database] { return credential }
+        return try credentialAccess.read(database)
+    }
+
+    func hasSessionOnlyCredentials(for database: String) -> Bool { sessionOnlyCredentials[database] != nil }
+
+    /// Keychain deletion may have failed while locked, or an account may have
+    /// been changed externally. Never present a stale password as current.
+    func validatedSavedCredentials(for database: String) async throws -> DatabaseCredentialStore.Credential? {
+        guard let credential = try savedCredentials(for: database) else { return nil }
+        guard state == .running, let client = clientBinary else {
+            throw NSError(domain: "ServerMaster.Database", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: String(localized: "Start the database to verify its saved credentials.")])
+        }
+        let result = await ProcessRunner.run(client, defaultsArguments + ["--protocol=TCP", "-h", host, "-P", String(port),
+            "--user=\(credential.user)", "--database=\(database)", "-sN"],
+            env: ["MYSQL_PWD": credential.password], stdin: "SELECT 1;\n", timeout: 15)
+        guard result.succeeded else {
+            throw NSError(domain: "ServerMaster.Database", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: String(localized: "Saved credentials could not be verified. Use the account details from your site configuration.")])
+        }
+        return credential
+    }
+
+    /// Consult the server rather than the potentially stale sidebar list.
+    func databaseExists(_ name: String) async throws -> Bool {
+        let result = await query(sql: "SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = \(Self.quoteString(name));")
+        guard result.succeeded, let count = Int(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            throw NSError(domain: "ServerMaster.Database", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: String(localized: "Could not check whether the database exists.")])
+        }
+        return count > 0
+    }
+
+    /// A database credential describes the pair of local accounts created by
+    /// the wizard. Changing either account independently makes that summary
+    /// ambiguous. Forget it instead of displaying a potentially stale password.
+    func invalidateSavedCredentials(for user: DatabaseUser) async {
+        guard ["localhost", "127.0.0.1"].contains(user.host) else { return }
+        await reloadDatabases()
+        for database in databases {
+            do {
+                if try savedCredentials(for: database.name)?.user == user.name {
+                    sessionOnlyCredentials.removeValue(forKey: database.name)
+                    try credentialAccess.delete(database.name)
+                }
+            } catch {
+                log.append(String(localized: "Saved database credentials could not be refreshed: \(error.localizedDescription)"), stream: .stderr)
+            }
+        }
+    }
+
+    var dataDirectory: String { runtimeOverride?.appendingPathComponent("data").path ?? AppPaths.subdir("Database/data").path }
+    var runtimeDirectory: String { runtimeOverride?.path ?? AppPaths.subdir("Database").path }
     var errorLogPath: String { (runtimeDirectory as NSString).appendingPathComponent("error.log") }
+    var temporaryDirectory: String { (runtimeDirectory as NSString).appendingPathComponent("tmp") }
 
     /// A UNIX socket path is limited to 104 bytes and Application Support is long —
     /// so the socket goes into /tmp.
-    var socketPath: String { "/tmp/servermaster-mysql.sock" }
+    var socketPath: String { socketOverride ?? "/tmp/servermaster-mysql.sock" }
+    private var defaultsArguments: [String] { runtimeOverride == nil ? [] : ["--no-defaults"] }
 
     /// Ready-made connection details — pasted into a CMS installer.
     var host: String { "127.0.0.1" }
@@ -114,7 +184,7 @@ final class DatabaseService {
                        stream: .stderr)
             return
         }
-        guard !state.isActive else { return }
+        guard !state.isActive && !state.isBusy else { return }
 
         // Is the port taken by someone else?
         if !PortScanner.isPortFree(port, host: host) {
@@ -132,6 +202,16 @@ final class DatabaseService {
             return
         }
 
+        do {
+            try FileManager.default.createDirectory(atPath: temporaryDirectory, withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700])
+        } catch {
+            let message = String(localized: "Could not prepare database temporary files: \(error.localizedDescription)")
+            log.append(message, stream: .stderr)
+            state = .failed(message)
+            return
+        }
+
         if !isInitialized {
             state = .initializing
             guard await initializeDataDirectory() else { return }
@@ -142,8 +222,9 @@ final class DatabaseService {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: serverBinary!)
-        process.arguments = [
+        process.arguments = defaultsArguments + [
             "--datadir=\(dataDirectory)",
+            "--tmpdir=\(temporaryDirectory)",
             "--port=\(String(port))",
             "--socket=\(socketPath)",
             "--pid-file=\((runtimeDirectory as NSString).appendingPathComponent("mysql.pid"))",
@@ -202,7 +283,7 @@ final class DatabaseService {
         if let admin = ShellEnvironment.shared.which("mariadb-admin")
             ?? ShellEnvironment.shared.which("mysqladmin") {
             _ = await ProcessRunner.run(admin,
-                                        ["--socket=\(socketPath)", "-u", "root", "shutdown"],
+                                        defaultsArguments + ["--protocol=SOCKET", "--socket=\(socketPath)", "-u", "root", "shutdown"],
                                         timeout: 30)
         }
 
@@ -227,6 +308,7 @@ final class DatabaseService {
     }
 
     func stopImmediately() {
+        stopLogTail()
         guard let process, process.isRunning else { return }
         process.terminate()
         let deadline = Date().addingTimeInterval(5)
@@ -236,8 +318,9 @@ final class DatabaseService {
 
     // MARK: - Databases
 
-    func reloadDatabases() async {
-        guard state == .running else { databases = []; return }
+    @discardableResult
+    func reloadDatabases() async -> Bool {
+        guard state == .running else { databases = []; return false }
         let sql = """
         SELECT s.schema_name,
                COALESCE(COUNT(t.table_name), 0),
@@ -248,7 +331,7 @@ final class DatabaseService {
         GROUP BY s.schema_name ORDER BY s.schema_name;
         """
         let result = await query(sql: sql)
-        guard result.succeeded else { return }
+        guard result.succeeded else { return false }
 
         databases = result.stdout
             .split(separator: "\n")
@@ -259,26 +342,62 @@ final class DatabaseService {
                                     tables: Int(parts[1]) ?? 0,
                                     sizeMB: Double(parts[2]) ?? 0)
             }
+        return true
     }
 
     /// Creates a database and a user with full rights on it.
     func createDatabase(name: String, user: String, password: String) async -> CommandResult {
+        guard !DatabaseUser.isProtectedName(user) else {
+            return CommandResult(exitCode: 1, stdout: "", stderr: DatabaseUser.protectedMessage)
+        }
+        guard state == .running else {
+            return CommandResult(exitCode: 1, stdout: "", stderr: String(localized: "The database server is not running."))
+        }
+        guard !creatingDatabase else {
+            return CommandResult(exitCode: 1, stdout: "", stderr: String(localized: "Another database is being created. Try again when it finishes."))
+        }
+        creatingDatabase = true
+        defer { creatingDatabase = false }
         guard let db = validIdentifier(name), let account = validIdentifier(user) else {
             return CommandResult(exitCode: 1, stdout: "",
                                  stderr: String(localized: "A database or user name may contain only letters, digits and underscores — nothing was created."))
         }
-        let escaped = password.replacingOccurrences(of: "'", with: "''")
+        do {
+            guard try await !databaseExists(db) else {
+                return CommandResult(exitCode: 1, stdout: "", stderr: String(localized: "This database already exists. Open it or import into it instead."))
+            }
+        } catch {
+            return CommandResult(exitCode: 1, stdout: "", stderr: error.localizedDescription)
+        }
+        // Never silently reuse an existing account: CREATE USER IF NOT EXISTS
+        // does not apply the supplied password, so remembering it would lie.
+        let accounts = await query(sql: "SELECT COUNT(*) FROM mysql.user WHERE User = \(Self.quoteString(account)) AND Host IN ('127.0.0.1', 'localhost');")
+        guard accounts.succeeded,
+              let count = Int(accounts.stdout.trimmingCharacters(in: .whitespacesAndNewlines)), count == 0 else {
+            return CommandResult(exitCode: 1, stdout: "", stderr: String(localized: "This user already exists or could not be checked. Choose a new user name; its password has not been changed."))
+        }
+        let escaped = Self.quoteString(password)
         let sql = """
-        CREATE DATABASE IF NOT EXISTS `\(db)` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-        CREATE USER IF NOT EXISTS '\(account)'@'127.0.0.1' IDENTIFIED BY '\(escaped)';
-        CREATE USER IF NOT EXISTS '\(account)'@'localhost' IDENTIFIED BY '\(escaped)';
+        CREATE DATABASE `\(db)` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+        CREATE USER '\(account)'@'127.0.0.1' IDENTIFIED BY \(escaped);
+        CREATE USER '\(account)'@'localhost' IDENTIFIED BY \(escaped);
         GRANT ALL PRIVILEGES ON `\(db)`.* TO '\(account)'@'127.0.0.1';
         GRANT ALL PRIVILEGES ON `\(db)`.* TO '\(account)'@'localhost';
         FLUSH PRIVILEGES;
         """
-        let result = await query(sql: sql)
+        let result = await query(sql: sql, redacting: [password])
         if result.succeeded {
             log.system(String(localized: "Created database “\(db)” and user “\(account)”."))
+            do {
+                try credentialAccess.save(db, account, password)
+                sessionOnlyCredentials.removeValue(forKey: db)
+            } catch {
+                sessionOnlyCredentials[db] = .init(user: account, password: password)
+                // Creation is already complete. Keep the database usable and
+                // report the separate Keychain problem without exposing its
+                // password in the console.
+                log.append(String(localized: "Database created, but its credentials could not be saved in Keychain: \(error.localizedDescription)"), stream: .stderr)
+            }
             await reloadDatabases()
         } else {
             log.append(result.combined, stream: .stderr)
@@ -287,6 +406,9 @@ final class DatabaseService {
     }
 
     func dropDatabase(name: String) async -> CommandResult {
+        guard state == .running else {
+            return CommandResult(exitCode: 1, stdout: "", stderr: String(localized: "The database server is not running."))
+        }
         // Dropping names an EXISTING database, which may legitimately contain
         // anything — including the mangled leftovers of an older version of this
         // code. So it is quoted rather than filtered.
@@ -296,6 +418,12 @@ final class DatabaseService {
         let result = await query(sql: "DROP DATABASE IF EXISTS \(db);")
         if result.succeeded {
             log.system(String(localized: "Database “\(name)” deleted."))
+            sessionOnlyCredentials.removeValue(forKey: name)
+            do {
+                try credentialAccess.delete(name)
+            } catch {
+                log.append(String(localized: "Database deleted, but its saved credentials could not be removed from Keychain: \(error.localizedDescription)"), stream: .stderr)
+            }
             await reloadDatabases()
         }
         return result
@@ -319,7 +447,7 @@ final class DatabaseService {
         GRANT ALL PRIVILEGES ON *.* TO '\(account)'@'127.0.0.1' WITH GRANT OPTION;
         FLUSH PRIVILEGES;
         """
-        return await query(sql: sql)
+        return await query(sql: sql, redacting: [password])
     }
 
     // MARK: - Browsing and editing
@@ -332,7 +460,7 @@ final class DatabaseService {
 
     nonisolated struct QueryResult: Sendable {
         var columns: [String] = []
-        var rows: [[String]] = []
+        var rows: [[String?]] = []
         var message: String = ""
         var succeeded = true
         var affectedRows: Int?
@@ -349,6 +477,15 @@ final class DatabaseService {
         var source: String?
     }
 
+    /// UI and integration tests share the same confirmation/cancel path.
+    /// Returning nil means Cancel: no import, user creation or credential write.
+    func importDumpConfirmingReplacement(from url: URL, into name: String, user: String, password: String,
+                                         confirm: @MainActor (String) -> Bool) async throws -> ImportOutcome? {
+        let existing = try await databaseExists(name)
+        if existing && !confirm(name) { return nil }
+        return await importDump(from: url, into: name, user: user, password: password, allowExisting: existing)
+    }
+
     /// Loads a database from a file someone has: a plain `.sql`, a gzipped one,
     /// or an archive with one inside.
     ///
@@ -361,7 +498,8 @@ final class DatabaseService {
     /// The target database is created if it is not there, and named on the
     /// client command line, because a dump exported from inside phpMyAdmin
     /// usually carries no CREATE DATABASE of its own — only tables.
-    func importDump(from url: URL, into name: String, user: String, password: String) async -> ImportOutcome {
+    func importDump(from url: URL, into name: String, user: String, password: String,
+                    allowExisting: Bool = false) async -> ImportOutcome {
         guard state == .running else {
             return ImportOutcome(succeeded: false,
                                  message: String(localized: "The database server is not running."),
@@ -384,9 +522,20 @@ final class DatabaseService {
                                  source: nil)
         }
 
-        let created = await createDatabase(name: name, user: user, password: password)
-        guard created.succeeded else {
-            return ImportOutcome(succeeded: false, message: created.stderr, source: nil)
+        do {
+            if try await databaseExists(name) {
+                guard allowExisting else {
+                    return ImportOutcome(succeeded: false,
+                                         message: String(localized: "Confirm importing into the existing database first. Its tables and data may be replaced."), source: nil)
+                }
+            } else {
+                let created = await createDatabase(name: name, user: user, password: password)
+                guard created.succeeded else {
+                    return ImportOutcome(succeeded: false, message: created.stderr, source: nil)
+                }
+            }
+        } catch {
+            return ImportOutcome(succeeded: false, message: error.localizedDescription, source: nil)
         }
 
         guard let client = clientBinary else {
@@ -397,7 +546,7 @@ final class DatabaseService {
         let result = await ProcessRunner.run(
             "/bin/sh",
             ["-c",
-             "\(ProcessRunner.shellQuote(client)) --protocol=TCP --host=127.0.0.1 "
+             "\(ProcessRunner.shellQuote(client)) \(defaultsArguments.joined(separator: " ")) --protocol=TCP --host=127.0.0.1 "
              + "--port=\(port) --user=root --database=\(ProcessRunner.shellQuote(name)) "
              + "< \(ProcessRunner.shellQuote(found.path))"],
             timeout: 1800)
@@ -451,6 +600,12 @@ final class DatabaseService {
             return (nil, String(localized: "The archive could not be unpacked."))
         }
 
+        return findSQL(in: staging)
+    }
+
+    /// Keep DirectoryEnumerator inside a synchronous scope; its iterator is
+    /// unavailable from asynchronous contexts in Swift 6.
+    private nonisolated static func findSQL(in staging: URL) -> (file: URL?, problem: String?) {
         guard let walk = FileManager.default.enumerator(at: staging,
                                                         includingPropertiesForKeys: [.fileSizeKey]) else {
             return (nil, String(localized: "The archive could not be read."))
@@ -472,14 +627,14 @@ final class DatabaseService {
     /// file rather than through a pipe: a dump of any real site is large enough
     /// that holding it in memory to write it out again is a waste.
     func dump(_ name: String, to path: String) async -> Bool {
-        guard let tool = ShellEnvironment.shared.which("mariadb-dump")
+        guard state == .running, let tool = ShellEnvironment.shared.which("mariadb-dump")
                 ?? ShellEnvironment.shared.which("mysqldump"),
               Self.quoteIdentifier(name) != nil else { return false }
 
         let result = await ProcessRunner.run(
             "/bin/sh",
             ["-c",
-                        "\(ProcessRunner.shellQuote(tool)) --protocol=TCP --host=127.0.0.1 "
+                        "\(ProcessRunner.shellQuote(tool)) \(defaultsArguments.map(ProcessRunner.shellQuote).joined(separator: " ")) --protocol=TCP --host=127.0.0.1 "
                         + "--port=\(port) --user=root --single-transaction --routines --events "
                         + "--databases \(ProcessRunner.shellQuote(name)) "
                         + "> \(ProcessRunner.shellQuote(path))"])
@@ -491,14 +646,14 @@ final class DatabaseService {
     /// its own CREATE DATABASE and USE — the target name is not needed inside,
     /// only to say which one is being replaced.
     func load(_ path: String, into name: String) async -> Bool {
-        guard let client = clientBinary,
+        guard state == .running, let client = clientBinary,
               FileManager.default.fileExists(atPath: path),
               Self.quoteIdentifier(name) != nil else { return false }
 
         let result = await ProcessRunner.run(
             "/bin/sh",
             ["-c",
-                        "\(ProcessRunner.shellQuote(client)) --protocol=TCP --host=127.0.0.1 "
+                        "\(ProcessRunner.shellQuote(client)) \(defaultsArguments.map(ProcessRunner.shellQuote).joined(separator: " ")) --protocol=TCP --host=127.0.0.1 "
                         + "--port=\(port) --user=root < \(ProcessRunner.shellQuote(path))"])
         if result.succeeded {
             await reloadDatabases()
@@ -525,29 +680,40 @@ final class DatabaseService {
         }
     }
 
-    /// The first rows of a table — just to see what is inside.
-    func preview(table: String, in database: String, limit: Int = 100) async -> QueryResult {
+    /// Pages are ordered by the full primary key where one exists.
+    func preview(table: String, in database: String, limit: Int = 100, offset: Int = 0) async -> QueryResult {
         guard let quoted = Self.quoteIdentifier(table) else {
             return QueryResult(message: String(localized: "Invalid table name."), succeeded: false)
         }
-        return await run(sql: "SELECT * FROM \(quoted) LIMIT \(max(1, min(limit, 1000)));",
-                         database: database)
+        guard offset >= 0 else {
+            return QueryResult(message: String(localized: "Invalid row offset."), succeeded: false)
+        }
+        let schema = await columns(of: table, in: database)
+        let keys = schema.filter(\.isPrimaryKey).compactMap { Self.quoteIdentifier($0.name) }
+        let ordering = keys.isEmpty ? "" : " ORDER BY " + keys.joined(separator: ", ")
+        var result = await run(sql: "SELECT * FROM \(quoted)\(ordering) LIMIT \(max(1, min(limit, 1000))) OFFSET \(offset);",
+                               database: database)
+        if result.succeeded && result.columns.isEmpty {
+            result.columns = schema.map(\.name)
+        }
+        return result
     }
 
     /// An arbitrary query. Returns a result table or the error text.
     func run(sql: String, database: String?) async -> QueryResult {
+        guard state == .running else {
+            return QueryResult(message: String(localized: "The database server is not running."), succeeded: false)
+        }
         guard let client = clientBinary else {
             return QueryResult(message: String(localized: "Database client not found."), succeeded: false)
         }
-        var arguments = ["--protocol=TCP", "-h", host, "-P", String(port), "-u", "root",
-                         "--batch", "--column-names"]
+        var arguments = defaultsArguments + ["--protocol=TCP", "-h", host, "-P", String(port), "-u", "root",
+                         "--xml", "--default-character-set=utf8mb4"]
         if let database, !database.isEmpty {
             // The database name goes as a separate argument, not into the query text.
             arguments += ["-D", database]
         }
-        arguments += ["-e", sql]
-
-        let output = await ProcessRunner.run(client, arguments, timeout: 120)
+        let output = await ProcessRunner.run(client, arguments, stdin: sql + "\n", timeout: 120)
         let stderr = output.stderr
             .split(separator: "\n")
             .filter { !$0.contains("insecure passwordless login") }
@@ -557,23 +723,11 @@ final class DatabaseService {
             return QueryResult(message: stderr.isEmpty ? output.stdout : stderr, succeeded: false)
         }
 
-        // --batch returns TSV: the first line is the header.
-        let lines = output.stdout.split(separator: "\n", omittingEmptySubsequences: false)
-            .map(String.init)
-            .filter { !$0.isEmpty }
-        guard let header = lines.first else {
-            return QueryResult(message: String(localized: "Query executed."), succeeded: true)
+        do {
+            return try DatabaseQueryOutput.decode(output.stdout)
+        } catch {
+            return QueryResult(message: String(localized: "The query completed, but its result could not be read. Do not repeat data-changing queries without checking the database."), succeeded: false)
         }
-        let columns = header.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-        let rows = lines.dropFirst().map { line in
-            line.split(separator: "\t", omittingEmptySubsequences: false).map { field in
-                // The client returns NULL as \N
-                field == "\\N" ? "NULL" : String(field)
-            }
-        }
-        return QueryResult(columns: columns, rows: rows,
-                           message: String(localized: "Rows: \(String(rows.count))"),
-                           succeeded: true)
     }
 
     // MARK: - Editing data
@@ -609,49 +763,47 @@ final class DatabaseService {
         }
     }
 
-    /// A value for SQL: NULL stays NULL, numbers go unquoted,
-    /// everything else is escaped as a string.
-    private static func literal(_ value: String, type: String) -> String {
-        if value == "NULL" { return "NULL" }
-        let numeric = ["int", "decimal", "float", "double", "bit", "year"]
-        if numeric.contains(where: { type.lowercased().hasPrefix($0) }),
-           Double(value) != nil {
-            return value
-        }
-        return quoteString(value)
+    /// Hex UTF-8 literals avoid SQL-mode-dependent quote/backslash conversion.
+    nonisolated static func cellLiteral(_ value: String?) -> String {
+        guard let value else { return "NULL" }
+        return "CONVERT(X'" + value.utf8.map { String(format: "%02x", $0) }.joined() + "' USING utf8mb4)"
     }
 
     /// Changes one field of a row found by its primary key.
     func update(table: String, in database: String,
-                set column: ColumnInfo, to value: String,
-                key: [(ColumnInfo, String)]) async -> QueryResult {
+                set column: ColumnInfo, to value: String?,
+                key: [(ColumnInfo, String?)]) async -> QueryResult {
+        guard value != nil || column.isNullable else {
+            return QueryResult(message: String(localized: "This column does not allow SQL NULL."), succeeded: false)
+        }
         guard let quotedTable = Self.quoteIdentifier(table),
               let quotedColumn = Self.quoteIdentifier(column.name),
-              !key.isEmpty else {
+              !key.isEmpty, key.allSatisfy({ Self.quoteIdentifier($0.0.name) != nil && $0.1 != nil && $0.0.isPrimaryKey }) else {
             return QueryResult(message: String(localized: "No primary key — the row cannot be identified."),
                                succeeded: false)
         }
         let conditions = key.compactMap { pair -> String? in
             guard let name = Self.quoteIdentifier(pair.0.name) else { return nil }
-            return "\(name) = \(Self.literal(pair.1, type: pair.0.type))"
+            return "\(name) = \(Self.cellLiteral(pair.1))"
         }.joined(separator: " AND ")
 
         let sql = "UPDATE \(quotedTable) SET \(quotedColumn) = "
-            + Self.literal(value, type: column.type)
+            + Self.cellLiteral(value)
             + " WHERE \(conditions) LIMIT 1;"
         return await run(sql: sql, database: database)
     }
 
     /// Deletes a row by its primary key.
     func delete(table: String, in database: String,
-                key: [(ColumnInfo, String)]) async -> QueryResult {
-        guard let quotedTable = Self.quoteIdentifier(table), !key.isEmpty else {
+                key: [(ColumnInfo, String?)]) async -> QueryResult {
+        guard let quotedTable = Self.quoteIdentifier(table), !key.isEmpty,
+              key.allSatisfy({ Self.quoteIdentifier($0.0.name) != nil && $0.1 != nil && $0.0.isPrimaryKey }) else {
             return QueryResult(message: String(localized: "No primary key — the row cannot be identified."),
                                succeeded: false)
         }
         let conditions = key.compactMap { pair -> String? in
             guard let name = Self.quoteIdentifier(pair.0.name) else { return nil }
-            return "\(name) = \(Self.literal(pair.1, type: pair.0.type))"
+            return "\(name) = \(Self.cellLiteral(pair.1))"
         }.joined(separator: " AND ")
         return await run(sql: "DELETE FROM \(quotedTable) WHERE \(conditions) LIMIT 1;",
                          database: database)
@@ -694,9 +846,9 @@ final class DatabaseService {
         AppPaths.ensure(URL(fileURLWithPath: dataDirectory))
 
         let result = await ProcessRunner.run(installer,
-                                             ["--datadir=\(dataDirectory)",
+                                             defaultsArguments + ["--datadir=\(dataDirectory)",
                                               "--auth-root-authentication-method=normal"],
-                                             timeout: 300)
+                                             env: ["TMPDIR": temporaryDirectory], timeout: 300)
         if !result.succeeded {
             log.append(result.combined, stream: .stderr)
             state = .failed(String(localized: "Could not prepare the data directory."))
@@ -709,10 +861,12 @@ final class DatabaseService {
     private func ping() async -> Bool {
         guard let client = clientBinary else { return false }
         let result = await ProcessRunner.run(client,
-                                             ["--protocol=TCP", "-h", host, "-P", String(port),
-                                              "-u", "root", "-sN", "-e", "SELECT 1"],
+                                             defaultsArguments + ["--protocol=TCP", "-h", host, "-P", String(port),
+                                              "-u", "root", "-sN", "-e", "SELECT @@datadir"],
                                              timeout: 10)
-        return result.succeeded && result.stdout.contains("1")
+        let actual = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return result.succeeded && URL(fileURLWithPath: actual).resolvingSymlinksInPath().standardizedFileURL.path
+            == URL(fileURLWithPath: dataDirectory).resolvingSymlinksInPath().standardizedFileURL.path
     }
 
     private func readVersion() async -> String {
@@ -723,20 +877,28 @@ final class DatabaseService {
     /// Internal rather than private: the schema operations live in their own
     /// file and go through exactly this one entry point, which is what keeps
     /// every statement quoted and logged the same way.
-    func query(sql: String) async -> CommandResult {
+    func query(sql: String, redacting secrets: [String] = []) async -> CommandResult {
         guard let client = clientBinary else {
             return CommandResult(exitCode: 127, stdout: "",
                                  stderr: String(localized: "Database client not found."))
         }
         var result = await ProcessRunner.run(client,
-                                             ["--protocol=TCP", "-h", host, "-P", String(port),
-                                              "-u", "root", "-sN", "-e", sql],
+                                             defaultsArguments + ["--protocol=TCP", "-h", host, "-P", String(port),
+                                              "-u", "root", "-sN"], stdin: sql + "\n",
                                              timeout: 60)
         // The client warns about a passwordless login — that is not an error.
         result.stderr = result.stderr
             .split(separator: "\n")
             .filter { !$0.contains("insecure passwordless login") }
             .joined(separator: "\n")
+        // MariaDB can echo the failing statement in batch errors. Do not let
+        // CREATE/ALTER USER secrets escape through returned errors or logs.
+        for secret in secrets where !secret.isEmpty {
+            for text in [Self.quoteString(secret), String(Self.quoteString(secret).dropFirst().dropLast()), secret] {
+                result.stdout = result.stdout.replacingOccurrences(of: text, with: "[redacted]")
+                result.stderr = result.stderr.replacingOccurrences(of: text, with: "[redacted]")
+            }
+        }
         return result
     }
 

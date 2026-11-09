@@ -51,7 +51,7 @@
 "Choose" = "Вибрати";
 "Choose…" = "Вибрати…";
 "Clear" = "Очистити";
-"Clear old logs" = "Очищати старі журнали";
+"Clear old logs" = "Очистити старі журнали";
 "Close" = "Закрити";
 "Collapse" = "Згорнути";
 "Colour" = "Колір";
@@ -924,3 +924,386 @@
 "http-server (Node.js)" = "http-server (Node.js)";
 "macOS asks for the password once at start — the app never sees or stores it. Stopping and quitting need no password. Required for ports 80 and 443." = "macOS запитує пароль один раз під час запуску — програма його не бачить і не зберігає. Для зупинки й виходу пароль не потрібен. Потрібно для портів 80 і 443.";
 "phpMyAdmin is not installed yet. Install it: brew install phpmyadmin" = "phpMyAdmin ще не встановлено. Встановіть: brew install phpmyadmin";
+
+/* macOS 2.1 parity: setup, database safety and credentials */
+"Set up ServerMaster" = "Налаштування ServerMaster";
+"Choose what you want to run first. Missing software is checked while the profile is created." = "Виберіть, що запустити спочатку. Під час створення профілю програма перевірить необхідне ПЗ.";
+"First site" = "Перший сайт";
+"Later" = "Пізніше";
+"Check software" = "Перевірити ПЗ";
+"Set up site" = "Налаштувати сайт";
+"Database credentials" = "Облікові дані бази даних";
+"Credentials" = "Облікові дані";
+"Start the database to verify its saved credentials." = "Запустіть базу даних для перевірки збережених облікових даних.";
+"Keychain could not save this password. Copy it now: it is available only until ServerMaster quits." = "В’язка ключів не зберегла пароль. Скопіюйте його зараз: він доступний лише до закриття ServerMaster.";
+"Saved credentials could not be verified. Use the account details from your site configuration." = "Не вдалося перевірити збережені облікові дані. Використайте дані з конфігурації сайту.";
+"Copy user" = "Копіювати користувача";
+"Copy password" = "Копіювати пароль";
+"Copied" = "Скопійовано";
+
+/* Runtime/package management */
+"Manage…" = "Керувати…";
+"Available" = "Доступна версія";
+"Update available" = "Доступне оновлення";
+"Update" = "Оновити";
+"Retry" = "Спробувати знову";
+"Check for updates" = "Перевірити оновлення";
+"Up to date" = "Актуальна версія";
+"Install selected version" = "Установити вибрану версію";
+"Install and use selected Node" = "Установити й використовувати вибраний Node";
+"The selected http-server version replaces the global npm package." = "Вибрана версія http-server замінить глобальний пакет npm.";
+"Node versions offered by Homebrew can coexist. The selected version is used by ServerMaster through PATH; other applications keep their own settings." = "Версії Node з Homebrew можуть співіснувати. ServerMaster використовує вибрану версію через PATH; налаштування інших програм не змінюються.";
+"Stop servers and the database before changing packages." = "Перед зміною пакетів зупиніть сервери та базу даних.";
+"Package operations can take several minutes." = "Операції з пакетами можуть тривати кілька хвилин.";
+"Remove this package?" = "Видалити цей пакет?";
+"Other projects may use this package. Homebrew dependency checks remain enabled." = "Цей пакет можуть використовувати інші проєкти. Homebrew перевірить залежності перед видаленням.";
+"Package operation completed. The detected version and path have been refreshed." = "Операцію завершено. Виявлену версію та шлях оновлено.";
+"The package manager could not complete the operation." = "Менеджер пакетів не зміг завершити операцію.";
+"The package catalogue returned no supported versions." = "Каталог пакетів не повернув підтримуваних версій.";
+"This tool is not managed here." = "Цей інструмент тут не керується.";
+"The package catalogue returned an unexpected result." = "Каталог пакетів повернув неочікуваний результат.";
+"The package manager returned an invalid installation path." = "Менеджер пакетів повернув некоректний шлях установлення.";
+"Choose Install to select a package version." = "Для вибору версії пакета скористайтеся дією «Установити».";
+"That version is not offered by the package manager." = "Менеджер пакетів не пропонує цю версію.";
+"The active executable is outside this package manager. It has not been changed." = "Активний виконуваний файл не належить цьому менеджеру пакетів. Його не змінено.";
+"The requested Node version was not activated." = "Не вдалося активувати вибрану версію Node.";
+"The package is still installed. See the log for details." = "Пакет досі встановлено. Подробиці наведено в журналі.";
+"The installed package is not active in PATH. Review the detected executable path." = "Установлений пакет не активний у PATH. Перевірте шлях до виявленого виконуваного файлу.";
+"The installed executable could not be verified." = "Не вдалося перевірити встановлений виконуваний файл.";
+"The requested package version was not activated." = "Не вдалося активувати вибрану версію пакета.";
+"The package manager still reports an older version. See the log for details." = "Менеджер пакетів досі повідомляє про стару версію. Подробиці наведено в журналі.";
+"Wait for the current dependency operation to finish." = "Дочекайтеся завершення поточної операції із залежностями.";
+
+/* HTTPS proxy for built-in engines */
+"Invalid HTTPS port." = "Некоректний порт HTTPS.";
+"HTTPS listen host must be localhost or an IP address." = "Для HTTPS вкажіть localhost або IP-адресу прослуховування.";
+"Could not allocate a separate HTTPS backend port." = "Не вдалося виділити окремий внутрішній порт для HTTPS.";
+"Invalid environment variable name." = "Некоректне ім’я змінної середовища.";
+"HTTPS requires a readable certificate and private key." = "Для HTTPS потрібні доступні для читання сертифікат і приватний ключ.";
+"Remove custom listen arguments: ServerMaster manages the HTTPS backend address." = "Приберіть власні аргументи прослуховування: ServerMaster керує внутрішньою адресою для HTTPS.";
+"HTTPS did not become ready. Check the backend and proxy log." = "HTTPS не вдалося запустити. Перевірте журнал сервера та проксі.";
+"HTTPS for this engine also requires Caddy. Install it on the Dependencies screen." = "Для HTTPS у цьому рушії також потрібен Caddy. Установіть його на екрані «Залежності».";
+"HTTPS for Python and PHP built-in additionally requires Caddy." = "Для HTTPS у Python та вбудованому PHP додатково потрібен Caddy.";
+"HTTPS backend exited before readiness." = "Внутрішній сервер HTTPS завершив роботу до готовності.";
+"HTTPS backend did not acquire its private port." = "Внутрішній сервер HTTPS не зміг зайняти свій порт.";
+"HTTPS process exited before readiness." = "Процес HTTPS завершив роботу до готовності.";
+"HTTPS proxy did not acquire its public port." = "Проксі HTTPS не зміг зайняти зовнішній порт.";
+"HTTPS backend or proxy exited; stopping the profile." = "Внутрішній сервер або проксі HTTPS завершив роботу; профіль зупиняється.";
+"Show password" = "Показати пароль";
+"Password hidden" = "Пароль приховано";
+"The password is saved in Keychain, not in the profile." = "Пароль збережено у В’язці ключів, а не в профілі.";
+"User: %@\nPassword: %@" = "Користувач: %@\nПароль: %@";
+"No saved credentials. Use the account details from your site configuration." = "Збережених облікових даних немає. Використайте дані з конфігурації сайту.";
+"Could not check whether the database exists." = "Не вдалося перевірити наявність бази даних.";
+"Another database is being created. Try again when it finishes." = "Створюється інша база даних. Спробуйте після завершення.";
+"This database already exists. Open it or import into it instead." = "Ця база даних уже існує. Відкрийте її або імпортуйте дані до неї.";
+"This user already exists or could not be checked. Choose a new user name; its password has not been changed." = "Користувач уже існує або його не вдалося перевірити. Виберіть інше ім’я; пароль не змінено.";
+"Import into “%@”?" = "Імпортувати до «%@»?";
+"The SQL file can replace existing tables and data. Create a snapshot first if you need to keep them." = "SQL-файл може замінити наявні таблиці й дані. Спочатку створіть знімок, якщо їх потрібно зберегти.";
+"Confirm importing into the existing database first. Its tables and data may be replaced." = "Спочатку підтвердьте імпорт до наявної бази. Її таблиці й дані можуть бути замінені.";
+"Saved database credentials could not be refreshed: %@" = "Не вдалося оновити збережені облікові дані бази: %@";
+"Database created, but its credentials could not be saved in Keychain: %@" = "Базу створено, але не вдалося зберегти її облікові дані у В’язці ключів: %@";
+"Database deleted, but its saved credentials could not be removed from Keychain: %@" = "Базу видалено, але не вдалося видалити її облікові дані з В’язки ключів: %@";
+"The saved file is missing or cannot be read." = "Збережений файл відсутній або недоступний для читання.";
+"The configuration exceeds the 4 MB inspection limit. Back it up before repairing it." = "Конфігурація перевищує ліміт перевірки 4 МБ. Перед виправленням створіть резервну копію.";
+"The configuration is invalid JSON or has an unexpected structure." = "Конфігурація містить некоректний JSON або неочікувану структуру.";
+"Back up this file before repairing it. Diagnostics has not replaced it." = "Створіть резервну копію файлу перед виправленням. Діагностика його не змінювала.";
+"Could not reserve a private runtime port." = "Не вдалося зарезервувати окремий порт середовища виконання.";
+"Backend exited before readiness." = "Сервер обробки завершив роботу до готовності.";
+"Backend did not acquire its private port." = "Сервер обробки не зайняв свій окремий порт.";
+"Server process exited before readiness." = "Процес сервера завершив роботу до готовності.";
+"Server did not acquire its public port." = "Сервер не зайняв свій зовнішній порт.";
+"Server or backend exited; stopping the profile." = "Сервер або процес обробки завершив роботу; профіль зупиняється.";
+"Server did not become ready. Check the server and backend log." = "Сервер не став готовим. Перевірте журнал сервера та процесу обробки.";
+"This project is already being prepared. Wait for it to finish." = "Цей проєкт уже готується. Дочекайтеся завершення.";
+"The existing wp-config.php has no readable literal DB_NAME. Its configuration was not changed." = "У наявному wp-config.php не знайдено явного значення DB_NAME. Конфігурацію не змінено.";
+"WordPress administrator credentials saved outside the web folder: %@" = "Облікові дані адміністратора WordPress збережено поза веб-папкою: %@";
+"Stop this profile before preparing its project." = "Перед підготовкою проєкту зупиніть цей профіль.";
+"Print Shop CRM is ready. Open the profile to start it." = "Print Shop CRM готова. Відкрийте профіль, щоб запустити її.";
+"Project preparation did not finish: %@" = "Підготовку проєкту не завершено: %@";
+"The CRM database is not a readable SQLite file. Existing data was not overwritten." = "База CRM не є придатним для читання файлом SQLite. Наявні дані не перезаписано.";
+"Settings could not be read. The existing file was preserved." = "Не вдалося прочитати налаштування. Наявний файл збережено.";
+"Profiles could not be read. The existing file was preserved." = "Не вдалося прочитати профілі. Наявний файл збережено.";
+"The profile could not be saved. Check the data folder permissions." = "Не вдалося зберегти профіль. Перевірте права доступу до папки даних.";
+"Import profiles…" = "Імпортувати профілі…";
+"Export selected profile…" = "Експортувати вибраний профіль…";
+"Export all profiles…" = "Експортувати всі профілі…";
+"Imported %lld profiles. Review paths and commands before starting." = "Імпортовано профілів: %lld. Перед запуском перевірте шляхи та команди.";
+"This file does not contain valid ServerMaster profiles. Nothing was imported." = "Файл не містить коректних профілів ServerMaster. Нічого не імпортовано.";
+"The profile file is too large." = "Файл профілів завеликий.";
+"The profile uses an unsupported server engine: %@. Nothing was imported." = "Профіль використовує непідтримуваний рушій сервера: %@. Нічого не імпортовано.";
+"Could not read the backup index. It has not been overwritten: %@" = "Не вдалося прочитати індекс резервних копій. Його не перезаписано: %@";
+"Could not save the backup index. The new snapshot was not added: %@" = "Не вдалося зберегти індекс резервних копій. Новий знімок не додано: %@";
+"Could not save the profile backup: %@" = "Не вдалося зберегти резервну копію профілю: %@";
+"Could not delete the snapshot: %@" = "Не вдалося видалити знімок: %@";
+"This column does not allow SQL NULL." = "Цей стовпець не допускає SQL NULL.";
+"Invalid row offset." = "Некоректне зміщення рядків.";
+"Previous" = "Назад";
+"No rows" = "Немає рядків";
+"Discard unsaved changes?" = "Відхилити незбережені зміни?";
+"Discard changes" = "Відхилити зміни";
+"Keep editing" = "Продовжити редагування";
+"This file is too large for the built-in editor (4 MB maximum)." = "Цей файл завеликий для вбудованого редактора (максимум 4 МБ).";
+"This is not a supported text file. Open it in an external editor." = "Цей текстовий файл не підтримується. Відкрийте його в зовнішньому редакторі.";
+"Use UTF-8 or UTF-16 with a BOM. Open other encodings in an external editor; the file has not been converted." = "Використовуйте UTF-8 або UTF-16 з BOM. Файли з іншими кодуваннями відкривайте в зовнішньому редакторі; файл не було перетворено.";
+"This file changed outside ServerMaster. Your edits were not saved. Copy them or reload the file before saving." = "Цей файл змінено поза ServerMaster. Ваші зміни не збережено. Скопіюйте їх або перечитайте файл перед збереженням.";
+"The built-in editor only opens regular files, not links or special files. Use an external editor." = "Вбудований редактор відкриває лише звичайні файли, а не посилання чи спеціальні файли. Скористайтеся зовнішнім редактором.";
+"Choose a file or folder inside this project's root." = "Виберіть файл або папку всередині кореневої папки цього проєкту.";
+"This path passes through a symbolic link. Open it in Finder or an external editor." = "Цей шлях проходить через символічне посилання. Відкрийте його у Finder або зовнішньому редакторі.";
+"The project folder or selected item changed. Refresh the file list before continuing." = "Папка проєкту або вибраний елемент змінилися. Оновіть список файлів перед продовженням.";
+"Enter one file name, without a slash, a NUL character, or dot-directory names." = "Введіть одне ім’я файлу без косої риски, нульового символу та назв папок «.» або «..».";
+"A file or folder with that name already exists. Nothing was replaced." = "Файл або папка з таким ім’ям уже існує. Нічого не замінено.";
+"Could not finish renaming. The original item is preserved at %@." = "Не вдалося завершити перейменування. Початковий елемент збережено за шляхом %@.";
+"Recipe notes, local addresses and account details." = "Нотатки рецепта, локальні адреси та дані облікових записів.";
+"Run your own Node.js server, with optional managed HTTPS" = "Запускайте власний сервер Node.js із керованим HTTPS за потреби";
+"Quick static serving, with optional managed HTTPS" = "Швидка роздача статичних файлів із керованим HTTPS за потреби";
+"PHP routing, with optional managed HTTPS" = "Маршрутизація PHP із керованим HTTPS за потреби";
+"The Node.js backend must listen on its managed loopback address. Use the HOST and PORT environment variables." = "Сервер Node.js має слухати керовану адресу зворотного зв’язку. Використовуйте змінні середовища HOST і PORT.";
+"The backup ZIP is damaged or uses an unsupported format. Nothing was restored." = "ZIP резервної копії пошкоджено або його формат не підтримується. Нічого не відновлено.";
+"The backup ZIP is damaged or uses an unsupported format." = "ZIP резервної копії пошкоджено або його формат не підтримується.";
+"The backup ZIP contains unsafe paths, links or conflicting names. Nothing was restored." = "ZIP резервної копії містить небезпечні шляхи, посилання або конфліктні імена. Нічого не відновлено.";
+"The backup ZIP contains unsafe paths, links or conflicting names." = "ZIP резервної копії містить небезпечні шляхи, посилання або конфліктні імена.";
+"The backup exceeds the restore limit (10 GB / 200,000 entries)." = "Резервна копія перевищує обмеження відновлення (10 ГБ / 200 000 елементів).";
+"Choose an ordinary project folder, not your home, a system root or a linked path." = "Виберіть звичайну папку проєкту, а не домашню папку, системний корінь чи шлях через посилання.";
+"The backup folder and project folder must be separate; neither can contain the other." = "Папка резервних копій і папка проєкту мають бути окремими: жодна не може містити іншу.";
+"This backup contains links or special files. They cannot be copied or restored by the built-in backup tool." = "Резервна копія містить посилання або спеціальні файли. Вбудований засіб резервного копіювання не може їх копіювати чи відновлювати.";
+"The backup or project path changed. Refresh before trying again." = "Шлях резервної копії або проєкту змінився. Оновіть дані перед повторною спробою.";
+"The backup could not be unpacked safely. The project was not replaced." = "Не вдалося безпечно розпакувати резервну копію. Проєкт не замінено.";
+"Restore failed. The original project is preserved at %@." = "Помилка відновлення. Початковий проєкт збережено за шляхом %@.";
+"Wait for the current backup operation to finish." = "Дочекайтеся завершення поточної операції з резервними копіями.";
+"This snapshot does not contain the selected backup component." = "Цей знімок не містить вибраного компонента резервної копії.";
+"Start the database and choose a snapshot that includes its dump." = "Запустіть базу даних і виберіть знімок, що містить її дамп.";
+"Previous project files were kept at %@." = "Попередні файли проєкту збережено за шляхом %@.";
+"The current project folder will be replaced. Its previous contents stay beside it in a uniquely named folder after restoration." = "Поточну папку проєкту буде замінено. Після відновлення її попередній вміст залишиться поруч у папці з унікальним ім’ям.";
+"Rows %lld–%lld" = "Рядки %lld–%lld";
+"SQL NULL" = "SQL NULL";
+"Unsupported Node architecture." = "Непідтримувана архітектура Node.";
+"Active" = "Активне середовище";
+"The official Node checksum is missing or invalid." = "Офіційна контрольна сума Node відсутня або некоректна.";
+"Choose a Node.js release from the list." = "Виберіть випуск Node.js зі списку.";
+"The saved Node copy is invalid. Remove the unused copy and install it again." = "Збережену копію Node пошкоджено. Видаліть невикористовувану копію та встановіть її знову.";
+"The requested Node version could not run on this Mac." = "Вибрана версія Node не запускається на цьому Mac.";
+"The downloaded Node archive has no usable npm or npx." = "Завантажений архів Node не містить придатних до запуску npm або npx.";
+"The bundled npm version could not be verified." = "Не вдалося перевірити версію npm із комплекту Node.";
+"Active Node.js: %@" = "Активний Node.js: %@";
+"Downloading official Node.js %@…" = "Завантаження офіційного Node.js %@…";
+"That Node version is not available for this Mac architecture." = "Ця версія Node недоступна для архітектури цього Mac.";
+"Node.js checksum mismatch. The active version was not changed." = "Контрольна сума Node.js не збігається. Активну версію не змінено.";
+"The downloaded Node archive has an unexpected layout." = "Завантажений архів Node має неочікувану структуру.";
+"Switch to System or another Node version before removing this copy. Stop running servers first." = "Перед видаленням цієї копії виберіть System або іншу версію Node. Спочатку зупиніть сервери.";
+"The selected Node executable is unavailable." = "Вибраний виконуваний файл Node недоступний.";
+"Official Node releases are stored separately inside ServerMaster. Each release includes its own npm. System restores your existing PATH without deleting installed versions." = "Офіційні випуски Node зберігаються окремо в ServerMaster. Кожен містить власний npm. System відновлює попередній PATH без видалення встановлених версій.";
+"Use System" = "Використовувати System";
+"Use selected Node" = "Використовувати вибраний Node";
+"Remove selected copy" = "Видалити вибрану копію";
+"Refresh version list" = "Оновити список версій";
+"Remove selected Node copy?" = "Видалити вибрану копію Node?";
+"Only this inactive ServerMaster copy will be removed. Homebrew and System Node are not changed." = "Буде видалено лише цю неактивну копію ServerMaster. Homebrew та системний Node не змінюються.";
+"Node selection saved. Future server starts use the selected runtime." = "Вибір Node збережено. Наступні запуски серверів використовуватимуть вибране середовище.";
+"The unused Node copy was removed." = "Невикористовувану копію Node видалено.";
+"Put your files in a “public” subfolder next to the generated entry file." = "Розмістіть файли в підпапці public поруч зі створеним вхідним файлом.";
+"Package settings and a start command for the selected entry" = "Налаштування пакета та команда запуску вибраного вхідного файлу";
+"Check this profile's paths and engine in Profiles." = "Перевірте шляхи та рушій цього профілю в розділі «Профілі».";
+"Restore the missing project files from a backup or the upstream package. Diagnostics does not change the project." = "Відновіть відсутні файли проєкту з резервної копії або пакета розробника. Діагностика не змінює проєкт.";
+"Node entry file" = "Вхідний файл Node";
+"Server configuration" = "Конфігурація сервера";
+"HTTPS certificate" = "Сертифікат HTTPS";
+"HTTPS private key" = "Приватний ключ HTTPS";
+"Runtime: %@" = "Середовище: %@";
+"Select an installed runtime in Dependencies and check this profile's runtime version." = "Виберіть установлене середовище в розділі «Залежності» та перевірте його версію в профілі.";
+"Joomla PHP requirement" = "Вимоги Joomla до PHP";
+"Custom executable" = "Власний виконуваний файл";
+"Start MariaDB from Database before using this template." = "Запустіть MariaDB у розділі «База даних» перед використанням цього шаблону.";
+"Server state" = "Стан сервера";
+"Check Console for the start error." = "Перегляньте помилку запуску в консолі.";
+"Local HTTP response" = "Локальна відповідь HTTP";
+"Start the profile to check its HTTP response." = "Запустіть профіль для перевірки його відповіді HTTP.";
+"Automatic HTTP checks are limited to loopback addresses." = "Автоматичні перевірки HTTP обмежені локальними адресами loopback.";
+"Check Console, the site's index, authentication and HTTPS certificate." = "Перевірте консоль, індексний файл сайту, автентифікацію та сертифікат HTTPS.";
+"WordPress configuration" = "Конфігурація WordPress";
+"WordPress admin" = "Адміністративні файли WordPress";
+"WooCommerce plugin" = "Плагін WooCommerce";
+"Printcart plugin" = "Плагін Printcart";
+"Save cell" = "Зберегти комірку";
+"Showing the last of %lld result sets." = "Показано останній із %lld наборів результатів.";
+"The query completed, but its result could not be read. Do not repeat data-changing queries without checking the database." = "Запит виконано, але не вдалося прочитати результат. Не повторюйте запити, що змінюють дані, без перевірки бази даних.";
+
+"Database not included: MariaDB was stopped." = "Базу даних не включено: MariaDB було зупинено.";
+
+"This process no longer owns the selected port. Refresh the list before trying again." = "Цей процес більше не утримує вибраний порт. Оновіть список перед повторною спробою.";
+
+"The operation was cancelled." = "Операцію скасовано.";
+
+"This system or ServerMaster account cannot be changed here." = "Цей системний обліковий запис або обліковий запис ServerMaster тут змінювати не можна.";
+
+"The account privileges could not be checked. Nothing was changed." = "Не вдалося перевірити права облікового запису. Нічого не змінено.";
+
+"This account has role or unrecognized grants. Review its grants manually; nothing was changed." = "Обліковий запис має ролі або нерозпізнані права. Перевірте права вручну; нічого не змінено.";
+
+"This account has global privileges. Review its grants manually; nothing was changed." = "Обліковий запис має глобальні права. Перевірте їх вручну; нічого не змінено.";
+
+"This account has table or column privileges on this database. Review its grants manually; nothing was changed." = "Обліковий запис має права на таблиці або стовпці цієї бази. Перевірте їх вручну; нічого не змінено.";
+
+"Read-only privileges applied on “%@”." = "Для «%@» застосовано права лише для читання.";
+
+"This account has overlapping database grants. Review its grants manually; nothing was changed." = "Обліковий запис має права на бази даних, що перекриваються. Перевірте їх вручну; нічого не змінено.";
+
+"Profile validation" = "Перевірка профілю";
+
+"Working directory does not exist or is not a directory: %@" = "Робоча папка не існує або шлях не вказує на папку: %@";
+
+"Port %@ is already occupied." = "Порт %@ уже зайнятий.";
+
+"The certificate or private key could not be read. Use a readable PEM certificate and an unencrypted private key." = "Не вдалося прочитати сертифікат або приватний ключ. Виберіть доступний PEM-сертифікат і незашифрований приватний ключ.";
+
+"The certificate and private key do not match." = "Сертифікат і приватний ключ не відповідають одне одному.";
+
+"The certificate validity dates could not be read." = "Не вдалося прочитати строки дії сертифіката.";
+
+"The HTTPS certificate is expired or not yet valid." = "Строк дії HTTPS-сертифіката минув або ще не почався.";
+
+"The certificate SAN does not include the profile host." = "SAN сертифіката не містить хост профілю.";
+
+"No HTTP response within the time limit." = "За відведений час HTTP-відповідь не надійшла.";
+
+"The connection failed or the HTTPS certificate could not be verified." = "Не вдалося встановити з’єднання або перевірити HTTPS-сертифікат.";
+
+"Certificate and key match; validity dates and host SAN are valid." = "Сертифікат і ключ відповідають одне одному; строки дії та SAN хоста коректні.";
+
+"macOS trusts this certificate for this host." = "macOS довіряє цьому сертифікату для цього хоста.";
+
+"This certificate is self-issued and is not trusted by the system." = "Цей сертифікат видано самому собі; система йому не довіряє.";
+
+"This certificate is not trusted by the system. Check its chain and local trust settings." = "Система не довіряє цьому сертифікату. Перевірте ланцюжок і локальні налаштування довіри.";
+
+/* Stop results */
+"The administrator server has not confirmed shutdown. Try Stop again; check Console and Ports." = "Сервер із правами адміністратора не підтвердив завершення. Повторіть зупинку; перевірте консоль і порти.";
+"The server process is still running. Try Stop again; check Console and Ports." = "Процес сервера досі працює. Повторіть зупинку; перевірте консоль і порти.";
+"Port %@ is still held by %@." = "Порт %@ досі зайнятий: %@.";
+"The server stopped, but %@:%@ is still occupied. Check Ports before restarting; another process may be listening." = "Сервер зупинився, але %@:%@ досі зайнятий. Перевірте порти перед перезапуском: можливо, працює інший процес.";
+"Could not stop the server. Check Console and Ports." = "Не вдалося зупинити сервер. Перевірте консоль і порти.";
+
+/* Account editing */
+"Change password…" = "Змінити пароль…";
+"Change password" = "Змінити пароль";
+"New password" = "Новий пароль";
+"Confirm password" = "Підтвердьте пароль";
+"Passwords do not match." = "Паролі не збігаються.";
+"Host suggestions" = "Варіанти хоста";
+"Enter a host name, IP address or host pattern, such as %.example.com." = "Введіть ім’я хоста, IP-адресу або шаблон, наприклад %.example.com.";
+"Enter an account host without spaces or control characters." = "Введіть хост облікового запису без пробілів і керувальних символів.";
+"Only this account changes. Update sites that use it. Saved connection details for this local user will be cleared after success." = "Зміниться лише цей обліковий запис. Оновіть налаштування сайтів, які його використовують. Після успішної зміни збережені дані підключення цього локального користувача буде очищено.";
+"Wait for the current database operation to finish." = "Дочекайтеся завершення поточної операції з базою даних.";
+
+/* Profile requirements */
+"Start MariaDB with this profile" = "Запускати MariaDB разом із цим профілем";
+"Install missing software" = "Установити відсутнє ПЗ";
+"Installing missing software…" = "Установлення відсутнього ПЗ…";
+"Checking requirements…" = "Перевірка вимог…";
+"All required software is installed." = "Усе потрібне ПЗ встановлено.";
+"This PHP package is used by: %@. Change their PHP selection before removing it." = "Цей пакет PHP використовують: %@. Перед видаленням змініть вибір PHP у цих профілях.";
+
+/* Project preparation and retry */
+"──────── Project preparation ────────" = "──────── Підготовка проєкту ────────";
+"Checking project files…" = "Перевірка файлів проєкту…";
+"Preparing the project database…" = "Підготовка бази даних проєкту…";
+"Checking project configuration…" = "Перевірка конфігурації проєкту…";
+"Preparing WordPress…" = "Підготовка WordPress…";
+"Preparing WooCommerce and Printcart…" = "Підготовка WooCommerce та Printcart…";
+"Preparing demo content…" = "Підготовка демонстраційних даних…";
+"Installing project dependencies…" = "Установлення залежностей проєкту…";
+"Verifying the prepared project…" = "Перевірка підготовленого проєкту…";
+"Wait for project preparation to finish." = "Дочекайтеся завершення підготовки проєкту.";
+"Wait for the current operation before preparing this project." = "Дочекайтеся завершення поточної операції перед підготовкою цього проєкту.";
+"Stop all servers using this project folder before preparing it." = "Перед підготовкою зупиніть усі сервери, які використовують цю теку проєкту.";
+"The profile changed during preparation. Project files were kept; review the saved profile before retrying." = "Профіль змінився під час підготовки. Файли проєкту збережено; перевірте збережений профіль перед повторною спробою.";
+"The project was prepared, but its profile could not be saved. Fix the data folder permissions and retry." = "Проєкт підготовлено, але профіль не вдалося зберегти. Виправте права доступу до теки даних і повторіть спробу.";
+"Project “%@” is prepared. Open its profile to start it." = "Проєкт «%@» підготовлено. Відкрийте його профіль для запуску.";
+"Waiting for project preparation to finish…" = "Очікування завершення підготовки проєкту…";
+"Project setup" = "Підготовка проєкту";
+"Retry preparation" = "Повторити підготовку";
+"Prepare again" = "Підготувати знову";
+"Prepare project" = "Підготувати проєкт";
+"Prepare the existing project, or resume an interrupted setup. No second profile or project download is created." = "Підготуйте наявний проєкт або продовжте перервану підготовку. Другий профіль не створюється, проєкт повторно не завантажується.";
+"Project is prepared." = "Проєкт підготовлено.";
+"Project preparation failed." = "Не вдалося підготувати проєкт.";
+"Fix the reported problem, then retry this profile." = "Усуньте зазначену проблему та повторіть підготовку цього профілю.";
+"Preparation log" = "Журнал підготовки";
+"This project has no macOS setup recipe." = "Для цього проєкту немає сценарію підготовки для macOS.";
+"WordPress files are missing. Download the project into an empty folder first." = "Файли WordPress відсутні. Спочатку завантажте проєкт у порожню теку.";
+"Print Shop CRM files are missing. Download the project into an empty folder first." = "Файли Print Shop CRM відсутні. Спочатку завантажте проєкт у порожню теку.";
+"Print Shop CRM entry file was not found: %@" = "Початковий файл Print Shop CRM не знайдено: %@";
+"WooCommerce or Printcart Integration was not installed completely." = "WooCommerce або Printcart Integration встановлено не повністю.";
+"MariaDB could not start." = "Не вдалося запустити MariaDB.";
+"Could not create the WordPress database." = "Не вдалося створити базу даних WordPress.";
+"PHP is required to prepare WordPress." = "Для підготовки WordPress потрібен PHP.";
+"npm is required to prepare Print Shop CRM." = "Для підготовки Print Shop CRM потрібен npm.";
+"WP-CLI could not be downloaded." = "Не вдалося завантажити WP-CLI.";
+"A WordPress setup command failed." = "Не вдалося виконати команду підготовки WordPress.";
+
+"Could not prepare database temporary files: %@" = "Не вдалося підготувати тимчасові файли бази даних: %@";
+"Choose an existing project folder before preparing it." = "Перед підготовкою виберіть наявну теку проєкту.";
+
+"File logging is off" = "Запис журналу у файл вимкнено";
+
+"Writing log to file" = "Журнал записується у файл";
+
+"Log file closed" = "Файл журналу закрито";
+
+"Log file size limit reached" = "Досягнуто обмеження розміру журналу";
+
+"Could not open log file: %@" = "Не вдалося відкрити файл журналу: %@";
+
+"Could not write log file: %@" = "Не вдалося записати файл журналу: %@";
+
+"Could not close log file: %@" = "Не вдалося закрити файл журналу: %@";
+
+"Log cleanup failures: %@" = "Помилки очищення журналів: %@";
+
+"Logs removed: %@. Cleanup failures: %@. See the console for details." = "Видалено журналів: %@. Помилок очищення: %@. Подробиці в консолі.";
+
+"Log cleanup is disabled. Set a retention period above zero." = "Очищення журналів вимкнено. Укажіть термін зберігання, більший за нуль.";
+
+"No old logs found." = "Старих журналів не знайдено.";
+
+"path not found" = "Шлях не знайдено";
+
+"could not read this path" = "Не вдалося прочитати цей шлях";
+
+"Permissions check stopped after %lld files. Some files were not checked." = "Перевірку прав зупинено після %lld файлів. Частину файлів не перевірено.";
+
+"Symbolic links skipped: %lld" = "Пропущено символічних посилань: %lld";
+
+"No free profile port was found. Release a port and try again." = "Не знайдено вільного порту для профілю. Звільніть порт і повторіть спробу.";
+
+"Enter a database password or generate one." = "Уведіть пароль бази даних або згенеруйте його.";
+
+"Database password" = "Пароль бази даних";
+
+"Credentials are saved in Keychain when available; otherwise they are kept for this session." = "Облікові дані зберігаються у В’язці ключів, якщо вона доступна; інакше — лише протягом цього сеансу.";
+
+"Profile setup was cancelled. No server was started." = "Налаштування профілю скасовано. Сервер не запущено.";
+
+"Profile saved, but preparation did not finish. Open its profile to retry." = "Профіль збережено, але підготовку не завершено. Відкрийте профіль, щоб повторити спробу.";
+
+"Profile saved" = "Профіль збережено";
+
+"Preparing the project…" = "Підготовка проєкту…";
+
+"Ready. Start the server now or return to it later." = "Готово. Запустіть сервер зараз або поверніться до нього пізніше.";
+
+"Open profile" = "Відкрити профіль";
+
+"Start server" = "Запустити сервер";
+
+"The server did not start. Check its profile and console, then retry." = "Сервер не запустився. Перевірте профіль і консоль та повторіть спробу.";
+
+"The project folder could not be checked." = "Не вдалося перевірити теку проєкту.";
+
+"macOS %@ developer beta" = "macOS %@, бета-версія для розробників";
+
+"Xcode %@ release" = "Xcode %@, стабільний випуск";
+
+"Xcode developer beta %@" = "Xcode, бета-версія %@ для розробників";
+
+"Xcode %@ beta %@" = "Xcode %@, бета-версія %@";

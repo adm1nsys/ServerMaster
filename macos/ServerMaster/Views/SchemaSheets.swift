@@ -245,17 +245,27 @@ struct IndexSheet: View {
 
 struct UserSheet: View {
 
-    let onDone: (String, String, String) async -> Void
+    let onDone: (String, String, String) async -> CommandResult
 
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var host = "localhost"
     @State private var password = ""
+    @State private var busy = false
+    @State private var error: String?
+
+    private var valid: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !DatabaseUser.isProtectedName(name)
+            && DatabaseUser.normalizedHost(host) != nil
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("New account").font(.headline)
-
+            if DatabaseUser.isProtectedName(name) {
+                Text(DatabaseUser.protectedMessage).font(.callout).foregroundStyle(.secondary)
+            }
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
                 GridRow {
                     Text("Name")
@@ -263,37 +273,138 @@ struct UserSheet: View {
                 }
                 GridRow {
                     Text("Host")
-                    Picker("", selection: $host) {
-                        Text("localhost").tag("localhost")
-                        Text("127.0.0.1").tag("127.0.0.1")
-                        Text("any host (%)").tag("%")
+                    HStack {
+                        TextField("localhost", text: $host)
+                            .font(.system(.body, design: .monospaced))
+                        Menu {
+                            Button("localhost") { host = "localhost" }
+                            Button("127.0.0.1") { host = "127.0.0.1" }
+                            Button("any host (%)") { host = "%" }
+                        } label: { Image(systemName: "chevron.down") }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .accessibilityLabel("Host suggestions")
                     }
-                    .labelsHidden()
                 }
                 GridRow {
                     Text("Password")
-                    TextField("", text: $password).font(.system(.body, design: .monospaced))
+                    SecureField("", text: $password).font(.system(.body, design: .monospaced))
                 }
             }
+            .disabled(busy)
 
             Text("A site's config file names both the account and the host. localhost and 127.0.0.1 are different accounts to MySQL, which is a common half-hour to lose.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-
+            Text("Enter a host name, IP address or host pattern, such as %.example.com.")
+                .font(.caption).foregroundStyle(.secondary)
+            if DatabaseUser.normalizedHost(host) == nil {
+                Text("Enter an account host without spaces or control characters.")
+                    .font(.caption).foregroundStyle(.red)
+            }
+            if let error {
+                Text(error).font(.callout).foregroundStyle(.red)
+                    .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            }
             HStack {
+                if busy { ProgressView().controlSize(.small) }
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Create") {
-                    Task {
-                        await onDone(name, host, password)
-                        dismiss()
-                    }
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .keyboardShortcut(.cancelAction).disabled(busy)
+                Button("Create") { Task { await create() } }
+                    .keyboardShortcut(.defaultAction).disabled(!valid || busy)
             }
         }
         .padding(20)
-        .frame(width: 440)
+        .frame(width: 460)
+        .interactiveDismissDisabled(busy)
+    }
+
+    private func create() async {
+        guard valid, !busy, let accountHost = DatabaseUser.normalizedHost(host) else { return }
+        busy = true
+        error = nil
+        let result = await onDone(name, accountHost, password)
+        busy = false
+        if result.succeeded {
+            password = ""
+            dismiss()
+        } else {
+            error = result.stderr.isEmpty ? result.combined : result.stderr
+        }
+    }
+}
+
+struct AccountPasswordSheet: View {
+
+    let user: DatabaseUser
+    let onSave: (String) async -> CommandResult
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var password = ""
+    @State private var confirmation = ""
+    @State private var busy = false
+    @State private var error: String?
+
+    private var valid: Bool {
+        !user.isProtected && !password.isEmpty && password == confirmation
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Change password").font(.headline)
+            Text("\(user.name)@\(user.host)")
+                .font(.system(.body, design: .monospaced)).textSelection(.enabled)
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
+                GridRow {
+                    Text("New password")
+                    SecureField("", text: $password)
+                }
+                GridRow {
+                    Text("Confirm password")
+                    SecureField("", text: $confirmation)
+                }
+            }
+            .disabled(busy || user.isProtected)
+            if user.isProtected {
+                Text(DatabaseUser.protectedMessage).foregroundStyle(.secondary)
+            }
+            if !confirmation.isEmpty, password != confirmation {
+                Text("Passwords do not match.").font(.caption).foregroundStyle(.red)
+            }
+            Text("Only this account changes. Update sites that use it. Saved connection details for this local user will be cleared after success.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let error {
+                Text(error).font(.callout).foregroundStyle(.red)
+                    .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                if busy { ProgressView().controlSize(.small) }
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction).disabled(busy)
+                Button("Change password") { Task { await save() } }
+                    .keyboardShortcut(.defaultAction).disabled(!valid || busy)
+            }
+        }
+        .padding(20)
+        .frame(width: 490)
+        .interactiveDismissDisabled(busy)
+    }
+
+    private func save() async {
+        guard valid, !busy else { return }
+        busy = true
+        error = nil
+        let result = await onSave(password)
+        busy = false
+        if result.succeeded {
+            password = ""
+            confirmation = ""
+            dismiss()
+        } else {
+            error = result.stderr.isEmpty ? result.combined : result.stderr
+        }
     }
 }

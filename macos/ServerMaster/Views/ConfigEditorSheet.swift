@@ -22,6 +22,10 @@ struct ConfigEditorSheet: View {
     @State private var isChecking = false
     @State private var isSaving = false
     @State private var confirmOverwriteGenerated = false
+    @State private var document: TextFileDocument?
+    @State private var saveError: String?
+    @State private var confirmDiscard = false
+    @State private var reloadAfterDiscard = false
 
     private var isModified: Bool { text != original }
 
@@ -36,24 +40,32 @@ struct ConfigEditorSheet: View {
             } else {
                 TextEditor(text: $text)
                     .font(.system(.callout, design: .monospaced))
-                    .disabled(file.isReadOnly)
+                    .disabled(file.isReadOnly || isSaving || isChecking)
                     .overlay(RoundedRectangle(cornerRadius: 5).stroke(.quaternary))
                     .onChange(of: text) { _, _ in validation = nil }
             }
 
+            if let saveError { Text(saveError).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
             validationRow
             footer
+                .confirmationDialog("This file is overwritten on every start",
+                                    isPresented: $confirmOverwriteGenerated, titleVisibility: .visible) {
+                    Button("Make it your own config") { adopt() }
+                    Button("Save here anyway") { save(force: true) }
+                    Button("Cancel", role: .cancel) { }
+                } message: {
+                    Text("So your changes are not lost, save the file as your own — the app will stop overwriting it and will start the engine with it.")
+                }
         }
         .padding(18)
         .frame(width: 860, height: 660)
         .task { load() }
-        .confirmationDialog("This file is overwritten on every start",
-                            isPresented: $confirmOverwriteGenerated, titleVisibility: .visible) {
-            Button("Make it your own config") { adopt() }
-            Button("Save here anyway") { save(force: true) }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("So your changes are not lost, save the file as your own — the app will stop overwriting it and will start the engine with it.")
+        .interactiveDismissDisabled(isModified || isSaving || isChecking)
+        .confirmationDialog("Discard unsaved changes?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+            Button("Discard changes", role: .destructive) {
+                if reloadAfterDiscard { load() } else { dismiss() }
+            }
+            Button("Keep editing", role: .cancel) { }
         }
     }
 
@@ -85,6 +97,7 @@ struct ConfigEditorSheet: View {
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
+                if let document { Text(document.format.label).font(.caption).foregroundStyle(.secondary) }
                 if !file.note.isEmpty {
                     Text(file.note)
                         .font(.caption)
@@ -105,8 +118,8 @@ struct ConfigEditorSheet: View {
                     NSPasteboard.general.setString(file.path, forType: .string)
                 }
                 Divider()
-                Button("Reload from disk") { load() }
-                    .disabled(!isModified)
+                Button("Reload from disk") { requestClose(reload: true) }
+                    .disabled(isSaving || isChecking)
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
@@ -156,8 +169,9 @@ struct ConfigEditorSheet: View {
 
     private var footer: some View {
         HStack {
-            Button("Close") { dismiss() }
+            Button("Close") { requestClose() }
                 .keyboardShortcut(.cancelAction)
+                .disabled(isSaving || isChecking)
 
             if isModified {
                 Text("unsaved changes")
@@ -168,13 +182,13 @@ struct ConfigEditorSheet: View {
 
             if file.validator != .none && !file.isReadOnly {
                 Button("Check syntax") { check() }
-                    .disabled(isChecking)
+                    .disabled(isChecking || isSaving || document == nil)
             }
 
             if !file.isReadOnly {
                 Button("Save") { save(force: false) }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(!isModified || isSaving)
+                    .disabled(!isModified || isSaving || isChecking || document == nil)
             }
         }
     }
@@ -182,6 +196,10 @@ struct ConfigEditorSheet: View {
     // MARK: - Actions
 
     private func load() {
+        guard !isSaving, !isChecking else { return }
+        document = nil
+        validation = nil
+        saveError = nil
         if !file.exists {
             // Generated configs only appear after the first launch.
             text = ""
@@ -192,72 +210,102 @@ struct ConfigEditorSheet: View {
             return
         }
         do {
-            let contents = try String(contentsOfFile: file.path, encoding: .utf8)
-            text = contents
-            original = contents
+            let loaded = try TextFileDocument.load(URL(fileURLWithPath: file.path))
+            document = loaded
+            text = loaded.text
+            original = loaded.text
             loadError = nil
         } catch {
+            text = ""
+            original = ""
             loadError = error.localizedDescription
         }
     }
 
+    private func requestClose(reload: Bool = false) {
+        guard !isSaving, !isChecking else { return }
+        reloadAfterDiscard = reload
+        if isModified { confirmDiscard = true }
+        else if reload { load() }
+        else { dismiss() }
+    }
+
     private func check() {
+        guard !isChecking, !isSaving, let loaded = document else { return }
+        let draft = text
+        guard let bytes = try? loaded.format.encode(draft) else {
+            saveError = TextFileDocument.Failure.tooLarge.localizedDescription
+            return
+        }
         isChecking = true
         Task {
-            validation = await ConfigInventory.validate(file, contents: text)
+            validation = await ConfigInventory.validate(file, contents: draft, encodedContents: bytes)
             isChecking = false
         }
     }
 
     private func save(force: Bool) {
+        guard !isSaving, !isChecking, !file.isReadOnly, isModified, var loaded = document else { return }
         if file.isGenerated && !force {
             confirmOverwriteGenerated = true
             return
         }
         isSaving = true
+        saveError = nil
+        let draft = text
         Task {
+            defer { isSaving = false }
+            let bytes: Data
+            do { bytes = try loaded.format.encode(draft) }
+            catch { saveError = error.localizedDescription; return }
             // Always check before writing — a broken config must not reach the disk.
-            let result = await ConfigInventory.validate(file, contents: text)
+            let result = await ConfigInventory.validate(file, contents: draft, encodedContents: bytes)
             validation = result
             if !result.ok && !result.skipped {
-                isSaving = false
                 return
             }
             do {
-                try text.write(toFile: file.path, atomically: true, encoding: .utf8)
-                original = text
+                try loaded.save(draft)
+                document = loaded
+                original = draft
                 model.notify(String(localized: "File saved: \(file.title)"))
             } catch {
+                saveError = error.localizedDescription
                 model.notify(error.localizedDescription, isError: true)
             }
-            isSaving = false
         }
     }
 
     /// Copies the generated config into the user's folder and makes it the main one.
     private func adopt() {
+        guard !isSaving, !isChecking, !file.isReadOnly, let loaded = document else { return }
         let name = (file.path as NSString).lastPathComponent
+        let prefix = String((model.selectedProfile?.name ?? "profile").prefix(40).map { $0.isLetter || $0.isNumber || $0 == "-" ? $0 : "-" })
         let target = AppPaths.configs
-            .appendingPathComponent("\(model.selectedProfile?.name ?? "profile")-\(name)")
-            .path
+            .appendingPathComponent("\(prefix)-\(UUID().uuidString)-\(name)")
         isSaving = true
+        saveError = nil
+        let draft = text
         Task {
-            let result = await ConfigInventory.validate(file, contents: text)
+            defer { isSaving = false }
+            let bytes: Data
+            do { bytes = try loaded.format.encode(draft) }
+            catch { saveError = error.localizedDescription; return }
+            let result = await ConfigInventory.validate(file, contents: draft, encodedContents: bytes)
             validation = result
             if !result.ok && !result.skipped {
-                isSaving = false
                 return
             }
             do {
-                try text.write(toFile: target, atomically: true, encoding: .utf8)
-                original = text
-                onAdopt?(target)
+                try loaded.writeCopy(draft, to: target)
+                original = draft
+                onAdopt?(target.path)
                 model.notify(String(localized: "Saved as your own config — the app will no longer overwrite it."))
                 dismiss()
             } catch {
+                saveError = error.localizedDescription
                 model.notify(error.localizedDescription, isError: true)
             }
-            isSaving = false
         }
     }
 }

@@ -37,10 +37,10 @@ struct BackupsView: View {
                     } label: {
                         Label("Snapshot every profile", systemImage: "camera")
                     }
-                    .disabled(model.profiles.isEmpty || model.snapshots.isWorking)
+                    .disabled(model.profiles.isEmpty || model.backupOperationInProgress)
                 }
 
-                if model.snapshots.isWorking {
+                if model.backupOperationInProgress {
                     glassPanel(
                             HStack(spacing: 10) {
                                 ProgressView().controlSize(.small)
@@ -63,10 +63,17 @@ struct BackupsView: View {
                 if let error = model.snapshots.lastError {
                     Text(error).font(.callout).foregroundStyle(.red)
                 }
+                if let path = model.snapshots.lastPreservedSitePath {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Previous project files were kept at \(path).")
+                            .font(.callout).textSelection(.enabled)
+                        Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }
+                    }
+                }
             }
             .padding(36)
         }
-        .onChange(of: model.snapshots.isWorking) { _, working in
+        .onChange(of: model.backupOperationInProgress) { _, working in
             if working { clock.start() } else { clock.stop() }
         }
         .sheet(item: $restoring) { snapshot in
@@ -92,8 +99,7 @@ struct BackupsView: View {
                 guard let snapshot else { return }
                 job = .restore
                 Task {
-                    let problem = await model.snapshots.restoreDatabase(snapshot,
-                                                                        database: model.database)
+                    let problem = await model.restoreDatabaseSnapshot(snapshot)
                     model.notify(problem ?? String(localized: "Database “\(snapshot.profileName)” restored."),
                                  isError: problem != nil)
                 }
@@ -187,6 +193,7 @@ struct BackupsView: View {
                             .truncationMode(.head)
                         Spacer()
                         Button("Choose…") { chooseDestination() }
+                            .disabled(model.backupOperationInProgress)
                         Button("Show") {
                             NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: destinationPath)
                         }
@@ -220,9 +227,7 @@ struct BackupsView: View {
         panel.canCreateDirectories = true
         panel.directoryURL = URL(fileURLWithPath: destinationPath)
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        model.settings.backupDestination = url.path
-        model.saveSettings()
-        model.snapshots.setDestination(url.path)
+        model.setBackupDestination(url.path)
     }
 
     // MARK: - Taking one now
@@ -254,7 +259,7 @@ struct BackupsView: View {
                                                                database: model.database)
                                 }
                             }
-                            .disabled(model.snapshots.isWorking)
+                            .disabled(model.backupOperationInProgress)
                         }
                         if profile.id != model.profiles.last?.id { Divider() }
                     }
@@ -305,7 +310,7 @@ struct BackupsView: View {
                                                                        database: model.database)
                                 }
                             }
-                            .disabled(model.database.state != .running || model.snapshots.isWorking)
+                            .disabled(model.database.state != .running || model.backupOperationInProgress)
                         }
                         if item.name != model.database.databases.last?.name { Divider() }
                     }
@@ -419,7 +424,7 @@ struct BackupsView: View {
                 .disabled(!snapshot.includesDatabase)
 
             if parts.contains(.site) {
-                Label("What is in the folder now is replaced. A copy is kept beside it until the restore finishes.",
+                Label("The current project folder will be replaced. Its previous contents stay beside it in a uniquely named folder after restoration.",
                       systemImage: "exclamationmark.triangle")
                     .font(.callout)
                     .foregroundStyle(.orange)
@@ -436,15 +441,17 @@ struct BackupsView: View {
             HStack {
                 Spacer()
                 Button("Cancel") { restoring = nil }
+                    .disabled(model.backupOperationInProgress)
                 Button("Restore") {
                     Task { await restore(snapshot) }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(parts.isEmpty || model.snapshots.isWorking)
+                .disabled(parts.isEmpty || model.backupOperationInProgress)
             }
         }
         .padding(20)
         .frame(width: 430)
+        .interactiveDismissDisabled(model.backupOperationInProgress)
     }
 
     private func binding(_ option: SnapshotStore.RestoreOption) -> Binding<Bool> {
@@ -457,14 +464,8 @@ struct BackupsView: View {
     private func restore(_ snapshot: Snapshot) async {
         job = .restore
         guard let profile = model.profiles.first(where: { $0.id == snapshot.profileID }) else { return }
-        // A running server holding the folder open is the shortest route to a
-        // half-restored site.
-        if model.state(of: profile.id) != .stopped {
-            await model.stopServer(profileID: profile.id)
-        }
-        let outcome = await model.snapshots.restore(snapshot, parts: parts,
-                                                    into: profile, database: model.database)
-        if parts.contains(.settings) {
+        let outcome = await model.restoreSnapshot(snapshot, parts: parts, into: profile)
+        if parts.contains(.settings), outcome.profile != profile {
             model.updateProfile(outcome.profile)
         }
         problems = outcome.problems

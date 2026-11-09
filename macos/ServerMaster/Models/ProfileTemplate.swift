@@ -101,6 +101,9 @@ nonisolated struct ProfileTemplate: Identifiable, Codable, Sendable, Equatable {
 
     var guide: AppLinks.Guide { AppLinks.Guide(rawValue: guideAnchor) ?? .index }
 
+    /// Quick setup already has a name, free port and recipe defaults.
+    var setupQuestions: [TemplateQuestion] { quickSetup ? [.folder] : questions }
+
     // MARK: - Building a profile
 
     func makeProfile(name: String, port: Int, root: String) -> ServerProfile {
@@ -111,6 +114,7 @@ nonisolated struct ProfileTemplate: Identifiable, Codable, Sendable, Equatable {
         profile.templateId = id
         profile.needsDatabase = needsDatabase
         profile.engine = settings.engine
+        profile.httpsEnabled = settings.httpsEnabled
         profile.indexFile = settings.indexFile
         profile.directoryListing = settings.directoryListing
         profile.spaFallback = settings.spaFallback
@@ -121,12 +125,23 @@ nonisolated struct ProfileTemplate: Identifiable, Codable, Sendable, Equatable {
         profile.phpMemoryLimit = settings.phpMemoryLimit
         profile.phpUploadMaxFilesize = settings.phpUploadMaxFilesize
         profile.phpMaxExecutionTime = settings.phpMaxExecutionTime
-        profile.phpVersion = phpVersion
+        profile.phpDisplayErrors = settings.phpDisplayErrors
+        profile.phpVersion = phpVersion.isEmpty && settings.engine.runsPHP ? "8.3" : phpVersion
         profile.nodeEntryFile = settings.nodeEntryFile
+        profile.customCommand = settings.customCommand
+        profile.customArguments = settings.customArguments
         // The Windows catalogue opens a newly started template in the browser.
         // Keep the shared starter behaviour rather than making a transferred
         // project feel different on the other platform.
         profile.openBrowserOnStart = true
+        if packageKind == "printshopcrm" {
+            profile.workingDirectory = root
+            profile.environment = [EnvVar(key: "PSC_HOST", value: "127.0.0.1"),
+                                   EnvVar(key: "PSC_AUTH", value: "0")]
+        }
+        if packageKind == "wordpress-w2p" {
+            profile.databaseName = "servermaster_w2p_\(port)"
+        }
         if let icon = settings.iconName { profile.iconName = icon }
         return profile
     }
@@ -142,7 +157,7 @@ nonisolated struct ProfileTemplate: Identifiable, Codable, Sendable, Equatable {
             guideAnchor: AppLinks.guide(for: profile.engine).rawValue,
             rootHint: nil,
             folderAdvice: nil,
-            needsDatabase: profile.engine.typicallyNeedsDatabase,
+            needsDatabase: profile.needsDatabase,
             phpVersion: profile.phpVersion,
             questions: [.folder, .name, .port],
             settings: TemplateSettings(profile: profile),
@@ -175,7 +190,7 @@ nonisolated extension ProfileTemplate {
         needsDatabase = c.value(.needsDatabase, default: false)
         phpVersion = c.value(.phpVersion, default: "")
         questions = c.value(.questions, default: [])
-        settings = c.value(.settings, default: TemplateSettings())
+        settings = c.contains(.settings) ? try c.decode(TemplateSettings.self, forKey: .settings) : TemplateSettings()
         isUserDefined = c.value(.isUserDefined, default: false)
         packageKind = c.value(.packageKind, default: "")
         packageSource = c.value(.packageSource, default: "")
@@ -189,6 +204,7 @@ nonisolated extension ProfileTemplate {
 /// template must not carry a profile's identity, its paths or its certificates.
 nonisolated struct TemplateSettings: Codable, Sendable, Equatable {
     var engine: ServerEngine = .httpServer
+    var httpsEnabled: Bool = false
     var indexFile: String = "index.html"
     var directoryListing: Bool = true
     var spaFallback: Bool = false
@@ -199,13 +215,17 @@ nonisolated struct TemplateSettings: Codable, Sendable, Equatable {
     var phpMemoryLimit: String = "256M"
     var phpUploadMaxFilesize: String = "64M"
     var phpMaxExecutionTime: Int = 300
+    var phpDisplayErrors: Bool = true
     var nodeEntryFile: String = "server.js"
+    var customCommand: String = ""
+    var customArguments: String = ""
     var iconName: String?
 
     init() {}
 
     init(profile: ServerProfile) {
         engine = profile.engine
+        httpsEnabled = profile.httpsEnabled
         indexFile = profile.indexFile
         directoryListing = profile.directoryListing
         spaFallback = profile.spaFallback
@@ -216,7 +236,10 @@ nonisolated struct TemplateSettings: Codable, Sendable, Equatable {
         phpMemoryLimit = profile.phpMemoryLimit
         phpUploadMaxFilesize = profile.phpUploadMaxFilesize
         phpMaxExecutionTime = profile.phpMaxExecutionTime
+        phpDisplayErrors = profile.phpDisplayErrors
         nodeEntryFile = profile.nodeEntryFile
+        customCommand = profile.customCommand
+        customArguments = profile.customArguments
         iconName = profile.iconName.isEmpty ? nil : profile.iconName
     }
 
@@ -224,7 +247,8 @@ nonisolated struct TemplateSettings: Codable, Sendable, Equatable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = TemplateSettings()
-        engine = c.value(.engine, default: d.engine)
+        engine = c.contains(.engine) ? try c.decode(ServerEngine.self, forKey: .engine) : d.engine
+        httpsEnabled = c.value(.httpsEnabled, default: d.httpsEnabled)
         indexFile = c.value(.indexFile, default: d.indexFile)
         directoryListing = c.value(.directoryListing, default: d.directoryListing)
         spaFallback = c.value(.spaFallback, default: d.spaFallback)
@@ -235,7 +259,10 @@ nonisolated struct TemplateSettings: Codable, Sendable, Equatable {
         phpMemoryLimit = c.value(.phpMemoryLimit, default: d.phpMemoryLimit)
         phpUploadMaxFilesize = c.value(.phpUploadMaxFilesize, default: d.phpUploadMaxFilesize)
         phpMaxExecutionTime = c.value(.phpMaxExecutionTime, default: d.phpMaxExecutionTime)
+        phpDisplayErrors = c.value(.phpDisplayErrors, default: d.phpDisplayErrors)
         nodeEntryFile = c.value(.nodeEntryFile, default: d.nodeEntryFile)
+        customCommand = c.value(.customCommand, default: d.customCommand)
+        customArguments = c.value(.customArguments, default: d.customArguments)
         iconName = c.value(.iconName, default: d.iconName)
     }
 }
@@ -322,7 +349,11 @@ nonisolated extension ProfileTemplate {
             folderAdvice: String(localized: "Choose the folder that contains index.html."),
             needsDatabase: false, phpVersion: "",
             questions: [.folder, .name, .port, .https],
-            settings: staticSettings(listing: false)),
+            settings: {
+                var s = staticSettings(listing: false)
+                s.httpsEnabled = true
+                return s
+            }()),
 
         // ── Printing & publishing ───────────────────────────────────────
         // These use the same stable identifiers and recipe metadata as the
@@ -340,6 +371,7 @@ nonisolated extension ProfileTemplate {
                 var s = TemplateSettings()
                 s.engine = .nodeScript
                 s.nodeEntryFile = "server.mjs"
+                s.directoryListing = false
                 return s
             }(),
             packageKind: "printshopcrm",
@@ -383,7 +415,8 @@ nonisolated extension ProfileTemplate {
             folderAdvice: String(localized: "Choose the unpacked Joomla folder — the one with installation inside."),
             needsDatabase: true, phpVersion: "8.2",
             questions: [.folder, .name, .port, .database, .phpVersion],
-            settings: cmsSettings()),
+            settings: cmsSettings(),
+            packageKind: "joomla5", packageSource: "https://downloads.joomla.org/latest"),
 
         ProfileTemplate(
             id: "joomla6", title: "Joomla 6",
@@ -393,7 +426,8 @@ nonisolated extension ProfileTemplate {
             folderAdvice: String(localized: "Choose the unpacked Joomla folder — the one with installation inside."),
             needsDatabase: true, phpVersion: "8.3",
             questions: [.folder, .name, .port, .database, .phpVersion],
-            settings: cmsSettings()),
+            settings: cmsSettings(),
+            packageKind: "joomla6", packageSource: "https://downloads.joomla.org/latest"),
 
         ProfileTemplate(
             id: "wordpress", title: "WordPress",
@@ -403,7 +437,8 @@ nonisolated extension ProfileTemplate {
             folderAdvice: String(localized: "Choose the folder with wp-config-sample.php in it."),
             needsDatabase: true, phpVersion: "",
             questions: [.folder, .name, .port, .database],
-            settings: cmsSettings()),
+            settings: cmsSettings(),
+            packageKind: "wordpress", packageSource: "https://wordpress.org/latest.zip"),
 
         ProfileTemplate(
             id: "drupal", title: "Drupal",
@@ -542,6 +577,7 @@ nonisolated extension ProfileTemplate {
             settings: {
                 var s = TemplateSettings()
                 s.engine = .nodeScript
+                s.nodeEntryFile = "server.cjs"
                 return s
             }()),
 

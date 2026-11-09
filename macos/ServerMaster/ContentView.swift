@@ -49,6 +49,11 @@ struct ContentView: View {
             model.reserver.releaseAll()
             model.saveSettings()
         }
+        .sheet(isPresented: Binding(get: { model.needsFirstSetup },
+                                    set: { if !$0 { model.completeFirstSetup() } })) {
+            FirstSetupSheet()
+                .environment(model)
+        }
     }
 
     // MARK: - Parts
@@ -248,10 +253,11 @@ struct ContentView: View {
             // A menu rather than a label: with several servers running, the one
             // name that used to be shown told you least about the others.
             Menu {
-                if model.activeProfiles.isEmpty {
+                let stoppable = model.profiles.filter { model.canStopServer($0.id) }
+                if stoppable.isEmpty {
                     Text("Nothing is running")
                 } else {
-                    ForEach(model.activeProfiles) { profile in
+                    ForEach(stoppable) { profile in
                         Menu(profile.name) {
                             Button("Open in the browser") {
                                 if let url = URL(string: profile.address) { NSWorkspace.shared.open(url) }

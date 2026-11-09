@@ -129,13 +129,14 @@ nonisolated enum PHPVersions {
 
     static func scan() -> [Installed] {
         let defaultBinary = ShellEnvironment.shared.which("php-fpm")
+        let defaultPath = defaultBinary.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
         var found: [Installed] = []
         for version in known {
             for prefix in ["/opt/homebrew/opt", "/usr/local/opt"] {
                 let path = "\(prefix)/php@\(version)/sbin/php-fpm"
                 if FileManager.default.isExecutableFile(atPath: path) {
                     found.append(Installed(version: version, binary: path,
-                                           isDefault: path == defaultBinary))
+                                           isDefault: URL(fileURLWithPath: path).resolvingSymlinksInPath().path == defaultPath))
                     break
                 }
             }
@@ -144,7 +145,8 @@ nonisolated enum PHPVersions {
         // often the same version as one already found through php@X.Y — listing
         // it again would show one version twice, each with its own buttons.
         if let defaultBinary, !found.contains(where: \.isDefault) {
-            let version = defaultVersion() ?? "?"
+            let resolved = URL(fileURLWithPath: defaultBinary).resolvingSymlinksInPath().path
+            let version = quickVersion(resolved.replacingOccurrences(of: "/sbin/php-fpm", with: "/bin/php")) ?? "?"
             if let index = found.firstIndex(where: { $0.version == version }) {
                 found[index].isDefault = true
             } else {
@@ -152,6 +154,16 @@ nonisolated enum PHPVersions {
             }
         }
         return found.sorted { $0.version < $1.version }
+    }
+
+    /// A fast check for validation in SwiftUI: inspect Homebrew's resolved
+    /// version path instead of running PHP on each edit of the profile.
+    static func matchesHomebrewPath(_ path: String, version: String,
+                                   canonical: (String) -> String = { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }) -> Bool {
+        let parts = canonical(path).split(separator: "/").map(String.init)
+        guard let index = parts.firstIndex(of: "Cellar"), parts.indices.contains(index + 2),
+              parts[index + 1] == "php" || parts[index + 1] == "php@" + version else { return false }
+        return parts[index + 2].split(separator: ".").prefix(2).joined(separator: ".") == version
     }
 
     /// Whether a specific binary's version matches the expected one.
@@ -168,19 +180,15 @@ nonisolated enum PHPVersions {
         return quickVersion(php)
     }
 
+    static func versionProbe(_ binary: String) -> ExecutableProbe.Result {
+        ExecutableProbe.run(binary, arguments: ["-r", "echo PHP_MAJOR_VERSION.\".\".PHP_MINOR_VERSION;"],
+                            environment: ShellEnvironment.shared.environment(), timeout: 2)
+    }
+
     private static func quickVersion(_ binary: String) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: binary)
-        process.arguments = ["-r", "echo PHP_MAJOR_VERSION.\".\".PHP_MINOR_VERSION;"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        process.environment = ShellEnvironment.shared.environment()
-        guard (try? process.run()) != nil else { return nil }
-        let data = (try? pipe.fileHandleForReading.readToEnd()) ?? nil
-        process.waitUntilExit()
-        let text = String(decoding: data ?? Data(), as: UTF8.self)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = versionProbe(binary)
+        guard result.succeeded else { return nil }
+        let text = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? nil : text
     }
 }
@@ -193,9 +201,11 @@ nonisolated enum PHPExtensions {
     static func installed(phpBinary: String? = nil) async -> Set<String> {
         let binary = phpBinary ?? ShellEnvironment.shared.which("php")
         guard let binary else { return [] }
-        let result = await ProcessRunner.run(binary, ["-m"], timeout: 20)
+        let result = await Task.detached(priority: .utility) {
+            ExecutableProbe.run(binary, arguments: ["-m"], environment: ShellEnvironment.shared.environment(), timeout: 20)
+        }.value
         guard result.succeeded else { return [] }
-        return Set(result.stdout
+        return Set(result.output
             .split(separator: "\n")
             .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
             .filter { !$0.isEmpty && !$0.hasPrefix("[") })
@@ -204,6 +214,38 @@ nonisolated enum PHPExtensions {
 
 @Observable
 final class DependencyChecker {
+
+    struct Probes {
+        var refreshEnvironment: () async -> Void = { await ShellEnvironment.shared.refresh() }
+        var dependency: @Sendable (Dependency) async -> DependencyStatus = { await DependencyChecker.check($0) }
+        var isExecutable: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
+        var canonical: (String) -> String = { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
+        var run: @MainActor (String, [String], TimeInterval) async -> CommandResult = {
+            await ProcessRunner.run($0, $1, timeout: $2)
+        }
+        var extensions: () async -> Set<String> = { await PHPExtensions.installed() }
+        var versions: () async -> [PHPVersions.Installed] = {
+            await Task.detached(priority: .utility) { PHPVersions.scan() }.value
+        }
+    }
+    private let probes: Probes
+    init(probes: Probes? = nil, runtimePackages: RuntimePackages? = nil) {
+        self.probes = probes ?? Probes()
+        self.runtimePackages = runtimePackages ?? RuntimePackages()
+    }
+
+    let runtimePackages: RuntimePackages
+    let nodeReleases = NodeReleases()
+    private(set) var isManagingPackages = false
+
+    func managePackages(_ operation: () async throws -> Void) async throws {
+        guard !isManagingPackages, !isChecking, installingPHP.isEmpty else {
+            throw RuntimePackages.Failure(message: String(localized: "Wait for the current dependency operation to finish."))
+        }
+        isManagingPackages = true
+        defer { isManagingPackages = false }
+        try await operation()
+    }
 
     private(set) var statuses: [String: DependencyStatus] = [:]
     private(set) var isChecking = false
@@ -231,19 +273,110 @@ final class DependencyChecker {
         engine.requiredTools.filter { !status(for: $0).installed }
     }
 
+    func missingTools(for profile: ServerProfile) -> [String] {
+        missingRequirements(for: profile).map(\.title)
+    }
+
+    func missingRequirements(for profile: ServerProfile, template: ProfileTemplate? = nil) -> [ProfileRequirement] {
+        ProfileRequirement.list(for: profile, template: template).filter { requirement in
+            if !requirement.phpVersion.isEmpty { return phpPath(for: requirement) == nil }
+            return !status(for: requirement.command).installed
+        }
+    }
+
+    private func phpPath(for requirement: ProfileRequirement) -> String? {
+        let command = requirement.command
+        let version = requirement.phpVersion
+        if version.isEmpty {
+            if let path = status(for: command).path { return path }
+            guard let item = phpVersions.first(where: \.isDefault) else { return nil }
+            return command == "php-fpm" ? item.binary : item.binary.replacingOccurrences(of: "/sbin/php-fpm", with: "/bin/php")
+        }
+        let folder = command == "php-fpm" ? "sbin" : "bin"
+        let candidates = ["/opt/homebrew/opt/php@\(version)/\(folder)/\(command)",
+                          "/usr/local/opt/php@\(version)/\(folder)/\(command)"]
+        if let path = candidates.first(where: probes.isExecutable) { return path }
+        // scan() has already checked the version of the unversioned formula.
+        for item in phpVersions where item.version == version {
+            let path = command == "php-fpm" ? item.binary : item.binary.replacingOccurrences(of: "/sbin/php-fpm", with: "/bin/php")
+            if probes.isExecutable(path) { return path }
+        }
+        return nil
+    }
+
+    func profilesUsingPHP(formula: String, profiles: [ServerProfile]) -> [ServerProfile] {
+        guard formula == "php" || formula.hasPrefix("php@") else { return [] }
+        return profiles.filter { profile in
+            guard profile.engine.runsPHP else { return false }
+            let version = profile.phpVersion.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !version.isEmpty, formula == "php@" + version { return true }
+            let command = profile.engine == .phpBuiltIn ? "php" : "php-fpm"
+            guard let path = phpPath(for: .init(command: command, phpVersion: version)) else {
+                return version.isEmpty && formula == "php"
+            }
+            let parts = probes.canonical(path).split(separator: "/").map(String.init)
+            if let index = parts.firstIndex(of: "Cellar"), parts.indices.contains(index + 1) {
+                return parts[index + 1] == formula
+            }
+            return path.contains("/opt/" + formula + "/")
+        }
+    }
+
+    func checkPHPRemoval(formula: String, profiles: [ServerProfile]) throws {
+        let users = profilesUsingPHP(formula: formula, profiles: profiles)
+        guard users.isEmpty else {
+            throw RuntimePackages.Failure(message: String(localized: "This PHP package is used by: \(users.map(\.name).joined(separator: ", ")). Change their PHP selection before removing it."))
+        }
+    }
+
+    func installMissing(for profile: ServerProfile, template: ProfileTemplate? = nil,
+                        log: ConsoleLog, canChange: () -> Bool) async throws {
+        try await managePackages {
+            guard canChange() else { throw RuntimePackages.Failure(message: String(localized: "Stop servers and the database before changing packages.")) }
+            await checkAll()
+            var missing = missingRequirements(for: profile, template: template)
+            // npm is needed to install http-server even if an imported template
+            // did not list the package manager itself.
+            if missing.contains(where: { $0.command == "http-server" }), !status(for: "npm").installed,
+               !missing.contains(where: { $0.command == "npm" }) { missing.insert(.init(command: "npm"), at: 0) }
+            let order = ["node", "npm", "php", "php-fpm", "python3", "mariadbd", "nginx", "httpd", "caddy", "http-server"]
+            missing.sort { (order.firstIndex(of: $0.command) ?? 99) < (order.firstIndex(of: $1.command) ?? 99) }
+            for requirement in missing {
+                try Task.checkCancellation()
+                guard canChange() else { throw RuntimePackages.Failure(message: String(localized: "Stop servers and the database before changing packages.")) }
+                // Recheck after each install: one package may provide multiple tools.
+                guard missingRequirements(for: profile, template: template).contains(requirement)
+                        || (requirement.command == "npm" && !status(for: "npm").installed) else { continue }
+                if !requirement.phpVersion.isEmpty {
+                    guard await installPHPUnlocked(version: requirement.phpVersion, log: log) else {
+                        throw RuntimePackages.Failure(message: String(localized: "PHP \(requirement.phpVersion) did not install. The log above says why."))
+                    }
+                } else {
+                    _ = try await runtimePackages.perform(command: requirement.command, action: .install, log: log)
+                }
+                await checkAll()
+            }
+            let remaining = missingRequirements(for: profile, template: template)
+            guard remaining.isEmpty else {
+                throw RuntimePackages.Failure(message: String(localized: "Not installed: \(remaining.map(\.title).joined(separator: ", "))"))
+            }
+        }
+    }
+
     func checkAll() async {
         guard !isChecking else { return }
         isChecking = true
-        ShellEnvironment.shared.invalidate()
+        await probes.refreshEnvironment()
 
         for dependency in Dependency.catalog {
             statuses[dependency.command, default: DependencyStatus()].checking = true
         }
 
+        let probe = probes.dependency
         await withTaskGroup(of: (String, DependencyStatus).self) { group in
             for dependency in Dependency.catalog {
                 group.addTask {
-                    (dependency.command, await Self.check(dependency))
+                    (dependency.command, await probe(dependency))
                 }
             }
             for await (command, status) in group {
@@ -251,28 +384,32 @@ final class DependencyChecker {
             }
         }
 
-        phpExtensions = await PHPExtensions.installed()
-        phpVersions = PHPVersions.scan()
+        phpExtensions = await probes.extensions()
+        phpVersions = await probes.versions()
         lastCheck = Date()
         isChecking = false
     }
 
     func check(command: String) async {
+        guard !isChecking, !status(for: command).checking else { return }
         guard let dependency = Dependency.byCommand(command) else { return }
         statuses[command, default: DependencyStatus()].checking = true
-        statuses[command] = await Self.check(dependency)
+        statuses[command] = await probes.dependency(dependency)
     }
 
     private nonisolated static func check(_ dependency: Dependency) async -> DependencyStatus {
         guard let path = ShellEnvironment.shared.which(dependency.command) else {
             return DependencyStatus(installed: false, path: nil, version: nil, checking: false)
         }
-        let result = await ProcessRunner.run(path, dependency.versionArguments, timeout: 15)
-        let raw = result.combined
+        let result = await Task.detached(priority: .utility) {
+            ExecutableProbe.run(path, arguments: dependency.versionArguments,
+                                environment: ShellEnvironment.shared.environment(), timeout: 15, includeStandardError: true)
+        }.value
+        let raw = result.succeeded ? result.output : ""
         let version = raw
             .split(separator: "\n")
             .first
-            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .map { String($0.prefix(256)).trimmingCharacters(in: .whitespaces) }
         return DependencyStatus(installed: true, path: path, version: version, checking: false)
     }
 
@@ -281,12 +418,19 @@ final class DependencyChecker {
     /// needs and being told to go and type a brew command is a poor answer when
     /// the app already knows how to run brew.
     func installPHP(version: String, log: ConsoleLog) async -> Bool {
+        guard !isManagingPackages, installingPHP.isEmpty else { return false }
+        isManagingPackages = true
+        defer { isManagingPackages = false }
+        return await installPHPUnlocked(version: version, log: log)
+    }
+
+    private func installPHPUnlocked(version: String, log: ConsoleLog) async -> Bool {
         let wanted = version.trimmingCharacters(in: .whitespaces)
         guard PHPVersions.known.contains(wanted) else {
             log.append(String(localized: "PHP \(wanted) is not a version Homebrew offers."), stream: .stderr)
             return false
         }
-        guard ShellEnvironment.shared.which("brew") != nil else {
+        guard status(for: "brew").installed || ShellEnvironment.shared.which("brew") != nil else {
             log.append(String(localized: "Homebrew is not installed — see the Dependencies screen."), stream: .stderr)
             return false
         }
@@ -295,12 +439,12 @@ final class DependencyChecker {
         defer { installingPHP.remove(wanted) }
 
         log.system(String(localized: "Installing PHP \(wanted). This takes a few minutes."))
-        let result = await ProcessRunner.shell("brew install php@\(wanted)", timeout: 1800)
+        let result = await probes.run("brew", ["install", "--formula", "php@\(wanted)"], 1800)
         if !result.stdout.isEmpty { log.append(result.stdout, stream: .stdout) }
         if !result.stderr.isEmpty { log.append(result.stderr, stream: .stderr) }
 
-        phpVersions = PHPVersions.scan()
-        let ok = phpVersions.contains { $0.version == wanted }
+        phpVersions = await probes.versions()
+        let ok = result.succeeded && phpVersions.contains { $0.version == wanted }
         log.system(ok
                    ? String(localized: "PHP \(wanted) is ready.")
                    : String(localized: "PHP \(wanted) did not install. The log above says why."))
@@ -309,20 +453,28 @@ final class DependencyChecker {
 
     /// Removes a version. Never touches the plain `php` formula: that is the one
     /// the rest of the system is probably using.
-    func uninstallPHP(version: String, log: ConsoleLog) async -> Bool {
+    func uninstallPHP(version: String, profiles: [ServerProfile], log: ConsoleLog, canChange: () -> Bool) async -> Bool {
+        guard !isManagingPackages, installingPHP.isEmpty else { return false }
+        isManagingPackages = true
+        defer { isManagingPackages = false }
         let wanted = version.trimmingCharacters(in: .whitespaces)
-        guard PHPVersions.known.contains(wanted) else { return false }
+        guard PHPVersions.known.contains(wanted), canChange() else { return false }
+        do { try checkPHPRemoval(formula: "php@" + wanted, profiles: profiles) }
+        catch { log.append(error.localizedDescription, stream: .stderr); return false }
         installingPHP.insert(wanted)
         defer { installingPHP.remove(wanted) }
 
         log.system(String(localized: "Removing PHP \(wanted)…"))
-        let result = await ProcessRunner.shell("brew uninstall --ignore-dependencies php@\(wanted)", timeout: 900)
+        let result = await probes.run("brew", ["uninstall", "--formula", "php@\(wanted)"], 900)
         if !result.combined.isEmpty { log.append(result.combined, stream: .stdout) }
-        phpVersions = PHPVersions.scan()
-        return !phpVersions.contains { $0.version == wanted }
+        phpVersions = await probes.versions()
+        return result.succeeded && !phpVersions.contains { $0.version == wanted }
     }
 
     func install(_ dependency: Dependency, log: ConsoleLog) async {
+        guard !isManagingPackages, installingPHP.isEmpty else { return }
+        isManagingPackages = true
+        defer { isManagingPackages = false }
         log.system(String(localized: "Installing \(dependency.title): \(dependency.installCommand)"))
         let result = await ProcessRunner.shell(dependency.installCommand, timeout: 900)
         if !result.stdout.isEmpty { log.append(result.stdout, stream: .stdout) }

@@ -36,8 +36,10 @@ final class TemplateStore {
         }
     }
 
-    private var storeURL: URL {
-        AppPaths.support.appendingPathComponent("templates.json")
+    private let storeURL: URL
+
+    init(storeURL: URL = AppPaths.support.appendingPathComponent("templates.json")) {
+        self.storeURL = storeURL
     }
 
     // MARK: - Loading and saving
@@ -58,39 +60,47 @@ final class TemplateStore {
         }
     }
 
-    private func save() {
+    private func save(_ templates: [ProfileTemplate]) throws {
+        guard !loadFailed else { throw TemplateError.unreadable }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(userTemplates) else { return }
-        AppPaths.ensure(AppPaths.support)
-        try? data.write(to: storeURL, options: .atomic)
+        let data = try encoder.encode(templates)
+        try FileManager.default.createDirectory(at: storeURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: storeURL, options: .atomic)
+        userTemplates = templates
     }
 
     // MARK: - Changing the list
 
     @discardableResult
-    func add(_ template: ProfileTemplate) -> ProfileTemplate {
-        var copy = template
-        copy.isUserDefined = true
-        // Two templates with the same id would make the gallery ambiguous.
-        if all.contains(where: { $0.id == copy.id }) {
-            copy.id = copy.id + "." + UUID().uuidString.prefix(4).lowercased()
-        }
-        userTemplates.append(copy)
-        save()
-        return copy
+    func add(_ template: ProfileTemplate) throws -> ProfileTemplate {
+        let copies = uniqueCopies([template])
+        try save(userTemplates + copies)
+        return copies[0]
     }
 
-    func remove(_ template: ProfileTemplate) {
+    func remove(_ template: ProfileTemplate) throws {
         guard template.isUserDefined else { return }
-        userTemplates.removeAll { $0.id == template.id }
-        save()
+        try save(userTemplates.filter { $0.id != template.id })
     }
 
-    func rename(_ template: ProfileTemplate, to title: String) {
+    func rename(_ template: ProfileTemplate, to title: String) throws {
         guard let index = userTemplates.firstIndex(where: { $0.id == template.id }) else { return }
-        userTemplates[index].title = title
-        save()
+        var updated = userTemplates
+        updated[index].title = title
+        try save(updated)
+    }
+
+    private func uniqueCopies(_ incoming: [ProfileTemplate]) -> [ProfileTemplate] {
+        var ids = Set(all.map(\.id))
+        return incoming.map { template in
+            var copy = template
+            copy.isUserDefined = true
+            while !ids.insert(copy.id).inserted {
+                copy.id = template.id + "." + UUID().uuidString.prefix(8).lowercased()
+            }
+            return copy
+        }
     }
 
     // MARK: - Files
@@ -131,7 +141,13 @@ final class TemplateStore {
     /// Reads a file that holds either a single template or a list of them.
     @discardableResult
     func importTemplates(from url: URL) throws -> [ProfileTemplate] {
-        guard let data = try? Data(contentsOf: url) else { throw TemplateError.unreadable }
+        let data: Data
+        do {
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            data = try handle.read(upToCount: 1024 * 1024 + 1) ?? Data()
+        } catch { throw TemplateError.unreadable }
+        guard data.count <= 1024 * 1024 else { throw TemplateError.wrongContents }
         let decoder = JSONDecoder()
         // Accept the Windows shape too: it stores nodeEntryFile next to
         // `settings`, whereas macOS stores it in `settings`.
@@ -147,29 +163,30 @@ final class TemplateStore {
         }
         guard !incoming.isEmpty else { throw TemplateError.wrongContents }
 
-        return incoming.map { add($0) }
+        let copies = uniqueCopies(incoming)
+        try save(userTemplates + copies)
+        return copies
     }
 
     static let fileExtension = "smtemplate"
 
-    /// Normalise the one historic schema difference between the macOS and
-    /// Windows template files before decoding it into the current macOS model.
+    /// Normalise top-level Windows launch fields into the nested macOS
+    /// settings. Explicit nested values win when both representations exist.
     private func portableTemplateData(from data: Data, exporting: Bool) throws -> Data {
         let object = try JSONSerialization.jsonObject(with: data)
 
         func normalise(_ value: Any) -> Any {
             guard var template = value as? [String: Any] else { return value }
             var settings = template["settings"] as? [String: Any] ?? [:]
-            let nestedEntry = settings["nodeEntryFile"] as? String
-            let topLevelEntry = template["nodeEntryFile"] as? String
-
-            if exporting, let nestedEntry, !nestedEntry.isEmpty {
-                template["nodeEntryFile"] = nestedEntry
+            for key in ["nodeEntryFile", "customCommand", "customArguments"] {
+                let nested = settings[key] as? String
+                let topLevel = template[key] as? String
+                if exporting, let nested { template[key] = nested }
+                if !exporting, nested == nil, let topLevel {
+                    settings[key] = topLevel
+                }
             }
-            if !exporting, (nestedEntry?.isEmpty ?? true), let topLevelEntry, !topLevelEntry.isEmpty {
-                settings["nodeEntryFile"] = topLevelEntry
-                template["settings"] = settings
-            }
+            template["settings"] = settings
             return template
         }
 

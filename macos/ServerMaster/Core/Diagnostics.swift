@@ -54,7 +54,9 @@ final class Diagnostics {
 
     var problems: [Finding] { findings.filter { $0.level >= .warning } }
 
-    func run(profiles: [ServerProfile], database: DatabaseService) async {
+    func run(profiles: [ServerProfile], database: DatabaseService,
+             states: [UUID: ServerState] = [:]) async {
+        guard !isRunning else { return }
         isRunning = true
         defer { isRunning = false; lastRun = Date() }
 
@@ -68,6 +70,10 @@ final class Diagnostics {
         found += await binaries()
         found += await databaseHealth(database)
         found += folders(profiles: profiles)
+        for profile in profiles {
+            found += await ProfileDiagnostics.check(profile, state: states[profile.id] ?? .stopped,
+                                                    databaseRunning: database.state == .running)
+        }
         found += appData()
 
         findings = found.sorted { ($0.level, $0.group) > ($1.level, $1.group) }
@@ -591,11 +597,11 @@ final class Diagnostics {
 
     // MARK: - Site folders
 
-    private func folders(profiles: [ServerProfile]) -> [Finding] {
+    func folders(profiles: [ServerProfile]) -> [Finding] {
         var out: [Finding] = []
         let manager = FileManager.default
 
-        for profile in profiles {
+        for profile in profiles where profile.engine.usesRootDirectory {
             let root = AppPaths.expand(profile.rootPath)
             var isDirectory: ObjCBool = false
 
@@ -652,16 +658,26 @@ final class Diagnostics {
         var out: [Finding] = []
 
         for (name, url) in [("Profiles", AppPaths.profilesFile), ("Settings", AppPaths.settingsFile)] {
+            guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
+                out.append(Finding(id: "data-\(name)", group: "App data", title: name,
+                                   detail: String(localized: "The saved file is missing or cannot be read."), level: .warning))
+                continue
+            }
+            guard size <= 4 * 1024 * 1024 else {
+                out.append(Finding(id: "data-\(name)", group: "App data", title: name,
+                                   detail: String(localized: "The configuration exceeds the 4 MB inspection limit. Back it up before repairing it."), level: .warning))
+                continue
+            }
             guard let data = try? Data(contentsOf: url) else { continue }
-            let readable = (try? JSONSerialization.jsonObject(with: data)) != nil
+            let object = try? JSONSerialization.jsonObject(with: data)
+            let readable = name == "Profiles" ? object is [Any] : object is [String: Any]
             out.append(Finding(id: "data-\(name)", group: "App data",
                                title: name,
                                detail: readable
                                 ? String(localized: "\(data.count) bytes, readable.")
-                                : String(localized: "\(data.count) bytes and not valid JSON."),
+                                : String(localized: "The configuration is invalid JSON or has an unexpected structure."),
                                level: readable ? .fine : .broken,
-                               remedy: readable ? "" : String(localized: "The file is damaged. Move it aside; the app will start fresh."),
-                               command: readable ? nil : "mv \(url.path) \(url.path).broken"))
+                               remedy: readable ? "" : String(localized: "Back up this file before repairing it. Diagnostics has not replaced it.")))
         }
 
         let shared = AppPaths.shared.appendingPathComponent("status.json")

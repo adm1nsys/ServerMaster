@@ -20,6 +20,7 @@ import AppKit
 struct FileEditorSheet: View {
 
     let url: URL
+    var access: SiteFileAccess? = nil
     var onSaved: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
@@ -28,6 +29,11 @@ struct FileEditorSheet: View {
     @State private var problem: String?
     @State private var saving = false
     @State private var wrapping = false
+    @State private var document: TextFileDocument?
+    @State private var confirmDiscard = false
+    @State private var discardAction = DiscardAction.close
+
+    private enum DiscardAction { case close, revert, reload }
 
     private var changed: Bool { text != original }
 
@@ -36,16 +42,28 @@ struct FileEditorSheet: View {
             header
             Divider()
 
-            CodeEditor(text: $text,
+            if document != nil {
+                CodeEditor(text: $text,
                        syntax: Syntax.forFile(url.lastPathComponent),
                        wrapping: wrapping)
+                    .disabled(saving)
+                    .frame(minWidth: 700, minHeight: 420)
+            } else {
+                ContentUnavailableView("Could not open the file", systemImage: "doc.questionmark",
+                                       description: Text(problem ?? ""))
                 .frame(minWidth: 700, minHeight: 420)
+            }
 
             Divider()
             footer
         }
         .frame(width: 860, height: 620)
         .task { load() }
+        .interactiveDismissDisabled(changed || saving)
+        .confirmationDialog("Discard unsaved changes?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+            Button("Discard changes", role: .destructive) { discard() }
+            Button("Keep editing", role: .cancel) { }
+        }
     }
 
     private var header: some View {
@@ -64,6 +82,10 @@ struct FileEditorSheet: View {
             if changed {
                 Text("edited").font(.caption).foregroundStyle(.orange)
             }
+            if let document { Text(document.format.label).font(.caption).foregroundStyle(.secondary) }
+            Button { request(.reload) } label: { Image(systemName: "arrow.clockwise") }
+                .help("Reload from disk")
+                .disabled(saving)
             Toggle("Wrap", isOn: $wrapping)
                 .toggleStyle(.button)
                 .controlSize(.small)
@@ -84,50 +106,55 @@ struct FileEditorSheet: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Revert") { text = original }
-                .disabled(!changed)
-            Button("Close") { dismiss() }
+            Button("Revert") { request(.revert) }
+                .disabled(!changed || saving)
+            Button("Close") { request(.close) }
+                .keyboardShortcut(.cancelAction)
+                .disabled(saving)
             Button("Save") { save() }
                 .keyboardShortcut("s")
-                .disabled(!changed || saving)
+                .disabled(!changed || saving || document == nil)
         }
         .padding(12)
     }
 
     private func load() {
+        guard !saving else { return }
         do {
-            // Not every config file is UTF-8. A Joomla configuration.php written
-            // years ago may not be, and refusing to open it is unhelpful when
-            // the alternative is reading it as Latin-1 and saying so.
-            let data = try Data(contentsOf: url)
-            if let utf8 = String(data: data, encoding: .utf8) {
-                text = utf8
-            } else if let latin = String(data: data, encoding: .isoLatin1) {
-                text = latin
-                problem = String(localized: "This file is not UTF-8. It was read as Latin-1 and will be saved as UTF-8.")
-            } else {
-                problem = String(localized: "This does not look like a text file.")
-            }
+            let loaded = try TextFileDocument.load(url, access: access)
+            document = loaded
+            text = loaded.text
             original = text
+            problem = nil
         } catch {
+            document = nil
+            text = ""
+            original = ""
             problem = error.localizedDescription
         }
     }
 
+    private func request(_ action: DiscardAction) {
+        guard !saving else { return }
+        discardAction = action
+        if changed { confirmDiscard = true } else { discard() }
+    }
+
+    private func discard() {
+        switch discardAction {
+        case .close: dismiss()
+        case .revert: text = original
+        case .reload: load()
+        }
+    }
+
     private func save() {
+        guard !saving, changed, var loaded = document else { return }
         saving = true
         defer { saving = false }
         do {
-            // Written through a temporary file in the same folder and swapped in,
-            // so a server reading it never sees a half-written config.
-            let temporary = url.deletingLastPathComponent()
-                .appendingPathComponent(".\(url.lastPathComponent).servermaster-tmp")
-            try Data(text.utf8).write(to: temporary, options: .atomic)
-            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
-            _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary)
-            if let permissions = attributes?[.posixPermissions] {
-                try? FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: url.path)
-            }
+            try loaded.save(text)
+            document = loaded
             original = text
             problem = nil
             onSaved?()
@@ -200,6 +227,7 @@ private struct CodeEditor: NSViewRepresentable {
         guard let textView = scroll.documentView as? NSTextView else { return scroll }
 
         textView.delegate = context.coordinator
+        textView.isEditable = context.environment.isEnabled
         textView.isRichText = false
         textView.allowsUndo = true
         textView.isAutomaticQuoteSubstitutionEnabled = false
@@ -228,6 +256,7 @@ private struct CodeEditor: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let textView = scroll.documentView as? NSTextView else { return }
+        textView.isEditable = context.environment.isEnabled
         context.coordinator.applyWrapping(wrapping, to: textView, in: scroll)
 
         if textView.string != text {

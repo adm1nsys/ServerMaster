@@ -26,7 +26,8 @@ struct DiagnosticsView: View {
                               subtitle: "What is wrong when everything looks installed") {
                     Button {
                         Task { await model.diagnostics.run(profiles: model.profiles,
-                                                           database: model.database) }
+                                                           database: model.database,
+                                                           states: model.servers.mapValues(\.state)) }
                     } label: {
                         Label("Check again", systemImage: "arrow.clockwise")
                     }
@@ -65,7 +66,8 @@ struct DiagnosticsView: View {
         }
         .task {
             if model.diagnostics.lastRun == nil {
-                await model.diagnostics.run(profiles: model.profiles, database: model.database)
+                await model.diagnostics.run(profiles: model.profiles, database: model.database,
+                                            states: model.servers.mapValues(\.state))
             }
         }
     }

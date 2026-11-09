@@ -53,11 +53,11 @@ nonisolated enum ProcessRunner {
 
     /// Running with administrator rights through the macOS system dialog.
     /// The password is typed into a system window — the application never sees it.
-    static func runAsAdmin(_ command: String, prompt: String) async -> CommandResult {
+    static func runAsAdmin(_ command: String, prompt: String, timeout: TimeInterval = 300) async -> CommandResult {
         let script = "do shell script \(appleScriptQuote(command))"
             + " with prompt \(appleScriptQuote(prompt))"
             + " with administrator privileges"
-        return await run("/usr/bin/osascript", ["-e", script], timeout: 300)
+        return await run("/usr/bin/osascript", ["-e", script], timeout: timeout)
     }
 
     // MARK: - Escaping

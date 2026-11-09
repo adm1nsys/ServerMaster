@@ -30,21 +30,25 @@ struct ProfileEditorView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                header
-                generalSection
-                if draft.engine.usesRootDirectory { directoriesSection }
-                if draft.engine == .nodeScript { nodeSection }
-                if draft.engine == .custom { customSection }
-                if draft.engine.usesConfigFile { configSection }
-                configFilesSection
-                if draft.engine.supportsHTTPS { httpsSection }
-                if draft.engine.usesRootDirectory { permissionsSection }
-                if draft.engine.runsPHP { phpSection }
-                if isStaticEngine { staticOptionsSection }
-                securitySection
-                errorPagesSection
-                environmentSection
-                notesSection
+                header.disabled(model.recipePreparations[draft.id]?.isWorking == true)
+                ProfileRecipeView(profile: draft)
+                Group {
+                    generalSection
+                    if draft.engine.usesRootDirectory { directoriesSection }
+                    if draft.engine == .nodeScript { nodeSection }
+                    if draft.engine == .custom { customSection }
+                    if draft.engine.usesConfigFile { configSection }
+                    configFilesSection
+                    if draft.engine.supportsHTTPS { httpsSection }
+                    if draft.engine.usesRootDirectory { permissionsSection }
+                    if draft.engine.runsPHP { phpSection }
+                    if isStaticEngine { staticOptionsSection }
+                    securitySection
+                    errorPagesSection
+                    environmentSection
+                    notesSection
+                }
+                .disabled(model.recipePreparations[draft.id]?.isWorking == true)
             }
             .padding(15)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -53,6 +57,9 @@ struct ProfileEditorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environment(\.cardStyle, .inset)
         .modifier(FullHeightGlass())
+        .onChange(of: model.profiles.first(where: { $0.id == draft.id })?.databaseName) { _, name in
+            if let name, draft.databaseName != name { draft.databaseName = name }
+        }
         .onChange(of: draft) { _, newValue in
             model.updateProfile(newValue)
         }
@@ -198,15 +205,8 @@ struct ProfileEditorView: View {
                 }
             }
 
-            let missing = model.dependencies.missingTools(for: draft.engine)
-            if !missing.isEmpty {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    Text("Not installed: \(missing.joined(separator: ", "))").font(.caption)
-                    Button("Open dependencies") { model.section = .dependencies }
-                        .modifier(EditorChip()).font(.caption)
-                }
-            }
+            Toggle("Start MariaDB with this profile", isOn: $draft.needsDatabase)
+            ProfileRequirementsView(profile: draft)
 
             Divider()
 
@@ -450,7 +450,7 @@ struct ProfileEditorView: View {
     private func finishGenerating(_ starter: StarterFile, at url: URL) {
         // A Node.js profile points at its entry file by name; generating one and
         // leaving the profile pointing elsewhere would be a puzzle.
-        if draft.engine == .nodeScript, starter.fileName.hasSuffix(".js") {
+        if draft.engine == .nodeScript, starter.id != "package.json" {
             draft.nodeEntryFile = starter.fileName
         }
         if let note = starter.afterNote {
@@ -613,9 +613,7 @@ struct ProfileEditorView: View {
     /// find the cure in another window.
     @ViewBuilder
     private var trustRow: some View {
-        let current = model.certificates.certificates.first {
-            AppPaths.expand($0.certificatePath) == AppPaths.expand(draft.certificatePath)
-        }
+        let assessment = TLSValidation.check(draft)
 
         VStack(alignment: .leading, spacing: 6) {
             if preparingCertificate {
@@ -624,8 +622,11 @@ struct ProfileEditorView: View {
                     Text("Preparing a trusted certificate. macOS may ask for your password.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-            } else if let current, model.certificates.isTrusted(current) {
-                Label("Browsers trust this certificate — no warning.", systemImage: "checkmark.seal.fill")
+            } else if !draft.certificatePath.isEmpty, !assessment.issues.isEmpty {
+                Label(assessment.issues.joined(separator: "\n"), systemImage: "xmark.seal.fill")
+                    .font(.caption).foregroundStyle(.red)
+            } else if assessment.systemTrusted {
+                Label("macOS trusts this certificate for this host.", systemImage: "checkmark.seal.fill")
                     .font(.caption).foregroundStyle(.green)
             } else {
                 HStack(alignment: .top, spacing: 8) {
@@ -634,7 +635,9 @@ struct ProfileEditorView: View {
                     VStack(alignment: .leading, spacing: 5) {
                         Text(draft.certificatePath.isEmpty
                              ? String(localized: "No certificate yet. HTTPS will not start without one.")
-                             : String(localized: "This certificate is self-signed, so the browser shows a warning every time."))
+                             : assessment.selfIssued
+                                ? String(localized: "This certificate is self-issued and is not trusted by the system.")
+                                : String(localized: "This certificate is not trusted by the system. Check its chain and local trust settings."))
                             .font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
 
@@ -774,17 +777,21 @@ struct ProfileEditorView: View {
 
             if let report = permissions {
                 if report.isClean {
-                    Label(report.truncated
-                          ? "No problems among the first \(report.checkedCount) files."
-                          : "Permissions are fine: \(report.checkedCount) files checked.",
+                    Label("Permissions are fine: \(report.checkedCount) files checked.",
                           systemImage: "checkmark.circle.fill")
                         .font(.caption).foregroundStyle(.green)
                         .fixedSize(horizontal: false, vertical: true)
-                } else {
+                } else if !report.problems.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                        Label("Problems: \(report.problems.count) of \(report.checkedCount) checked",
-                              systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption).foregroundStyle(.orange)
+                        Group {
+                            if report.checkedCount == 0 {
+                                Label("The project folder could not be checked.", systemImage: "exclamationmark.triangle.fill")
+                            } else {
+                                Label("Problems: \(report.problems.count) of \(report.checkedCount) checked",
+                                      systemImage: "exclamationmark.triangle.fill")
+                            }
+                        }
+                        .font(.caption).foregroundStyle(.orange)
 
                         ForEach(report.problems.prefix(6)) { problem in
                             HStack(spacing: 6) {
@@ -809,7 +816,7 @@ struct ProfileEditorView: View {
 
                         HStack(spacing: 10) {
                             Button("Fix permissions") { fixPermissions(asAdmin: false) }
-                                .disabled(fixingPermissions)
+                                .disabled(fixingPermissions || !report.canFixPermissions)
                             if report.needsAdmin {
                                 Button("Take ownership…") { fixPermissions(asAdmin: true) }
                                     .disabled(fixingPermissions)
@@ -823,6 +830,15 @@ struct ProfileEditorView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
+                }
+                if report.truncated {
+                    Label("Permissions check stopped after \(report.checkedCount) files. Some files were not checked.",
+                          systemImage: "exclamationmark.triangle")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+                if report.skippedLinks > 0 {
+                    Text("Symbolic links skipped: \(report.skippedLinks)")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
@@ -954,7 +970,7 @@ struct ProfileEditorView: View {
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if draft.engine.typicallyNeedsDatabase {
+            if draft.needsDatabase {
                 Divider()
                 HStack(spacing: 8) {
                     Image(systemName: model.database.state == .running ? "checkmark.circle.fill" : "cylinder")

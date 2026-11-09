@@ -5,6 +5,7 @@
 
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct ProfilesView: View {
 
@@ -18,6 +19,15 @@ struct ProfilesView: View {
         VStack(spacing: 0) {
             ScreenTitle(title: "Profiles",
                         subtitle: "^[\(model.profiles.count) profile](inflect: true), and what each one serves") {
+                Button("Import profiles…") { importProfiles() }
+                    .modifier(GlassStyle())
+                Menu("Export") {
+                    Button("Export selected profile…") { exportProfiles(selectedOnly: true) }
+                        .disabled(model.selectedProfile == nil)
+                    Button("Export all profiles…") { exportProfiles(selectedOnly: false) }
+                        .disabled(model.profiles.isEmpty)
+                }
+                .modifier(GlassStyle())
                 Button {
                     showNewProfile = true
                 } label: {
@@ -80,7 +90,7 @@ struct ProfilesView: View {
                     profileRow(profile)
                         .tag(profile.id)
                         .contextMenu {
-                            if model.isActive(profile.id) {
+                            if model.canStopServer(profile.id) {
                                 Button("Restart") { Task { await model.restartServer(profile: profile) } }
                                 Button("Stop") { Task { await model.stopServer(profileID: profile.id) } }
                                 Button("Open in the browser") {
@@ -193,7 +203,7 @@ struct ProfilesView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            if model.isActive(profile.id) {
+            if model.canStopServer(profile.id) {
                 Button {
                     Task { await model.restartServer(profile: profile) }
                 } label: {
@@ -223,5 +233,23 @@ struct ProfilesView: View {
         var candidate = 8080
         while used.contains(candidate) { candidate += 1 }
         return candidate
+    }
+
+    private func importProfiles() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        model.importProfiles(from: url)
+    }
+
+    private func exportProfiles(selectedOnly: Bool) {
+        let profiles = selectedOnly ? model.selectedProfile.map { [$0] } ?? [] : model.profiles
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "ServerMaster-profiles.json"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do { try ProfileTransfer.data(profiles).write(to: url, options: .atomic) }
+        catch { model.notify(error.localizedDescription, isError: true) }
     }
 }
