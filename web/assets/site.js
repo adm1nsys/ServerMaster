@@ -155,10 +155,10 @@ function renderPlatform(platform) {
   });
   table.append(header);
 
-  if (platform.releases.length) {
-    [...platform.releases]
-      .sort((left, right) => right.date.localeCompare(left.date))
-      .forEach(release => {
+  const releases = [...platform.releases].sort((left, right) => right.date.localeCompare(left.date));
+  if (platform.downloadPlaceholder) releases.unshift(platform.downloadPlaceholder);
+  if (releases.length) {
+    releases.forEach(release => {
       const row = element("div", "finder-row");
       row.setAttribute("role", "row");
       const name = element("span", "finder-name");
@@ -170,18 +170,26 @@ function renderPlatform(platform) {
       name.append(icon, element("strong", "", platform.name));
       const version = element("span", "", release.version);
       const build = element("span", "finder-mono", release.build || "—");
-      const date = element("span", "finder-date", new Intl.DateTimeFormat("en", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(release.date + "T00:00:00Z")));
+      const date = element("span", "finder-date", release.date ? new Intl.DateTimeFormat("en", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(release.date + "T00:00:00Z")) : "—");
       const action = element("span", "finder-action");
-      const application = release.assets.find(asset => asset.kind === "application");
-      action.append(safeLink("Download", application.url, "finder-button"));
+      const assets = release.assets || [];
+      const application = assets.find(asset => asset.kind === "application");
+      if (application) {
+        action.append(safeLink("Download", application.url, "finder-button"));
+      } else {
+        const button = element("button", "finder-button", "Download");
+        button.type = "button";
+        button.disabled = true;
+        action.append(button);
+      }
       [name, version, build, date, action].forEach(cell => { cell.setAttribute("role", "cell"); row.append(cell); });
       table.append(row);
 
       const extras = element("div", "finder-extras");
       const facts = element("span", "", release.requirements + " · " + release.architecture + " · " + release.format);
       const links = element("span", "finder-extra-links");
-      release.assets.filter(asset => asset.kind !== "application").forEach(asset => links.append(safeLink(asset.label, asset.url)));
-      links.append(safeLink("Release notes", release.notesUrl));
+      assets.filter(asset => asset.kind !== "application").forEach(asset => links.append(safeLink(asset.label, asset.url)));
+      if (release.notesUrl) links.append(safeLink("Release notes", release.notesUrl));
       extras.append(facts, links);
       table.append(extras);
       if (release.signed === false) table.append(element("p", "finder-warning", platform.id === "windows"

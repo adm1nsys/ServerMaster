@@ -140,7 +140,16 @@
             }
           ]
         }
-      ]
+      ],
+      "downloadPlaceholder": {
+        "version": "2.1.0",
+        "build": "arm.m27.3b.x27.3b1.uni",
+        "requirements": "macOS 14 or later",
+        "architecture": "Apple Silicon + Intel",
+        "format": "Universal · ZIP",
+        "signed": false,
+        "date": "2026-11-09"
+      }
     },
     {
       "id": "cli",

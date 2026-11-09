@@ -169,3 +169,6 @@ h2,h3,.brand,.engine-strip{letter-spacing:0}
 
 /* the tilted screenshot stack must not widen the page on phones */
 @media(max-width:640px){.hero{overflow-x:clip}}
+
+.finder-button:disabled{border:0;cursor:default;font-family:inherit;line-height:inherit}
+.finder-button:disabled:hover{background:#6966d7}

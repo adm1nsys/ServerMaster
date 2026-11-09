@@ -9,8 +9,8 @@
   <link rel="icon" href="favicon.ico?v=2" sizes="any">
   <link rel="icon" type="image/png" href="assets/icon.png?v=2">
   <link rel="apple-touch-icon" href="assets/icon.png?v=2">
-  <link rel="stylesheet" href="assets/site.css?v=20261105">
-  <link rel="stylesheet" href="assets/wiki.css?v=20260912">
+  <link rel="stylesheet" href="assets/site.css?v=20261108-2">
+  <link rel="stylesheet" href="assets/wiki.css?v=20261108-2">
   <title>Wiki — ServerMaster</title>
 </head>
 <body>
@@ -39,6 +39,7 @@
         <a href="#ports">Port conflicts</a>
         <a href="#logs">Logs and checks</a>
         <a href="#versions">Versions and support</a>
+        <a href="#builds">Mac build identifiers</a>
       </nav>
     </aside>
     <main id="guide" class="wiki-content">
@@ -119,6 +120,44 @@
         <p>ServerMaster is developed as one repository with platform-specific deliverables. Published source states are identified by Git tags; compiled archives remain attached to GitHub Releases.</p>
         <ul class="check-list"><li>macOS application downloads list the required macOS version and supported architecture.</li><li>The shared Swift CLI targets macOS and Linux, with glibc and musl builds planned.</li><li>The Windows interface will have its own release version and requirements.</li><li>Older published builds remain available for rollback.</li></ul>
         <p><a class="button button-primary" href="./#downloads">Open the release catalog <span aria-hidden="true">↗</span></a></p>
+      </section>
+      <section id="builds" class="guide-section">
+        <p class="guide-index">11 · BUILD LABELS</p><h2>Read a Mac build identifier</h2>
+        <p>The application version, such as <code>2.1.0</code>, identifies the ServerMaster release. Its separate build label describes the machine and tools used to compile that particular binary.</p>
+        <h3>Current format</h3>
+        <div class="code-card"><span>Current build label</span><code>arm.m27.3b.x27.3b1.uni</code></div>
+        <div class="build-table-wrap">
+          <table class="build-table">
+            <caption>Parts of the Mac build label</caption>
+            <thead><tr><th scope="col">Part</th><th scope="col">Meaning</th></tr></thead>
+            <tbody>
+              <tr><th scope="row"><code>arm</code></th><td>Compiled on an Apple Silicon Mac. This describes the build machine.</td></tr>
+              <tr><th scope="row"><code>m27.3b</code></th><td>The build machine runs a macOS 27.3 beta. <code>m</code> identifies macOS and the trailing <code>b</code> marks the beta channel. A stable system uses <code>m27.3</code>.</td></tr>
+              <tr><th scope="row"><code>x27.3b1</code></th><td>Xcode 27.3 beta 1. <code>x</code> identifies Xcode; <code>b1</code> identifies its beta iteration. A stable Xcode uses <code>x27.3</code>.</td></tr>
+              <tr><th scope="row"><code>uni</code></th><td>A Universal Mac binary with both <code>arm64</code> and <code>x86_64</code> architectures, for Apple Silicon and Intel.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout"><strong>Build machine ≠ minimum OS.</strong><p>A build-host version does not set the oldest supported macOS. Check the minimum macOS and architecture shown for the actual download. This example explains the label format; it does not announce an available download.</p></div>
+        <h3>Build details in release notes</h3>
+        <p>Starting with macOS 2.1.0, each release includes its build environment and test-machine information in the GitHub Release notes. For example:</p>
+        <p>Built on: <code>Mac17,3</code>; macOS <code>26C5035r</code>; Xcode <code>27C5020n</code>. Target: Universal. Tested on the build machine.</p>
+        <p>The model identifier names the build machine; the macOS and Xcode codes identify the exact system and toolchain builds. Testing on the build machine does not imply testing on every supported Mac.</p>
+        <h3>Legacy format</h3>
+        <div class="code-card"><span>Legacy build label</span><code>arm.27.0.b6.uni</code></div>
+        <div class="build-table-wrap">
+          <table class="build-table">
+            <caption>Parts of the Legacy build label</caption>
+            <thead><tr><th scope="col">Part</th><th scope="col">Meaning</th></tr></thead>
+            <tbody>
+              <tr><th scope="row"><code>arm</code></th><td>Compiled on an Apple Silicon Mac; this describes the build machine.</td></tr>
+              <tr><th scope="row"><code>27.0</code></th><td>The macOS version on the build machine. This older format does not record the macOS beta channel.</td></tr>
+              <tr><th scope="row"><code>b6</code></th><td>Xcode beta 6. It does not mean macOS beta 6; the exact Xcode version is not encoded in this older format.</td></tr>
+              <tr><th scope="row"><code>uni</code></th><td>Universal output for Apple Silicon and Intel. Other legacy targets include <code>arm</code> for Apple Silicon only and <code>int</code> for Intel only.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Legacy identifies the older naming format, not the support status of the application. Published releases keep their original labels. The current format separates the macOS and Xcode versions and their beta channels explicitly.</p>
       </section>
     </main>
   </div>

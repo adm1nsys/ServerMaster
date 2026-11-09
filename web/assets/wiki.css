@@ -3,3 +3,12 @@
 .guide-section{opacity:0;transform:translateY(18px);transition:opacity .55s ease,transform .55s cubic-bezier(.2,.75,.25,1)}
 .guide-section.is-visible{opacity:1;transform:none}
 @media(prefers-reduced-motion:reduce){.guide-section{opacity:1;transform:none;transition:none}}
+
+/* Build provenance remains readable on narrow screens. */
+.build-table-wrap { overflow-x: auto; margin: 28px 0; }
+.build-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.build-table caption { text-align: left; color: var(--dim); padding-bottom: 12px; }
+.build-table th, .build-table td { padding: 14px 16px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.build-table thead th { color: var(--text); background: var(--panel); }
+.build-table tbody th { white-space: nowrap; font-weight: 500; }
+.build-table td { color: var(--muted); line-height: 1.7; }
