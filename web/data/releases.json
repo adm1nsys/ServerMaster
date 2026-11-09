@@ -9,7 +9,7 @@
       "description": "Local server profiles, process controls, logs, port inspection, dependency checks, HTTPS tools, and database management.",
       "status": "available",
       "statusLabel": "Available now",
-      "currentRelease": "macos-v2.0.0",
+      "currentRelease": "macos-v2.1.0",
       "plannedTargets": [],
       "releases": [
         {
@@ -139,17 +139,40 @@
               "url": "https://github.com/adm1nsys/ServerMaster/releases/download/macos-v2.0.0/SHA256SUMS.txt"
             }
           ]
+        },
+        {
+          "id": "macos-v2.1.0",
+          "version": "2.1.0",
+          "date": "2026-11-09",
+          "requirements": "macOS 14 or later",
+          "architecture": "Apple Silicon + Intel",
+          "build": "arm.m27.3b.x27.3b1.uni",
+          "format": "Universal · ZIP",
+          "sizeBytes": 13352615,
+          "signed": false,
+          "notesUrl": "https://github.com/adm1nsys/ServerMaster/releases/tag/macos-v2.1.0",
+          "assets": [
+            {
+              "kind": "application",
+              "label": "Download app",
+              "filename": "ServerMaster-v2.1.0.app.zip",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/macos-v2.1.0/ServerMaster-v2.1.0.app.zip"
+            },
+            {
+              "kind": "source",
+              "label": "Source snapshot",
+              "filename": "ServerMaster-macos-v2.1.0-source.zip",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/macos-v2.1.0/ServerMaster-macos-v2.1.0-source.zip"
+            },
+            {
+              "kind": "checksums",
+              "label": "SHA256 checksums",
+              "filename": "SHA256SUMS.txt",
+              "url": "https://github.com/adm1nsys/ServerMaster/releases/download/macos-v2.1.0/SHA256SUMS.txt"
+            }
+          ]
         }
-      ],
-      "downloadPlaceholder": {
-        "version": "2.1.0",
-        "build": "arm.m27.3b.x27.3b1.uni",
-        "requirements": "macOS 14 or later",
-        "architecture": "Apple Silicon + Intel",
-        "format": "Universal · ZIP",
-        "signed": false,
-        "date": "2026-11-09"
-      }
+      ]
     },
     {
       "id": "cli",

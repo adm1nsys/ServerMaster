@@ -6,7 +6,7 @@ Git tags. Dates follow the website release catalog.
 
 | Version | Platform | Date | GitHub Release |
 | --- | --- | --- | --- |
-| [2.1.0](#macos-210) | macOS | 2026-11-09 | — |
+| [2.1.0](#macos-210) | macOS | 2026-11-09 | [Release](https://github.com/adm1nsys/ServerMaster/releases/tag/macos-v2.1.0) |
 | [1.0.0](#windows-100) | Windows | 2026-10-25 | [Release](https://github.com/adm1nsys/ServerMaster/releases/tag/windows-v1.0.0) |
 | [2.0.0](#macos-200) | macOS | 2026-09-12 | [Release](https://github.com/adm1nsys/ServerMaster/releases/tag/macos-v2.0.0) |
 | [1.0.0](#cli-100) | CLI | 2026-09-13 | [Release](https://github.com/adm1nsys/ServerMaster/releases/tag/cli-v1.0.0) |
