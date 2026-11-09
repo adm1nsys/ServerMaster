@@ -97,3 +97,7 @@ CODEX.md
 windows/PORT_PARITY.md
 DEMO_CHECKLIST.md
 DEMO_SCENARIO.md
+
+# Optional cross-platform codec harness
+tools/interop-t5/bin/
+tools/interop-t5/obj/

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Production files are linked unchanged. No WinUI application is built. -->
+    <Compile Include="../../windows/src/ServerMaster.Windows/Models/ServerProfile.cs" Link="ServerProfile.cs" />
+    <Compile Include="../../windows/src/ServerMaster.Windows/Models/ServerState.cs" Link="ServerState.cs" />
+    <Compile Include="../../windows/src/ServerMaster.Windows/Models/EnvVar.cs" Link="EnvVar.cs" />
+    <Compile Include="../../windows/src/ServerMaster.Windows/Models/Dependency.cs" Link="Dependency.cs" />
+    <Compile Include="../../windows/src/ServerMaster.Windows/Models/AppSettings.cs" Link="AppSettings.cs" />
+    <Compile Include="../../windows/src/ServerMaster.Windows/Models/ProfileTemplate.cs" Link="ProfileTemplate.cs" />
+    <Compile Include="../../windows/src/ServerMaster.Windows/Services/ProfileStore.cs" Link="ProfileStore.cs" />
+    <Compile Include="../../windows/src/ServerMaster.Windows/Services/SettingsBehavior.cs" Link="SettingsBehavior.cs" />
+    <Compile Include="../../windows/src/ServerMaster.Windows/Services/AppPaths.cs" Link="AppPaths.cs" />
+    <Compile Include="../../windows/src/ServerMaster.Windows/Services/UserTemplateStore.cs" Link="UserTemplateStore.cs" />
+    <Compile Include="../../windows/src/ServerMaster.Windows/Services/TranslationPacks.cs" Link="TranslationPacks.cs" />
+    <Compile Include="../../windows/src/ServerMaster.Windows/Services/Localization.cs" Link="Localization.cs" />
+    <EmbeddedResource Include="../../macos/ServerMaster/uk.lproj/Localizable.strings" LogicalName="ServerMaster.Strings.uk" />
+    <EmbeddedResource Include="../../windows/src/ServerMaster.Windows/Resources/uk.windows.strings" LogicalName="ServerMaster.Strings.Windows.uk" />
+  </ItemGroup>
+</Project>
