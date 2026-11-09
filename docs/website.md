@@ -21,8 +21,14 @@ For a new version:
 4. Set `currentRelease` to the new entry's `id`, and set the platform's
    `status` to `available` and `statusLabel` to `Available now`.
 5. Update visible development/release wording in `web/index.html` if needed.
-6. Commit the website when approved, then run **Actions → Deploy website →
-   Run workflow**.
+6. Push the approved website changes to `main`. The Website workflow deploys
+   changes under `web/` automatically. It can also be run from Actions.
+
+A platform can have a `downloadPlaceholder` object with `version`, `build`,
+`requirements`, `architecture` and `format`. It uses the same release-table
+layout with a disabled Download button, no link and no extra caption. Leave
+the release date unset until publication. Remove this object when the real
+release entry and its uploaded assets are ready.
 
 Each release includes its requirements, architecture, build identifier,
 package format, version, and assets. Asset kinds are `application`, `source`,

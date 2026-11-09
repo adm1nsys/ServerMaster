@@ -36,7 +36,7 @@ Guides are in the [wiki](https://adm1nsys.github.io/ServerMaster/wiki.html).
 | `cli/` | One cross-platform Swift CLI codebase for macOS and Linux |
 | `updates/` | Stable update manifests and legacy compatibility files |
 | `web/` | Static project website published with GitHub Pages |
-| `docs/` | Architecture, development, and release documentation |
+| `docs/` | Maintenance notes, such as how to update the website |
 | `scripts/` | Repository maintenance and release scripts |
 
 ## Releases
